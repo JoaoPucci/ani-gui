@@ -4,7 +4,8 @@
   The motifs are restraint: serif voice, mono numerals, hairline rules.
 -->
 <script lang="ts">
-	import { onMount, tick, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { beginVisit } from '$lib/navigation/visit';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { Snapshot } from '@sveltejs/kit';
 	import { page } from '$app/state';
@@ -49,6 +50,7 @@
 	import { followAddress } from '$lib/search/follow-address';
 	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
 	import { subtypeLabel } from '$lib/search/subtype-label';
+	import { SEARCH_TYPE_FILTERS } from '$lib/search/type-filters';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
@@ -98,7 +100,6 @@
 		year: m.search_sort_year,
 		rating: m.search_sort_rating
 	};
-	const SUBTYPES = ['TV', 'movie', 'special', 'OVA', 'ONA', 'music'];
 	let sortKey = $state<SortKey>('relevance');
 	const activeSubtypes = new SvelteSet<string>();
 
@@ -167,6 +168,15 @@
 		};
 	}
 
+	// The page's own reads (the settings and the two discovery rows),
+	// cancelled when it goes, with the search the runner has out; what
+	// they answer after reaches nothing ($lib/navigation/visit).
+	const pageReads = beginVisit();
+	onDestroy(() => {
+		pageReads.end();
+		searchRunner.stop();
+	});
+
 	onMount(async () => {
 		// Resolve settings before kicking off the discovery requests
 		// so the filter calls below see the user's actual mode. Naive
@@ -176,18 +186,19 @@
 		// settingsGet is a single fast IPC; awaiting once on mount is
 		// cheap.
 		try {
-			config = await settingsGet();
+			config = await pageReads.keep(settingsGet({ signal: pageReads.signal }));
 		} catch {
 			// Settings fetch failed — fall through with config null;
 			// pickAvailabilityMode handles that with 'sub' default.
 		}
 		const mode = pickAvailabilityMode(config);
-		kitsuTrending()
-			.then((t) => filterAvailable(t, mode))
+		const signal = pageReads.signal;
+		void pageReads
+			.keep(kitsuTrending({ signal }).then((t) => filterAvailable(t, mode, { signal })))
 			.then((t) => (trending = t))
 			.catch(() => (trending = []));
-		kitsuTopRated()
-			.then((t) => filterAvailable(t, mode))
+		void pageReads
+			.keep(kitsuTopRated({ signal }).then((t) => filterAvailable(t, mode, { signal })))
 			.then((t) => (topRated = t))
 			.catch(() => (topRated = []));
 	});
@@ -292,13 +303,13 @@
 	// The closures below are the page-side adapter, one Svelte
 	// reassignment each.
 	const searchRunner = createSearchRunner({
-		searchPage: kitsuSearchPage,
+		searchPage: (q, offset, order, signal) => kitsuSearchPage(q, offset, order, { signal }),
 		getConfig: async () => {
 			// Same race as onMount: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
 			// the result so DUB users never search under the 'sub'
 			// fallback twice.
-			if (!config) config = await settingsGet();
+			if (!config) config = await settingsGet({ signal: pageReads.signal });
 			return config;
 		},
 		pickMode: pickAvailabilityMode,
@@ -443,7 +454,7 @@
 			<div class="control-group">
 				<span class="control-label">{m.search_control_type_label()}</span>
 				<div class="chips" role="group" aria-label={m.search_chips_type_aria_label()}>
-					{#each SUBTYPES as s (s)}
+					{#each SEARCH_TYPE_FILTERS as s (s)}
 						<button
 							type="button"
 							class="chip"
@@ -482,8 +493,8 @@
 			{#each Array.from({ length: 12 }, (_, k) => k) as i (i)}
 				<li class="card card-skeleton" style="--i: {i}">
 					<div class="poster poster-skeleton"></div>
-					<div class="line line-skeleton" style="inline-size: 70%"></div>
-					<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+					<div class="line line-skeleton w-70"></div>
+					<div class="line line-skeleton line-thin w-40"></div>
 				</li>
 			{/each}
 		</ul>
@@ -590,8 +601,8 @@
 				{#each Array.from({ length: 12 }, (_, k) => k) as k (k)}
 					<li class="card card-skeleton" style="--i: {k}">
 						<div class="poster poster-skeleton"></div>
-						<div class="line line-skeleton" style="inline-size: 70%"></div>
-						<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+						<div class="line line-skeleton w-70"></div>
+						<div class="line line-skeleton line-thin w-40"></div>
 					</li>
 				{/each}
 			</ul>
@@ -1167,5 +1178,15 @@
 	}
 	.chip-clear {
 		border-style: dashed;
+	}
+
+	/* Skeleton line sizes. Classes, not static style attributes: the
+	   renderer's content security policy refuses inline style attributes,
+	   and Svelte parses a static one as markup. */
+	.line.w-40 {
+		inline-size: 40%;
+	}
+	.line.w-70 {
+		inline-size: 70%;
 	}
 </style>

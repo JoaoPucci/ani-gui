@@ -41,6 +41,16 @@ import UpdateDialog from '../../src/lib/components/UpdateDialog.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { updateStore } from '../../src/lib/update/store.svelte';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -161,31 +171,40 @@ describe('the update dialog', () => {
 describe('the download dialog on a show page', () => {
 	function useShowHandlers() {
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, EPISODES), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({
+					...kitsuRef(KITSU_ID, TITLE, EPISODES),
+					status: 'finished'
+				})
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({
+				HttpResponse.json<AiringStatus>({
 					aired: EPISODES,
 					next_episode: null,
 					next_airing_at: null,
 					upcoming: []
 				})
 			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
-			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: EPISODES,
-					extra_episodes: [],
-					episode_count_approximate: false
-				})
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+				HttpResponse.json<HistoryRowByKitsu | null>(null)
 			),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: EPISODES,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
+			),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+			http.get(`${API_BASE}/api/download/default-dir`, () =>
+				HttpResponse.json<string | null>('/dl')
+			)
 		);
 	}
 	const downloadAction = () =>

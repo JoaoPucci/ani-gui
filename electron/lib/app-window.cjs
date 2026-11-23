@@ -1,5 +1,7 @@
 "use strict";
 
+const path = require("node:path");
+
 // The app's own window: how it is made, and the renderer's word that
 // its first page has actually rendered, which the reveal waits for.
 //
@@ -17,21 +19,156 @@ const APP_BACKGROUND = "#0c0a09";
 /** The channel the renderer says it has rendered on. */
 const APP_READY_CHANNEL = "ani-gui:app-ready";
 
+/** The channel the renderer says its first page has mounted on: before
+ *  any frame, so it comes whether or not the window gets frames. */
+const APP_MOUNTED_CHANNEL = "ani-gui:app-mounted";
+
+/** How long after the page mounted its rendered word may take before
+ *  the window is woken (frameWake). Where a hidden window gets frames
+ *  the word follows within a couple of frames; where it gets none
+ *  (native Wayland without GPU compositing) the word never comes, and
+ *  this is what the boot pays before the window is mapped. */
+const FRAME_WAKE_MS = 1500;
+
 /** The longest the reveal waits for that word, counted from the
- *  window's creation: past it, the window is revealed anyway, on the
- *  dark background, never white. It is a safety net for a page that
- *  never says it rendered, not the time a render is expected to take,
- *  because a window revealed before its page has painted shows black.
- *  During the boot the splash stays up meanwhile, and once the page's
- *  step has been pending a moment (STALL_MS) its stall line says it is
- *  starting up. A later window has no splash, and stays hidden while it
- *  waits. The bound used to be 4 s, and a cold dev start rendered its
- *  first page later than that: the splash closed and the window stayed
- *  black until the page painted. */
+ *  window's creation, when no splash stands in for the window: a
+ *  window opened later (macOS reopening one against the running
+ *  backend), or a boot whose splash could not be made. Past it, the
+ *  window is revealed anyway, on the dark background, never white —
+ *  it would otherwise stay hidden for good, with nothing on screen.
+ *
+ *  While the boot's splash stands in, the wait has no bound
+ *  (appReadyBound): a page that is late leaves the splash stuck,
+ *  offering Restart and Quit (lib/splash-stuck.cjs), and the window is
+ *  revealed only once its page has rendered. The bound used to apply
+ *  there too, and revealed a window whose page had not painted: dark
+ *  and empty. */
 const APP_READY_WAIT_MS = 15_000;
 
+/** The bound the wait for the window's first page takes: none while
+ *  `splash` stands in for the window, APP_READY_WAIT_MS otherwise. */
+function appReadyBound(splash) {
+  return splash.standsIn() ? null : APP_READY_WAIT_MS;
+}
+
+/**
+ * What fails the window's first open once the splash is `lost`
+ * (lib/splash.cjs): the page gets back a bound of APP_READY_WAIT_MS,
+ * counted from the loss, or from now when the splash was lost before
+ * the window was made. A page that has rendered, or renders within it,
+ * fails nothing and is revealed as usual. One that has not by then
+ * rejects this with the loss's error, and the boot fails on it (main.js,
+ * openFirstPage's `abort`): nothing else on screen could end or continue
+ * the launch, and revealing a page that never said it rendered may show
+ * it empty. A page whose renderer went (`ready` false) is left to the
+ * boot's own renderer-gone failure, which names the cause. Never
+ * settles otherwise.
+ */
+function abortWhenLost(lost, ready, { graceMs = APP_READY_WAIT_MS } = {}) {
+  let outcome = null;
+  const settledReady = Promise.resolve(ready).then((r) => {
+    outcome = r === true ? "rendered" : "gone";
+    return outcome;
+  });
+  const never = () => new Promise(() => {});
+  return Promise.resolve(lost).then(never, (err) => {
+    if (outcome) return never();
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => resolve("late"), graceMs);
+    });
+    return Promise.race([settledReady, late]).then((what) => {
+      clearTimeout(timer);
+      if (what !== "late") return never();
+      throw err;
+    });
+  });
+}
+
+/**
+ * The icon the app's windows set themselves on `platform`, or undefined
+ * where they set none. `packaged` is whether this is the installed app
+ * (Electron's app.isPackaged) rather than a dev session.
+ *
+ * On Linux a window's own icon is what the desktop shows for it when no
+ * installed .desktop file matches its app id, as for an AppImage run
+ * without desktop integration. Electron passes it to Chromium's window
+ * (SetWindowIcons), which sets it as _NET_WM_ICON under X11 and hands
+ * it to a Wayland compositor that offers xdg-toplevel-icon-v1 (KDE
+ * Plasma does: Chromium's XDGToplevelWrapperImpl::SetIcon) — under
+ * Wayland only once the window is shown, which is why the windows set
+ * it again then (holdWindowIcon). A compositor that offers none (GNOME
+ * Shell, at the time of writing) goes by the .desktop file alone.
+ * The file is in the package because package.json's `build.files`
+ * names it: that list is an explicit allowlist, and nothing else under
+ * build-resources is packaged.
+ *
+ * The installed app on Windows sets none, so its windows take the
+ * executable's own icon, which electron-builder makes from the same
+ * image at several sizes (Electron's documentation notes that leaving
+ * `icon` unset uses the executable's). A Windows dev session runs
+ * electron.exe, whose icon is Electron's, so it sets the app's. macOS
+ * shows the bundle's icon and ignores a window's.
+ */
+function windowIcon(platform = process.platform, packaged = true) {
+  const own = platform === "linux" || (platform === "win32" && !packaged);
+  return own ? path.join(__dirname, "..", "build-resources", "icon.png") : undefined;
+}
+
+/** Per window name, the icon holdWindowIcon last set and how often. */
+const windowIcons = new Map();
+
+/**
+ * Set `win`'s `icon` again each time it is shown, and at once when it
+ * is already on screen; returns `win`. `name` labels the record
+ * (lastWindowIcons). Nothing is done for no icon.
+ *
+ * The icon in a window's options does not reach a Wayland compositor:
+ * a window gets its xdg_toplevel when it is shown, and a new one each
+ * time it is shown after a hide, and WaylandToplevelWindow::
+ * SetWindowIcons returns early while there is none, keeping nothing
+ * for later. Both of the app's windows are made hidden, so KDE Plasma
+ * never got either icon. Read in the Chromium Electron 33 ships (130),
+ * in 135 and in later main: from 135 Chromium keeps an icon given when
+ * the window is created, but only the toolkit's default
+ * (ViewsDelegate::GetDefaultWindowIcon, which Electron leaves empty),
+ * and only for the first toplevel, so this stays needed. Electron
+ * emits "show" right after the platform window's Show(), which makes
+ * the toplevel. Under X11 the set rewrites the same _NET_WM_ICON.
+ */
+function holdWindowIcon(win, icon, name, { logError = console.error } = {}) {
+  if (!icon) return win;
+  const apply = () => {
+    try {
+      if (win.isDestroyed()) return;
+      win.setIcon(icon);
+      const sets = (windowIcons.get(name)?.sets ?? 0) + 1;
+      windowIcons.set(name, { icon, sets });
+    } catch (err) {
+      logError(`[main] the ${name} window's icon could not be set:`, err);
+    }
+  };
+  win.on("show", apply);
+  if (win.isVisible()) apply();
+  return win;
+}
+
+/** The icons holdWindowIcon has set, one record per window name, for
+ *  the end-to-end suite. */
+function lastWindowIcons() {
+  return [...windowIcons].map(([name, { icon, sets }]) => ({ name, icon, sets }));
+}
+
 /** The app window's options. */
-function appWindowOptions({ width, height, icon, preload, additionalArguments }) {
+function appWindowOptions({
+  width,
+  height,
+  preload,
+  additionalArguments,
+  platform = process.platform,
+  packaged = true,
+}) {
+  const icon = windowIcon(platform, packaged);
   return {
     width,
     height,
@@ -43,25 +180,43 @@ function appWindowOptions({ width, height, icon, preload, additionalArguments })
     // Frameless: the renderer draws its titlebar and controls. Resizable
     // stays at its default (true), so the OS resize edges still work.
     frame: false,
-    webPreferences: { preload, contextIsolation: true, nodeIntegration: false, additionalArguments },
+    webPreferences: {
+      preload,
+      contextIsolation: true,
+      nodeIntegration: false,
+      additionalArguments,
+      // Electron's default, stated: a file or link dropped on the window
+      // must not become a navigation. Were one asked for, it would come
+      // from the page and meet the navigation guard (window-guard.cjs).
+      navigateOnDragDrop: false,
+    },
   };
 }
 
 let current = { rendered: false, gaveUp: false, beforeReveal: false };
 
 /**
- * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`,
- * that its first page has rendered. `ready` settles true when it does,
- * false after `timeoutMs`; either way the listener goes. Start it when
- * the window is made, so a word that comes early is not missed. The
- * record notes whether the window was still hidden (`isShown`) when
- * the word came: the reveal waited for it.
+ * Wait for `contents`' renderer to say, on APP_READY_CHANNEL of `ipc`
+ * (the main process's guarded IPC, lib/ipc-guard.cjs, so a word from
+ * any document but the app's is dropped before it gets here), that its
+ * first page has rendered. `ready` settles true when it does, false
+ * after `timeoutMs` (never, when that is null), and false when the
+ * renderer goes or the contents are destroyed first — `gone()` then
+ * says so. A renderer gone fails the boot (lib/startup.cjs
+ * waitBeforeShow); destroyed contents are a window closed by a quit,
+ * which reveals nothing (revealMaximized).
+ * Either way the listeners go. Start it when the window is made, so a
+ * word that comes early is not missed. The record notes whether the
+ * window was still hidden (`isShown`) when the word came: the reveal
+ * waited for it.
  *
  * The renderer sends the word after two animation frames, which run in
  * a hidden window only because `paintWhenInitiallyHidden` is left at its
  * default (true). Turned off, `ready-to-show` never fires either, and
  * the window is never revealed (packaged: the boot fails at the
- * first-show deadline).
+ * first-show deadline). Even left on, a hidden window gets no frames
+ * under native Wayland with software compositing; frameWake maps such a
+ * window so the word can come.
  */
 function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown = () => false } = {}) {
   const state = { rendered: false, gaveUp: false, beforeReveal: false };
@@ -69,11 +224,21 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
   let settle;
   const ready = new Promise((resolve) => (settle = resolve));
   let timer = null;
-  const done = (rendered) => {
-    ipc.removeListener(APP_READY_CHANNEL, onReady);
+  let stopListening = () => {};
+  let settled = false;
+  let lost = false;
+  const watchesContents = typeof contents.on === "function";
+  const done = (rendered, { gaveUp = !rendered } = {}) => {
+    if (settled) return;
+    settled = true;
+    stopListening();
+    if (watchesContents) {
+      contents.removeListener("render-process-gone", onGone);
+      contents.removeListener("destroyed", onGone);
+    }
     if (timer) clearTimeout(timer);
     state.rendered = rendered;
-    state.gaveUp = !rendered;
+    state.gaveUp = gaveUp;
     settle(rendered);
   };
   // Matched by the sending contents' id: Electron may hand over another
@@ -83,15 +248,124 @@ function appReadyWaiter(contents, ipc, { timeoutMs = APP_READY_WAIT_MS, isShown 
     state.beforeReveal = !isShown();
     done(true);
   }
-  ipc.on(APP_READY_CHANNEL, onReady);
-  timer = setTimeout(() => done(false), timeoutMs);
-  return { ready };
+  // With no bound, nothing else would end the wait for a renderer that
+  // can no longer say anything.
+  function onGone() {
+    lost = true;
+    done(false, { gaveUp: false });
+  }
+  stopListening = ipc.on(APP_READY_CHANNEL, onReady);
+  if (watchesContents) {
+    contents.on("render-process-gone", onGone);
+    contents.on("destroyed", onGone);
+  }
+  if (timeoutMs != null) timer = setTimeout(() => done(false), timeoutMs);
+  return { ready, gone: () => lost };
 }
 
 /** What the latest launch's wait for the renderer saw, for the
  *  end-to-end suite. */
 function lastAppReady() {
   return { ...current };
+}
+
+let currentWake = { mounted: false, woken: false };
+
+/**
+ * Wake a hidden window whose page cannot draw.
+ *
+ * The reveal waits for the page's rendered word (appReadyWaiter), which
+ * takes two animation frames. Under native Wayland with software
+ * compositing (a virtual machine, a GPU that failed or is blocklisted,
+ * `--disable-gpu`) a window that is not mapped gets no frames after its
+ * first, sometimes not even that, so the word would never come. X11
+ * keeps hidden windows ticking, and so does a GPU, which is why the
+ * reveal can wait for it at all.
+ *
+ * So the page also says when it has mounted (APP_MOUNTED_CHANNEL of
+ * `ipc`, the main process's guarded IPC, lib/ipc-guard.cjs, as for the
+ * rendered word), which needs no frame. `ready` is the waiter's: once
+ * the window's own page (matched by its contents' id) has mounted, if
+ * `ready` has not settled within `boundMs`, `wake` runs, once — main.js
+ * maps the window (wakeHidden) and its frames resume; the rendered word
+ * then follows and the reveal goes as usual. Nothing runs when `ready` settles first,
+ * when `stop()` was called (the reveal came, or the window went), or
+ * when the launch was `cancelled` by then.
+ *
+ * Returns `woken()`, and `stop()`. The latest wait's record, for the
+ * end-to-end suite, is lastWake().
+ */
+function frameWake(contents, ipc, { ready, wake, cancelled = () => false, boundMs = FRAME_WAKE_MS }) {
+  const record = { mounted: false, woken: false };
+  currentWake = record;
+  let timer = null;
+  let over = false;
+  let stopListening = () => {};
+  const end = () => {
+    if (over) return;
+    over = true;
+    clearTimeout(timer);
+    timer = null;
+    stopListening();
+  };
+  function onMounted(event) {
+    if (!event || !event.sender || event.sender.id !== contents.id) return;
+    if (record.mounted || over) return;
+    record.mounted = true;
+    timer = setTimeout(() => {
+      timer = null;
+      if (over || cancelled()) return end();
+      end();
+      record.woken = true;
+      wake();
+    }, boundMs);
+  }
+  stopListening = ipc.on(APP_MOUNTED_CHANNEL, onMounted);
+  Promise.resolve(ready).then(end, end);
+  return { woken: () => record.woken, stop: end };
+}
+
+/** What the latest window's wake saw: whether its page said it mounted,
+ *  and whether the window was woken. For the end-to-end suite. */
+function lastWake() {
+  return { ...currentWake };
+}
+
+/**
+ * Map the hidden window `win` so it gets frames, behind the splash
+ * where the platform keeps the splash on top.
+ *
+ * Mapped without asking for the focus first: maximize() on a hidden
+ * window maps and activates it. On Linux it is then maximized, a state
+ * request that activates nothing, with `revealing` run first (main.js
+ * arms the granted-size recorder, lib/window-geometry.cjs) so the size
+ * the desktop grants it lands now; elsewhere the reveal arms it, where
+ * the maximize happens. Elsewhere maximize() of a mapped
+ * window activates it (Windows: ShowWindow(SW_MAXIMIZE)), so the reveal
+ * maximizes it there (lib/splash.cjs revealMaximized), as it shows it
+ * anyway.
+ *
+ * Native Wayland honours no always-on-top. Measured on GNOME (headless,
+ * with the app focused, and with another app focused): the compositor
+ * stacks the woken window over the splash and gives it the focus. Each
+ * focus it takes before the reveal runs `restack` (main.js maps the
+ * splash again, which puts it back on top); the window is visible
+ * around the splash meanwhile. A compositor that maps it without the
+ * focus may leave it over the splash until the person comes back to
+ * the app, whose focus restacks it then.
+ *
+ * Returns what detaches the restack (the reveal calls it), or null for
+ * a window gone or already on screen, which is left alone.
+ */
+function wakeHidden(win, { revealing = () => {}, restack, platform = process.platform }) {
+  if (win.isDestroyed() || win.isVisible()) return null;
+  const maximizeNow = platform === "linux";
+  if (maximizeNow) revealing();
+  win.showInactive();
+  if (maximizeNow) win.maximize();
+  const onFocus = () => restack();
+  win.on("focus", onFocus);
+  return () => win.removeListener("focus", onFocus);
 }
 
 /** The reveal's gate: open once the splash is done (`whenShown`) and
@@ -102,16 +376,28 @@ function lastAppReady() {
 function revealGate(splash, appReady) {
   return Promise.all([
     splash.whenShown(),
-    appReady.ready.then((rendered) => splash.pageReady(rendered === true)),
+    // A renderer that went is no page to complete the rail for: the
+    // boot is about to fail.
+    appReady.ready.then((rendered) => (appReady.gone && appReady.gone() ? undefined : splash.pageReady(rendered === true))),
   ]);
 }
 
 module.exports = {
+  abortWhenLost,
   revealGate,
   APP_BACKGROUND,
+  APP_MOUNTED_CHANNEL,
+  FRAME_WAKE_MS,
+  frameWake,
+  lastWake,
+  wakeHidden,
   APP_READY_CHANNEL,
   APP_READY_WAIT_MS,
+  appReadyBound,
   appReadyWaiter,
   appWindowOptions,
+  holdWindowIcon,
   lastAppReady,
+  lastWindowIcons,
+  windowIcon,
 };

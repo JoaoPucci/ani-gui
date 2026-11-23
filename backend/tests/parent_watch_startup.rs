@@ -14,16 +14,10 @@
 //! closing the pipe plus the 3 s it allows for the exit; without the
 //! fix the backend sits there until the timeout fails its startup.
 //!
-//! Linux only, because the test locks the database at a path it spells
-//! out — `<home>/cache/ani-gui-dev/metadata.sqlite`, the Linux layout
-//! under the `XDG_CACHE_HOME` that `common::command` sets. macOS keeps
-//! its caches elsewhere under the home, and Windows resolves the
-//! directory from the known-folder API, so a run there would lock the
-//! real dev profile's database. The watch's behaviour during startup
-//! is covered on every platform by the unit tests in
-//! `src/parent_watch_test.rs`.
-
-#![cfg(target_os = "linux")]
+//! The database it locks is the one the backend opens on every
+//! platform: `common::command` roots the backend's profile under the
+//! test's home, so the path is `<home>/cache/metadata.sqlite` on Linux,
+//! macOS and Windows alike.
 
 mod common;
 
@@ -32,10 +26,9 @@ use std::time::Duration;
 #[test]
 fn a_parent_gone_during_startup_ends_the_backend_at_once() {
     let home = tempfile::tempdir().expect("tempdir");
-    // `ANI_GUI_DEV` pins the profile directory whatever the build.
-    let cache = home.path().join("cache").join("ani-gui-dev");
-    std::fs::create_dir_all(&cache).expect("cache dir");
-    let lock = rusqlite::Connection::open(cache.join("metadata.sqlite")).expect("open cache");
+    let db = common::profile::metadata_db(home.path());
+    std::fs::create_dir_all(db.parent().expect("cache dir")).expect("cache dir");
+    let lock = rusqlite::Connection::open(&db).expect("open cache");
     lock.execute_batch("BEGIN EXCLUSIVE;").expect("lock cache");
 
     // The backend logs to its standard output, beside the handshake.
@@ -45,7 +38,6 @@ fn a_parent_gone_during_startup_ends_the_backend_at_once() {
         home.path(),
     );
     cmd.env("ANI_GUI_PARENT_STDIN", "1")
-        .env("ANI_GUI_DEV", "1")
         .stdout(std::fs::File::create(&log).expect("stdout file"));
     let mut child = cmd.spawn().expect("spawn backend");
 

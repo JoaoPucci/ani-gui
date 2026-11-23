@@ -61,7 +61,8 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode,
 		type MediaKind,
-		type SkipInterval
+		type SkipInterval,
+		historySwitchEpisode
 	} from '$lib/api';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
@@ -78,7 +79,8 @@
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { captionChoiceOf, storedCaption } from '$lib/play/caption-choice';
-	import { storedAudio } from '$lib/play/audio-choice';
+	import { audioFor, storedAudio } from '$lib/play/audio-choice';
+	import { carrySwitchAudio, takeSwitchAudio } from '$lib/play/switch-audio';
 	import { rememberPickMoved } from '$lib/play/caption-repick';
 	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
@@ -108,9 +110,12 @@
 	import { clearBackgroundForShow, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit, visitSeries, type Visit } from '$lib/navigation/visit';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
-	import { markStarted } from '$lib/play/watch-position';
+	import { keptEpisodes, markStarted } from '$lib/play/watch-position';
+	import { SwitchPreview } from '$lib/play/switch-preview.svelte';
+	import { switchEpisodeAsk } from '$lib/play/switch-plan';
 	import { armSidecarTracks } from '$lib/play/sidecar-tracks';
 	import { StripPager } from '$lib/play/strip-pager';
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
@@ -127,6 +132,7 @@
 	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
+	import { HLS_BUFFER_POLICY } from '$lib/play/hls-buffer-policy';
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
 	import { moreMenuQuality } from '$lib/play/more-menu-quality';
@@ -201,17 +207,33 @@
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
+	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
+	import { watchStart, type StartWatch } from '$lib/play/start-watch';
+	import { HandoffGate } from '$lib/play/handoff-gate';
+	import { keepingSidecarCues } from '$lib/play/sidecar-cues';
+	import { startEngine } from '$lib/play/quality-sink';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
-		guessedId,
-		guessRow,
 		openedFromGuess,
 		openedFromRow,
 		recordableId,
 		withGuess,
 		withRow
 	} from '$lib/play/play-origin';
+	import { guessedQuery } from '$lib/history/guessed-context';
+	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
+	import { noteSwitch } from '$lib/history/guess-slip';
+	import { appLinkDeps } from '$lib/history/link-deps';
+	import { switchShow, type SwitchRequest, type SwitchShowDeps } from '$lib/play/switch-show';
+	import { switchToPick as runPickSwitch } from '$lib/play/pick-switch';
+	import { sessionShow } from '$lib/play/session-show';
+	import { applyCarriedRate, carryRate, takeRate } from '$lib/play/rate-carry';
+	import { takeSwitch } from '$lib/history/guess-slip';
+	import { holdPlayback } from '$lib/play/hold-playback';
+	import GuessSlip from '$lib/components/GuessSlip.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
 
 	const id = $derived(page.params.id ?? '');
 	// A session opened from a guessed Continue match records the guess —
@@ -224,7 +246,72 @@
 	// card's history row, so removing the card forgets them whatever
 	// show it names by then; every URL this page builds carries it on.
 	const fromRow = $derived(openedFromRow(page.url.searchParams));
+	/** Where "Switch to it now" opens `to` from the card's row, as the
+	 *  backend decides it from the history and the pick's kept positions
+	 *  ($lib/play/switch-show). */
+	const switchEpisodeOf = (to: KitsuAnimeRef, episode: number): Promise<number | null> =>
+		switchEpisodeAsk(
+			{ ask: historySwitchEpisode, airing: (id) => airingGet(id), kept: keptEpisodes },
+			to,
+			episode,
+			fromRow
+		);
+	// What the switch step says of the pick chosen, for the episode
+	// playing ($lib/play/switch-preview).
+	const switchKey = (to: KitsuAnimeRef) => `${to.id}@${episodeNum}`;
+	const switchPreview = new SwitchPreview((key) => {
+		const to = playLink.chosen?.ref;
+		return to && switchKey(to) === key ? switchEpisodeOf(to, episodeNum) : Promise.resolve(null);
+	});
+	$effect(() => {
+		const chosen = playLink.chosen;
+		if (chosen && !chosen.current) switchPreview.ask(switchKey(chosen.ref));
+	});
+	// The show page a guessed card's session goes up to says which
+	// history title the card was matched from ($lib/history/guessed-context).
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
+	// A guessed session's slip, its ⋯ entry and the picker they open
+	// ($lib/history/in-place-link.svelte.ts): "Is this the show you
+	// meant?". The player stays where it is through a pick until the
+	// viewer switches to it (switchToPick); the picker holds playback
+	// while it is open ($lib/play/hold-playback). What a pick did is
+	// said in the slip, not a toast, unless the pick is saved after the
+	// viewer left, when a toast says it. A session a switch opened, or one
+	// of a row picked for here since the app started, keeps the ⋯ entry
+	// to change the show again ($lib/history/guess-slip.ts).
+	const playLink = new InPlaceLinkSession({
+		...appLinkDeps(),
+		notify: (notice) => toastStore.push(notice),
+		// The shown show's own Sub or Dub, else the one this session was
+		// switched in, else Settings — asked of the show the link was made
+		// for, whichever page is on screen when it answers.
+		audioInForce: (shown) => audioFor(shown, switchedAudio ?? playMode(config)),
+		inPlayer: true,
+		// A pick a correction made elsewhere overtook: read the line again,
+		// so the slip shows the answer that stands.
+		reread: () => void playLink.arrive(fromRow, id, fromGuess)
+	});
+	// A pick saved after the viewer left is still saved, and switches to
+	// nothing.
+	onDestroy(() => playLink.leave());
+	// Every session of a card's line arrives with it: its offer decides
+	// whether the line is asked about (a guess) or can be changed again
+	// (a line the user named a show for, $lib/history/picked-offer).
+	$effect(() => void playLink.arrive(fromRow, id, fromGuess));
+	// The line goes up with the link while the session can ask about it:
+	// a guess, or a line the user named a show for ($lib/history/picked-offer).
+	const showHref = $derived(
+		resolve('/anime/[id]', { id }) + guessedQuery(fromGuess || playLink.offer !== null, fromRow)
+	);
+	// What the session's plays name as their show: its page's, its guess
+	// named apart, or once the card was linked from here, the link
+	// ($lib/play/play-origin).
+	const playingAs = $derived(
+		sessionShow({ id, guess: fromGuess, row: fromRow, linked: playLink.linked?.id ?? null })
+	);
+	$effect(() => {
+		if (playLink.open) return holdPlayback(untrack(() => videoEl));
+	});
 	// A fractional extra (a 7.5 recap) stays itself: see
 	// $lib/play/episode-number.
 	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
@@ -269,10 +356,10 @@
 	const UI_PAGE_SIZE = 5;
 	const KITSU_PAGE_SIZE = 20;
 	// Per-show — the id-change $effect below drops it on /play/A →
-	// /play/B (defensive: no in-app path triggers that today, but
-	// browser back/forward + URL-bar edits can, and a stale page-1
-	// would serve A's thumbnails for B's first paint). See
-	// lib/detail/episode-page-cache.
+	// /play/B (defensive: the route mounts a new page for another show,
+	// ./+layout.svelte, so only a page mounted without that layout
+	// would see the id change, and a stale page-1 would serve A's
+	// thumbnails for B's first paint). See lib/detail/episode-page-cache.
 	const kitsuPageCache = createEpisodePageCache();
 	let theaterMode = $state(false);
 	let similar = $state<KitsuAnimeRef[] | null>(null);
@@ -281,7 +368,10 @@
 	// ($lib/play/audio-choice); a show never chosen on plays the
 	// Settings value, which is only the default.
 	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
-	const audio = $derived(chosenAudio ?? playMode(config));
+	// The audio a switch to this show carried, kept for the session when
+	// the storage refused it as the show's choice ($lib/play/switch-audio).
+	const switchedAudio = takeSwitchAudio(untrack(() => id));
+	const audio = $derived(chosenAudio ?? switchedAudio ?? playMode(config));
 	let detailError = $state<string | null>(null);
 	let playerError = $state<string | null>(null);
 	let switchBusy = $state(false);
@@ -327,7 +417,93 @@
 	// our own progress bar / play / volume / fullscreen UI on top
 	// of the video. Bindings keep the bar in sync with the video
 	// element's actual state without polling.
-	let isPaused = $state(true);
+	//
+	// Where the stream stands ($lib/play/start-state), not the element's
+	// `paused`: an autoplaying element reads paused from the attach to
+	// its first frame, and offering Play over a stream on its way is
+	// what makes a viewer press it. The button and the fullscreen
+	// keep-alive read the viewer's intent from here, and the loading
+	// indicator shows through a start and a stall.
+	let startPhase = $state<StartPhase>('idle');
+	// Watches the page's own video for as long as the page has it, not
+	// the slot the video sits in: a stream can attach while the error
+	// panel stands in for the slot.
+	// Ends the attached stream's resume hold, if it has one.
+	let endResumeHold: () => void = () => {};
+	// Whether the episode went to another player ($lib/play/handoff-gate).
+	// Until the viewer comes back to the embedded player nothing starts
+	// it again by itself: the engine is stopped, the element does not
+	// autoplay, a stream attaching meanwhile does not load, and the
+	// recoveries, retries and auto-play stand down. Coming back is the
+	// element's own `play` (its button, Space, a click, a media key,
+	// picture-in-picture), picking an episode, or Reload.
+	// The handoff's state ($lib/play/handoff-gate): the episode handed
+	// off, a start held for the viewer, a pick waiting for its stream,
+	// and whether the attached engine was started. The page only wires
+	// it to the element and the engine.
+	const handoff = new HandoffGate(
+		() => hls?.startLoad(),
+		// A manifest the handoff cut off is asked for again; the engine,
+		// its listeners and the fragment-loop guard stay as they are,
+		// and so do the sidecar tracks' cues ($lib/play/sidecar-cues).
+		() => {
+			const engine = hls;
+			const url = attachedUrl;
+			if (engine && url) keepingSidecarCues(ownVideo, () => engine.loadSource(url));
+		}
+	);
+	// Bumped when the viewer comes back, so the attach runs again for a
+	// src stream the handoff let go of (the gate holds which, and where).
+	let handoffReturns = $state(0);
+	/** The episode went to another player: a hold ends without
+	 *  starting anything, a start stops, the engine stops loading, and
+	 *  the element no longer starts on its own. A stream the element
+	 *  plays from its `src` (mp4, or HLS without hls.js), which has no
+	 *  engine to stop, is unloaded, and attached again on the viewer's
+	 *  return, exactly where it was. */
+	function stopForHandoff() {
+		endResumeHold();
+		ownVideo.autoplay = false;
+		startWatch.cancel();
+		hls?.stopLoad();
+		handoff.handOff();
+		// A stream the element plays from its src has no engine to stop,
+		// and paused, the browser may go on buffering it: it is let go of
+		// as a switch lets go of one. The flush keeps where it was (its
+		// listeners write the playhead while the stream is still open)
+		// and retires them, so nothing the unload reports is written;
+		// the teardown then unloads it. The attach waits while its URL
+		// is the one let go of, and the viewer's return attaches it
+		// again as a resume: at its kept point, with its subtitles.
+		if (hls === null && attachedUrl !== null) {
+			// The return goes back to the playhead itself: the kept
+			// position reads the first seconds as the start and the last
+			// stretch as finished. Kept with the page's gate, so leaving
+			// the page or picking another episode forgets it.
+			handoff.letGo(attachedUrl, videoEl?.currentTime ?? 0);
+			sourceScope.flush();
+			teardown();
+		}
+	}
+	/** The viewer picked another stream from here (an episode, Reload). */
+	function comeBackWith() {
+		handoff.picked();
+	}
+	/** The viewer is back on the embedded player. */
+	function comeBack() {
+		if (handoff.handedOff) ownVideo.autoplay = true;
+		// A stream the handoff let go of attaches again, at its playhead,
+		// as a recovery's stream does.
+		const point = handoff.comeBack();
+		if (point !== null) recoveryResume.capture(id, episodeNum, point);
+		handoffReturns += 1;
+	}
+	ownVideo.addEventListener('play', comeBack);
+	const startWatch: StartWatch = watchStart(ownVideo, (phase) => {
+		startPhase = phase;
+	});
+	const isPaused = $derived(!chromeReadsPlaying(startPhase));
+	const streamLoading = $derived(startPhase === 'starting' || startPhase === 'stalled');
 	let currentTime = $state(0);
 	let duration = $state(0);
 	let videoVolume = $state(1);
@@ -447,6 +623,10 @@
 	// length of the stream on screen ($lib/play/aniskip-fetch-trigger).
 	const aniskipDurationReady = $derived(lengthReady(lengthFor, sessionId, duration));
 	const aniskipTrigger = createAniskipFetchTrigger();
+	// Each ask for skip times, cancelled by the next ask, a clear, or
+	// the page going ($lib/navigation/visit).
+	const aniskipReads = visitSeries();
+	onDestroy(aniskipReads.end);
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
 		// episode boundaries; subscribing to the readiness boolean
@@ -459,6 +639,7 @@
 		const key = aniskipFetchKey;
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
+			aniskipReads.end();
 			skipIntervals = [];
 			return;
 		}
@@ -472,7 +653,10 @@
 		// An answer counts only for the episode on screen, and only while
 		// no later request or clear has happened: the same episode asked
 		// again, after a switch away and back, with its stream's length.
-		void aniskipGet(decision.showId, decision.episode, len)
+		// The ask before is cancelled: its answer would be dropped.
+		const reads = aniskipReads.next();
+		void reads
+			.keep(aniskipGet(decision.showId, decision.episode, len, { signal: reads.signal }))
 			.then((v) => {
 				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = v;
@@ -540,6 +724,11 @@
 	function togglePlay() {
 		// The resume starts playback itself once its seek lands.
 		if (!videoEl || resumeHolding) return;
+		// A start on its way reads as playing, so the button stops it.
+		if (startPhase === 'starting') {
+			startWatch.cancel();
+			return;
+		}
 		if (videoEl.paused) {
 			// `play()` returns a promise that can reject with AbortError
 			// when a pause() lands on top of an in-flight play() — the
@@ -914,8 +1103,8 @@
 	// black screen with nothing to explain it.
 	let videoFullscreen = $state(false);
 	let mouseIdle = $state(false);
-	// `isPaused` already declared above (driven by the video's
-	// play/pause events) — reuse it as a keep-alive input.
+	// `isPaused` already declared above (the viewer's intent, from the
+	// start phase) — reuse it as a keep-alive input.
 	let controlsFocusWithin = $state(false);
 	let idleTimer: ReturnType<typeof setTimeout> | null = null;
 	const fullscreenControlsHidden = $derived(
@@ -1167,10 +1356,12 @@
 	 * Which visit to this route the answer belongs to.
 	 *
 	 * The show and the mode describe the ROW being asked about, and
-	 * both come back when the user does. SvelteKit reuses this
-	 * component across an A→B→A round trip, so nothing is destroyed
-	 * and a click abandoned two navigations ago finds the context it
-	 * left behind and acts on it. This advances on every id
+	 * both come back when the user does. The route mounts a new page
+	 * for another show (./+layout.svelte), but this guard predates that
+	 * and still holds for any page that sees the id change: one reused
+	 * across an A→B→A round trip destroys nothing, and a click
+	 * abandoned two navigations ago would find the context it left
+	 * behind and act on it. This advances on every id
 	 * transition, so a question can only be answered to the page that
 	 * asked it.
 	 *
@@ -1278,6 +1469,7 @@
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			switchBusy = false;
+			comeBackWith();
 			void switchToEpisode(episode);
 		},
 		onStillGated: (_episode, refresh) => {
@@ -1343,7 +1535,10 @@
 			isAired: () => !epAirState(n, airing).unaired,
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
 			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
-			play: () => void switchToEpisode(n),
+			play: () => {
+				comeBackWith();
+				void switchToEpisode(n);
+			},
 			recheckProvider: () => onRecheckEpisode(n),
 			notifyStillUnaired: () =>
 				toastStore.push({ kind: 'info', message: m.detail_ep_unaired_still() }),
@@ -1455,20 +1650,21 @@
 			airingResolved = true;
 			return;
 		}
-		let cancelled = false;
-		void airingGet(currentId)
+		// Asked again for another show or status: the read before is
+		// cancelled, and nothing of it is applied ($lib/navigation/visit).
+		const reads = beginVisit();
+		void reads
+			.keep(airingGet(currentId, { signal: reads.signal }))
 			.then((a) => {
-				if (!cancelled) airingSchedule = a;
+				airingSchedule = a;
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */
 			})
 			.finally(() => {
-				if (!cancelled) airingResolved = true;
+				airingResolved = true;
 			});
-		return () => {
-			cancelled = true;
-		};
+		return reads.end;
 	});
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 	/** What the page knows about episode `n`, for the plays it refuses
@@ -1619,18 +1815,24 @@
 		return out;
 	}
 
-	// What says the show this page shows has gone — the page closed, or
-	// moved to another show: a refill landing after it is not fetched
-	// ($lib/refill/refill). Renewed per show below.
-	let refills = new AbortController();
-	onDestroy(() => refills.abort());
+	// The reads the page makes once, ended when the page goes; and the
+	// reads of the show it plays, ended when the page closes or moves to
+	// another show, renewed per show below. Each read holds an API
+	// connection until it answers, so a read nobody will look at is
+	// cancelled, and its answer, or its failure, never reaches the page
+	// ($lib/navigation/visit). A refill landing after the show's visit
+	// is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
+	let showReads: Visit = beginVisit();
+	onDestroy(() => showReads.end());
 
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
 		const eps = await kitsuEpisodes(id, p, {
-			signal: refills.signal,
+			signal: showReads.signal,
 			// Thumbnails AniList's pacing held back, filled in once
 			// they land.
 			onRefill: (filled) => {
@@ -1649,11 +1851,15 @@
 
 	async function fetchEpisodesPage(page: number, gen: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
+		// A show left meanwhile answers nothing here, not even a failure.
+		const reads = showReads;
 		episodesLoading = true;
 		try {
 			const start = (page - 1) * UI_PAGE_SIZE + 1;
 			const end = page * UI_PAGE_SIZE;
-			const merged = (await Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage))).flat();
+			const merged = (
+				await reads.keep(Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage)))
+			).flat();
 			if (!stripPager.completed(gen)) return;
 			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
@@ -1787,7 +1993,6 @@
 		// (after an error overlay) with the stream already playing.
 		currentTime = v.currentTime;
 		duration = isFinite(v.duration) ? v.duration : 0;
-		isPaused = v.paused;
 		videoVolume = v.volume;
 		isMuted = v.muted;
 		playbackRate = v.playbackRate;
@@ -1797,12 +2002,6 @@
 		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
-		};
-		const onPlay = () => {
-			isPaused = false;
-		};
-		const onPause = () => {
-			isPaused = true;
 		};
 		const onVol = () => {
 			videoVolume = v.volume;
@@ -1857,8 +2056,6 @@
 		v.addEventListener('progress', onProg);
 		v.addEventListener('durationchange', onDuration);
 		v.addEventListener('loadedmetadata', onMeta);
-		v.addEventListener('play', onPlay);
-		v.addEventListener('pause', onPause);
 		v.addEventListener('volumechange', onVol);
 		v.addEventListener('ratechange', onRate);
 		v.addEventListener('ended', onEnded);
@@ -1871,8 +2068,6 @@
 			v.removeEventListener('progress', onProg);
 			v.removeEventListener('durationchange', onDuration);
 			v.removeEventListener('loadedmetadata', onMeta);
-			v.removeEventListener('play', onPlay);
-			v.removeEventListener('pause', onPause);
 			v.removeEventListener('volumechange', onVol);
 			v.removeEventListener('ratechange', onRate);
 			v.removeEventListener('ended', onEnded);
@@ -1894,6 +2089,11 @@
 
 	$effect(() => {
 		if (!videoEl || !mediaUrl) return;
+		// The stream a handoff let go of waits for the viewer, whose return
+		// bumps handoffReturns and runs this again; another one (a pick, a
+		// Reload's fresh session) attaches, and ends the wait.
+		void handoffReturns;
+		if (untrack(() => handoff.attachWaits(mediaUrl))) return;
 		// The stream already attached from this URL keeps playing: the
 		// effect can run again without its source changing, and
 		// re-attaching would restart playback from 0. A recovery lands
@@ -1911,6 +2111,14 @@
 		teardown();
 		attachedUrl = mediaUrl;
 		lengthFor = untrack(() => sessionId);
+		// A new engine, not started yet; and a stream the viewer picked
+		// while the episode was handed off ends the handoff: it plays
+		// here, as any pick does.
+		if (handoff.attaching()) ownVideo.autoplay = true;
+		// The unload above set the element paused without a `pause`
+		// event; the stream attaching now is on its way. Told before the
+		// resume hold, below, takes the element's autoplay off.
+		startWatch.attach(videoEl.autoplay);
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
@@ -1918,7 +2126,7 @@
 		// It also says where the stream starts: an hls engine begins
 		// loading at a resume point's fragment, below, so nothing
 		// before that fragment is fetched or shown.
-		const { startAt } = armSourceScopedListeners({
+		const { startAt, endHold } = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
@@ -1930,8 +2138,16 @@
 			// Only hls.js is handed the start, below.
 			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
+		endResumeHold = endHold;
+		// Handed off: a resume hold would start the stream itself once
+		// its seek lands. The seek still goes to the point.
+		if (handoff.handedOff) endHold();
 		playerError = null;
 		failedStreamError = null;
+		// A switch from another show's player hands its speed over, played
+		// once the stream's metadata has loaded ($lib/play/rate-carry).
+		const stopRate = applyCarriedRate(videoEl, id);
+		if (stopRate) sourceScope.add(stopRate);
 
 		// One held retry pending per source: a second failure inside
 		// a hold re-arms it rather than adding a second startLoad,
@@ -1978,7 +2194,7 @@
 			// out: the switch would decline it ($lib/play/reload-offer).
 			if (
 				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
-				canRecoverFromStaleStream({ detail, switchBusy }) &&
+				canRecoverFromStaleStream({ detail, switchBusy, handedOff: handoff.handedOff }) &&
 				reloadEnd === null &&
 				!airingIsPending
 			) {
@@ -2005,9 +2221,15 @@
 		if (mediaKind === 'mp4') {
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
-			// The quality control starts the engine once it has chosen the
-			// start level as the levels arrive ($lib/play/arm-quality).
-			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
+			// The page starts the engine once the levels are in and the
+			// quality control has chosen the start level
+			// ($lib/play/arm-quality), through the handoff gate (below).
+			hls = new Hls({
+				lowLatencyMode: false,
+				autoStartLoad: false,
+				...HLS_STALL_LOAD_POLICY,
+				...HLS_BUFFER_POLICY
+			});
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
 			const engine = hls;
@@ -2023,8 +2245,9 @@
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				holdsStart: true,
-				startAt,
+				// The page starts the engine (below), so a handoff can hold
+				// the start until the viewer comes back.
+				holdsStart: false,
 				onView: (view) => {
 					// A stream retiring takes its levels with it; both menus'
 					// Quality lists follow the model this feeds, and close
@@ -2037,6 +2260,19 @@
 				quality.dispose();
 				if (qualityControl === quality) qualityControl = null;
 			});
+			// Started once the levels are in and the quality control has
+			// set the start level (its handler is the earlier one): at
+			// once, or, with the episode handed to another player, when
+			// the viewer comes back.
+			const startHere = () => {
+				handoff.engineStarted();
+				startEngine(engine, startAt);
+			};
+			hls.on(Hls.Events.MANIFEST_PARSED, () => {
+				handoff.manifestParsed();
+				handoff.whenWatching(startHere);
+			});
+			sourceScope.add(() => handoff.drop(startHere));
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
 			// One guard per source: a fragment the engine keeps asking
@@ -2047,12 +2283,16 @@
 			const loopGuard = new FragmentLoopGuard();
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
 				stallMachine.fragmentLoaded(data);
-				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
+				if (!loopGuard.loaded(fragmentLoopKey(data.frag), data.frag.start)) return;
 				engine.stopLoad();
+				handoff.engineStopped();
 				dropHeldRetry();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
 			});
+			// A fragment the back buffer let go of is loaded again by a
+			// seek back, not by a loop.
+			hls.on(Hls.Events.BACK_BUFFER_REACHED, (_, data) => loopGuard.released(data.bufferEnd));
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
 				// An engine the guard stopped stays stopped: no hold, no
@@ -2093,6 +2333,8 @@
 						marginSeconds: HOLD_RUNWAY_MARGIN_S,
 						fire: () => {
 							cancelHeldRetry = null;
+							// Handed off, the viewer's return restarts it.
+							if (handoff.handedOff) return;
 							engine.startLoad();
 						}
 					});
@@ -2104,6 +2346,8 @@
 				// re-resolve would return the same crawling URL at the
 				// price of a full interruption.
 				if (action.act === 'nudge' && hls) {
+					// Handed off, the viewer's return restarts it.
+					if (handoff.handedOff) return;
 					if (action.toast) toastStore.push(stallNudgeToast());
 					hls.startLoad();
 					return;
@@ -2114,7 +2358,7 @@
 				// budget on a no-op recovery.
 				if (
 					action.act === 'recover' &&
-					canRecoverFromStaleStream({ detail, switchBusy }) &&
+					canRecoverFromStaleStream({ detail, switchBusy, handedOff: handoff.handedOff }) &&
 					reloadEnd === null &&
 					!airingIsPending
 				) {
@@ -2161,6 +2405,8 @@
 		// page and hold the provider's rate-limit slots.
 		sourceScope.flush();
 		teardown();
+		startWatch.dispose();
+		ownVideo.removeEventListener('play', comeBack);
 		releasePlayerVideo(ownVideo);
 		showReleases.leave();
 	});
@@ -2175,20 +2421,31 @@
 	 *  even if they've scrolled to the episode strip. */
 	let playFailure = $state<{ episode: number; message: string } | null>(null);
 
-	// Drop the per-show page-cache when the show id changes. No in-app
-	// path navigates /play/A → /play/B today (PosterCard sends to
-	// /anime/[id], prev/next reuses the same id), so the only way to
-	// land here with a stale cache is browser back/forward or URL-bar
-	// edits — but the defense is one line. Same contract /anime/[id]'s
+	// Drop the per-show page-cache when the show id changes. The route
+	// mounts the page afresh for another show (./+layout.svelte), which
+	// a switch to a card's pick does (switchToPick), so this only
+	// guards a page mounted without that layout — but the defense is
+	// one line. Same contract /anime/[id]'s
 	// id-change reset enforces. Episode changes within the same show
 	// keep the cache (id stable → effect doesn't refire), so prev/next
 	// pagination stays instant.
+	// A show change under the page cancels the old show's reads, so the
+	// strip is opened again for the new show: nothing else would read it.
+	// The show the strip was opened for at mount.
+	let stripShow = untrack(() => id);
 	$effect(() => {
-		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
-		id;
+		const current = id;
 		resetEpisodePageCache(kitsuPageCache);
-		refills.abort();
-		refills = new AbortController();
+		showReads.end();
+		showReads = beginVisit();
+		if (current === stripShow) return;
+		stripShow = current;
+		untrack(() => {
+			rawWindowed = null;
+			episodesError = null;
+			const req = stripPager.open(stripPager.pageOf(episodeNum));
+			if (req.fetch) void fetchEpisodesPage(req.page, req.gen, { initial: true });
+		});
 	});
 
 	onMount(() => {
@@ -2196,12 +2453,14 @@
 			detailError = m.play_error_no_show_id();
 			return;
 		}
-		void kitsuAnimeDetail(id)
+		void pageReads
+			.keep(kitsuAnimeDetail(id, { signal: pageReads.signal }))
 			.then((d) => {
 				detail = d;
 				const seed = (d.canonical_title ?? '').split(/\s+/).slice(0, 2).join(' ').trim();
 				if (seed.length >= 2) {
-					void kitsuSearch(seed)
+					void pageReads
+						.keep(kitsuSearch(seed, { signal: pageReads.signal }))
 						.then((hits) => {
 							similar = hits.filter((h) => h.id !== d.id).slice(0, 12);
 						})
@@ -2222,7 +2481,8 @@
 		const startReq = stripPager.open(stripPager.pageOf(episodeNum));
 		if (startReq.fetch) void fetchEpisodesPage(startReq.page, startReq.gen, { initial: true });
 
-		void settingsGet()
+		void pageReads
+			.keep(settingsGet({ signal: pageReads.signal }))
 			.then((c) => {
 				config = c;
 			})
@@ -2240,7 +2500,7 @@
 		const title = detail?.canonical_title ?? null;
 		pageTrail.name(page.url.pathname, [
 			{ label: m.breadcrumb_home(), href: '/' },
-			{ label: title ?? m.breadcrumb_anime(), href: resolve('/anime/[id]', { id }) },
+			{ label: title ?? m.breadcrumb_anime(), href: showHref },
 			{ label: m.play_head_title_episode_prefix({ episode: String(episodeNum) }) }
 		]);
 	});
@@ -2298,17 +2558,18 @@
 				episode: targetEp,
 				mode,
 				show: detail,
-				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
 				version,
 				caption: storedCaption(id),
 				// The click may take this warm's session: it answers for the
-				// guessed card's row as the click would.
-				guessRow: guessRow(fromGuess, fromRow),
-				guessId: guessedId(fromGuess, id)
+				// guessed card's row, naming its show, as the click would.
+				kitsuId: playingAs.kitsuId,
+				guessRow: playingAs.guessRow,
+				cardRow: playingAs.cardRow,
+				guessId: playingAs.guessId
 			});
 			void getOrFire(
-				makeKey(id, targetEp, mode, version, args.guess_row, args.caption),
+				makeKey(id, targetEp, mode, version, args.guess_row, args.caption, args.card_row),
 				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
@@ -2344,9 +2605,10 @@
 		if (!title) return;
 		const mode = audio;
 		// The show, visit and flags this switch is for, and its request,
-		// taken at the click ($lib/play/owned-play): the route's component
-		// is reused across shows and across a round trip back, so a late
-		// answer is judged against them. (`detail` loads only on mount.)
+		// taken at the click ($lib/play/owned-play): a late answer is
+		// judged against them, as the visit it was for may be over. (The
+		// route mounts a new page for another show, ./+layout.svelte,
+		// since `detail` loads only on mount.)
 		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
@@ -2356,19 +2618,23 @@
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
+		// What the switch names as its show: the page's, or a guess named
+		// apart — the link, once the card was linked from here.
+		const as = playingAs;
 		const version = storedChoice(owner.showId);
 		const playArgs = playArgsFor({
 			title,
 			episode: targetEp,
 			mode,
 			show,
-			kitsuId: recordableId(owner.showId, guess),
 			version,
 			caption: storedCaption(owner.showId),
-			guessRow: guessRow(guess, row),
+			kitsuId: as.kitsuId,
+			guessRow: as.guessRow,
+			cardRow: as.cardRow,
 			// The guess, apart from the page's id: the resolve records it on
 			// the card's row when the switch lands on that row's listing.
-			guessId: guessedId(guess, owner.showId)
+			guessId: as.guessId
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2390,7 +2656,15 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, version, playArgs.guess_row, playArgs.caption),
+						makeKey(
+							owner.showId,
+							targetEp,
+							mode,
+							version,
+							playArgs.guess_row,
+							playArgs.caption,
+							playArgs.card_row
+						),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2443,7 +2717,7 @@
 			// and mirrored as a play from the show's page is.
 			const record = playedRecord(
 				{ ...playArgs, episode: String(played) },
-				owner.showId,
+				as.recordAs,
 				guess,
 				outcome.session
 			);
@@ -2453,7 +2727,7 @@
 					showId: owner.showId,
 					episode: played,
 					show,
-					mirror: record.mirror,
+					mirror: record.mirror && as.mirrors,
 					unverified: outcome.session.episode_unverified
 				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
@@ -2484,6 +2758,97 @@
 		} finally {
 			switchBusy = false;
 		}
+	}
+
+	/** "Switch to it now": the same episode, from the point playback
+	 *  stands at — or the pick's own episode, when the viewer is further
+	 *  along in it, as Continue would play it — on the stream of the show
+	 *  picked for the card
+	 *  ($lib/play/switch-show.ts). The between-episodes loading band
+	 *  holds the player meanwhile. The route mounts the page afresh for
+	 *  the other show (./+layout.svelte); a stream that cannot be had
+	 *  leaves the episode on screen and says so, while the viewer is
+	 *  still on the player. */
+	async function switchToPick() {
+		await runPickSwitch(playLink.linked, {
+			busy: () => switchBusy,
+			setBusy: (busy) => {
+				switchBusy = busy;
+				if (busy) switchProgress = null;
+			},
+			playback: () => ({
+				at: videoEl?.currentTime ?? currentTime,
+				playing: videoEl ? !videoEl.paused : false,
+				rate: videoEl?.playbackRate ?? playbackRate
+			}),
+			pause: () => videoEl?.pause(),
+			resume: () => void videoEl?.play().catch(() => {}),
+			storedAudio,
+			sessionAudio: () => audio,
+			carryAudio: carrySwitchAudio,
+			takeAudio: (showId) => void takeSwitchAudio(showId),
+			choices: (showId) => ({ version: storedChoice(showId), caption: storedCaption(showId) }),
+			episode: () => episodeNum,
+			row: () => fromRow,
+			claim: () => {
+				const claimed = navigationClaims.claim();
+				return () => !gone && claimed();
+			},
+			run: (req, here) => switchShow(pickSwitchEffects(req, here), req),
+			failed: (pick) =>
+				toastStore.push({
+					kind: 'error',
+					message: m.play_link_switch_failed({ title: pick.title })
+				})
+		});
+	}
+
+	/** The app's effects for a switch to `req.to` ($lib/play/switch-show). */
+	function pickSwitchEffects(req: SwitchRequest, here: () => boolean): SwitchShowDeps {
+		const pickId = req.to.id;
+		return {
+			resolve: (args) =>
+				getOrFire(
+					makeKey(pickId, Number(args.episode), req.mode, req.version, undefined, args.caption),
+					(emit, signal) => playStream(args, emit, signal),
+					(p) => {
+						switchProgress = progressLabel(p);
+					}
+				),
+			record: (args, session, episode) =>
+				void recordPlayed(
+					{
+						args,
+						showId: pickId,
+						episode,
+						show: req.to,
+						mirror: true,
+						unverified: session.episode_unverified
+					},
+					{ markWatched, syncTrackers: syncWatchedToTrackers }
+				),
+			carry: (showId, episode, seconds) => recoveryResume.carry(showId, episode, seconds),
+			noteSwitch,
+			played: (showId, session, requested) => followPlayed(showId, session, requested),
+			carryRate,
+			forget: (showId, row) => {
+				recoveryResume.forgetShow(showId);
+				takeRate(showId);
+				takeSwitch(row);
+			},
+			open: (showId, session, episode, row) =>
+				/* eslint-disable svelte/no-navigation-without-resolve */
+				goto(
+					resolve('/play/[id]', { id: showId }) + withRow(buildPlayQuery(session, episode), row),
+					{ replaceState: true }
+				).then(
+					() => true,
+					() => false
+				),
+			/* eslint-enable svelte/no-navigation-without-resolve */
+			plan: switchEpisodeOf,
+			isCurrent: () => !gone && here()
+		};
 	}
 
 	/** Hand off to a fresh resolve when the player layer fails
@@ -2531,7 +2896,9 @@
 		// place so the fresh attach can seek back, and tell the user
 		// what the upcoming loading overlay is (silence here is what
 		// made recoveries read as the app breaking).
-		recoveryResume.capture(id, episodeNum, videoEl?.currentTime ?? 0);
+		// A stream a handoff let go of reads zero: its playhead is the
+		// one it was let go of at.
+		recoveryResume.capture(id, episodeNum, handoff.reloadPoint(videoEl?.currentTime ?? 0));
 		// The fresh session gets its own same-stream retry budget.
 		stallMachine.reset();
 		const toast = stallRecoveryToast(reason);
@@ -2579,6 +2946,15 @@
 		// Reload, or with the dead end it is at.
 		if (turn === 'offer-reload') playerError = restore;
 		if (turn !== 'resolve') return;
+		// Handed to another player while the eviction was out: resolving
+		// again would only load the episode behind it. The failed stream's
+		// error comes back, with its Reload, for when the viewer does. A
+		// Reload goes on while it is still the viewer's latest word: a
+		// handoff since it was pressed clears the pick it made.
+		if (handoff.recoveryStandsDown(reason === 'manual reload')) {
+			playerError = restore;
+			return;
+		}
 		clearForShow(id);
 		// The error went off screen as the recovery began; a fresh
 		// resolve that fails leaves the failed stream, so it comes back.
@@ -2601,21 +2977,25 @@
 	 *  loading leaves the overlay in place to try again rather than
 	 *  flashing into a blank frame. */
 	function onReloadStream() {
+		comeBackWith();
 		void recoverFromStaleStream('manual reload');
 	}
 
 	function onPrev() {
 		if (!hasPrev) return;
+		comeBackWith();
 		void switchToEpisode(prevEpisodeNum);
 	}
 	function onNext() {
 		if (!hasNext) return;
+		comeBackWith();
 		void switchToEpisode(nextEpisodeNum);
 	}
 	function onPickEpisode(ep: KitsuEpisode) {
 		const n = ep.number ?? ep.relative_number ?? null;
 		if (n === null) return;
 		if (n === episodeNum) return; // already playing
+		comeBackWith();
 		void switchToEpisode(n);
 	}
 
@@ -2643,6 +3023,7 @@
 	function onVideoEnded() {
 		const decision = decideAutoPlayNext({
 			enabled: autoPlayNext,
+			handedOff: handoff.handedOff,
 			episodeNum,
 			totalEpisodes,
 			extras: extraNums
@@ -2820,6 +3201,9 @@
 		const cfg = config;
 		const mode = audio;
 		const launch = { kitsuId: id, mode, episode: ep };
+		// What the session's own plays name: the card's row and its guess
+		// (the pick, once one was made here).
+		const as = playingAs;
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on (another show, or away and back) is
 		// not shown to them, and asks the cache nothing.
@@ -2828,11 +3212,12 @@
 			() => visit,
 			() => gone
 		);
-		// Pause the embedded video so the user isn't watching two
-		// instances simultaneously. The notice/launch flow continues
-		// regardless; if the external player fails to start the user
-		// can press space (or click the embedded player) to resume.
-		videoEl?.pause();
+		// Stop the embedded video, and anything that would start it
+		// again, so the user isn't watching two instances at once. The
+		// notice/launch flow continues regardless; if the external
+		// player fails to start, the user plays the embedded one again
+		// (Space, a click) and it comes back.
+		stopForHandoff();
 		externalBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -2842,7 +3227,10 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							kitsuId: recordableId(id, fromGuess) ?? '',
+							kitsuId: as.kitsuId ?? '',
+							guessRow: as.guessRow,
+							cardRow: as.cardRow,
+							guessId: as.guessId,
 							config: { mode },
 							detail,
 							version: storedChoice(id),
@@ -2891,6 +3279,9 @@
 		const ep = episodeNum;
 		const mode = audio;
 		const launch = { kitsuId: id, mode, episode: ep };
+		// What the session's own plays name: the card's row and its guess
+		// (the pick, once one was made here).
+		const as = playingAs;
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on is not shown to them.
 		const owner = claimPlay(
@@ -2898,10 +3289,9 @@
 			() => visit,
 			() => gone
 		);
-		// Same pause-the-embedded-video logic as the external flow:
-		// Syncplay opens its own player window so two instances would
-		// otherwise stack audio.
-		videoEl?.pause();
+		// Same handoff as the external flow: Syncplay opens its own
+		// player window, so two instances would otherwise stack audio.
+		stopForHandoff();
 		syncplayBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -2911,7 +3301,10 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							kitsuId: recordableId(id, fromGuess) ?? '',
+							kitsuId: as.kitsuId ?? '',
+							guessRow: as.guessRow,
+							cardRow: as.cardRow,
+							guessId: as.guessId,
 							config: { mode },
 							detail,
 							version: storedChoice(id),
@@ -2946,7 +3339,8 @@
 	let downloadArgs = $state<DownloadArgs | null>(null);
 	let downloadDefaultDir = $state('');
 
-	void downloadDefaultDirApi()
+	void pageReads
+		.keep(downloadDefaultDirApi({ signal: pageReads.signal }))
 		.then((d) => {
 			if (d) downloadDefaultDir = d;
 		})
@@ -2983,8 +3377,9 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
-			// A modal over the player (a play failure, the download
-			// dialog) is the only keyboard target while it is up.
+			// A modal over the player (the change-show picker, a play
+			// failure, the download dialog) is the only keyboard target
+			// while it is up.
 			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =
@@ -3000,7 +3395,8 @@
 				inField,
 				inButton,
 				modifier: e.ctrlKey || e.metaKey || e.altKey,
-				repeat: e.repeat
+				repeat: e.repeat,
+				overDialog: playLink.open
 			});
 			if (!action) return;
 			// All player shortcuts swallow the default browser action:
@@ -3074,7 +3470,7 @@
 		class="player-frame"
 		class:player-busy={switchBusy}
 		class:player-resuming={resumeHolding && !videoFullscreen}
-		aria-busy={switchBusy || (resumeHolding && !playerError)}
+		aria-busy={switchBusy || ((resumeHolding || streamLoading) && !playerError)}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
 		style:--player-letterbox-y="{letterboxY}px"
@@ -3101,14 +3497,15 @@
 					<p class="player-error-body">
 						{deadEndMessage(reloadEnd, availabilityMode, deadEndOtherAudio)}
 					</p>
+					<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 					<a
 						class="player-error-action"
-						href={resolve('/anime/[id]', { id })}
+						href={showHref}
 						onclick={(e) => {
 							// Replace, like the now-playing link: the show's page
 							// is "up" from the player.
 							e.preventDefault();
-							void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+							void goto(showHref, { replaceState: true });
 						}}
 					>
 						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -3119,6 +3516,7 @@
 						</svg>
 						<span>{m.play_error_stream_back_to_show()}</span>
 					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				{:else}
 					<!-- Held while the airing lookup is out: the switch the
 					     Reload hands to would decline it ($lib/play/reload-offer). -->
@@ -3731,15 +4129,19 @@
 				</div>
 			{/if}
 		{/if}
-		<!-- Mounted across a switch and the resume hold that follows it,
-		     and toggled: the two states are set in different places, and
-		     the moment between them must not restart the indicator. An
-		     error unmounts it outright, so nothing lingers over the
-		     panel. -->
+		<!-- On through a switch, the resume hold that follows it, and any
+		     start or stall of the stream ($lib/play/start-state). Mounted
+		     across them and toggled: the states are set in different
+		     places, and the moment between them must not restart the
+		     indicator. With Chromium's own controls a start or a stall
+		     shows theirs, not this one. An error unmounts it outright,
+		     so nothing lingers over the panel. -->
 		{#if !playerError}
 			<span
 				class="player-spinner"
-				class:player-spinner-on={switchBusy || resumeHolding}
+				class:player-spinner-on={switchBusy ||
+					resumeHolding ||
+					(streamLoading && USE_CUSTOM_PLAYER_CONTROLS)}
 				aria-hidden="true"
 			>
 				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
@@ -3748,19 +4150,34 @@
 	</section>
 
 	<div class="watch-column">
+		{#if playLink.slip !== 'none'}
+			<GuessSlip
+				view={playLink.slip}
+				title={playLink.offer?.entry.title ?? null}
+				linkedTitle={playLink.linked?.title ?? null}
+				switchedTitle={playLink.switchedTitle}
+				busy={playLink.busy}
+				switching={switchBusy}
+				onchange={() => void playLink.start(episodeNum)}
+				onright={() => void playLink.answerYes()}
+				onswitch={() => void switchToPick()}
+				onhide={() => playLink.hide()}
+			/>
+		{/if}
 		<!-- Now-playing row: compact breadcrumb under the player so the
 		     page hierarchy reads "video → context → more episodes →
 		     similar". Show title links back to the detail page; episode
 		     prev/next + external player live on the right. -->
 		<header class="now-playing">
+			<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 			<a
 				class="np-link"
-				href={resolve('/anime/[id]', { id })}
+				href={showHref}
 				onclick={(e) => {
 					// Replace, not push — treats poster → details as an "up"
 					// navigation rather than burying the player in history.
 					e.preventDefault();
-					void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+					void goto(showHref, { replaceState: true });
 				}}
 			>
 				{#if npPoster}
@@ -3805,6 +4222,7 @@
 					</span>
 				</span>
 			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 			<div class="np-actions">
 				{#if !singleVideo}
@@ -3984,6 +4402,20 @@
 								</div>
 							{:else}
 								<div class="more-pane" in:fade={{ duration: 120 }}>
+									{#if playLink.offer}
+										<button
+											type="button"
+											class="more-item"
+											role="menuitem"
+											onclick={() => {
+												closeMore();
+												void playLink.start(episodeNum);
+											}}
+										>
+											<GuessMark class="more-icon" />
+											<span>{m.play_link_menu_item()}</span>
+										</button>
+									{/if}
 									<button
 										type="button"
 										class="more-item"
@@ -4427,6 +4859,34 @@
 			</div>
 		{/if}
 	</div>
+	{#if playLink.offer}
+		<LinkShowDialog
+			open={playLink.open}
+			savedTitle={playLink.offer.entry.title}
+			episode={playLink.episode}
+			playing
+			currentLabel={m.play_link_playing_now()}
+			candidates={playLink.candidates}
+			failed={playLink.failed}
+			chosen={playLink.chosen}
+			warnings={playLink.warnings}
+			rowCount={playLink.group?.length ?? null}
+			busy={playLink.busy}
+			error={playLink.error}
+			onSearch={(q) => void playLink.search(q)}
+			onChoose={(c) => playLink.choose(c)}
+			onConfirm={() => void playLink.confirm()}
+			onCancel={() => playLink.cancel()}
+			switchAt={formatTime(currentTime)}
+			switchOwn={playLink.chosen ? switchPreview.ownFor(switchKey(playLink.chosen.ref)) : null}
+			shown={detail}
+			onSwitch={async () => {
+				// Only a pick that was saved: a failed one leaves its error in
+				// the picker, and an earlier pick's switch is not this one.
+				if (await playLink.confirm()) void switchToPick();
+			}}
+		/>
+	{/if}
 </main>
 
 <LoadingOverlay visible={switchBusy} progress={switchProgress} />
@@ -5536,9 +5996,9 @@
 	/* Loading indicator over the player: the app's indeterminate
 	   hairline (the search bar's and the download bar's sweep), set
 	   in the show's accent and centred in the frame. It waits a beat
-	   before fading in, so a switch or a resume that lands quickly
-	   never flashes it, and goes at once when the load ends, so it
-	   never lingers over the picture. Toggled rather than remounted,
+	   before fading in, so a switch, a resume, a start or a stall that
+	   lands quickly never flashes it, and goes at once when the load
+	   ends, so it never lingers over the picture. Toggled rather than remounted,
 	   it runs on unbroken from a switch into the resume hold that
 	   follows it: the switch stays busy until the next stream has
 	   attached and started its hold. Off, it leaves the layout, so

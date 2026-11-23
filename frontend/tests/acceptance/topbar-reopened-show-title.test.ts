@@ -31,6 +31,7 @@ import { mount, unmount, createRawSnippet, tick } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setPageState, setParams, setUrl } from './page-state.svelte';
 import { sessionHistory } from './session-history';
+import { afterRead, watchPageFetches } from './page-fetches';
 import { appConfig, kitsuRef } from './home-handlers';
 
 vi.mock('$app/state', () => ({
@@ -70,6 +71,17 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, errorAnswer, sessionAnswer } from '../answers';
 const SHOW = '46474';
 const TITLE = 'Frieren';
 
@@ -89,30 +101,52 @@ const g = globalThis as unknown as GlobalLike;
 
 function useBackend() {
 	server.use(
-		http.get(`${API_BASE}/api/update-check`, () => HttpResponse.json(null, { status: 503 })),
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/update-check`, () => errorAnswer(503)),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/:id`, async ({ params }) => {
 			if (detailHeld) await detailHeld;
-			return HttpResponse.json({ ...kitsuRef(String(params.id), TITLE, 12), status: 'finished' });
+			return HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(String(params.id), TITLE, 12),
+				status: 'finished'
+			});
 		}),
 		http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
-		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		// Prefetches warm the next episodes; each answers a session, as
+		// the backend does for every play.
+		http.post(`${API_BASE}/api/play`, () =>
+			HttpResponse.json<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'warm',
+					media_url: `${API_BASE}/s/warm/master.m3u8`,
+					media_kind: 'hls'
+				})
+			)
+		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
 	);
 }
 
@@ -249,6 +283,8 @@ describe('the breadcrumb on a show', () => {
 	it('does not name the page after it when its detail lands late', async () => {
 		let release!: () => void;
 		detailHeld = new Promise<void>((r) => (release = r));
+		const fetches = watchPageFetches();
+		const detail = (f: { path: string }) => f.path === `/api/kitsu/anime/${SHOW}`;
 		sessionHistory.push('link', showPath);
 		mountShow();
 		await tick();
@@ -259,7 +295,13 @@ describe('the breadcrumb on a show', () => {
 		sessionHistory.push('link', `/play/${SHOW}?episode=1`);
 		await tick();
 		release();
-		for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 5));
+		// Read once the page has the late detail, or has seen its read
+		// cancelled, and what that set off has run.
+		await until(
+			() => fetches.sent.some(detail) && [...fetches.read, ...fetches.failed].some(detail),
+			'the late detail to land or fail'
+		);
+		await afterRead();
 		expect(crumbs()).toEqual([home, m.breadcrumb_watching()]);
 	});
 });

@@ -43,7 +43,11 @@ async fn start_harness() -> Harness {
 impl Harness {
     fn session(&self, master_path: &str) -> SessionId {
         let upstream = Url::parse(&format!("{}{master_path}", self.mock.uri())).expect("url");
-        let sess = StreamSession::new(upstream, "https://embed.example");
+        let sess = StreamSession::new_with_kind(
+            upstream,
+            ani_gui::proxy::MediaKind::Hls,
+            "https://embed.example",
+        );
         let id = sess.id;
         self.sessions.insert(sess);
         id

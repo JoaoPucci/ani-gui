@@ -26,8 +26,15 @@
  * the route. A control request on a held lane must itself wait, or the
  * holds did not take and the rest of the test would prove nothing.
  *
+ * The play is opened before the holds, through the backend's own play
+ * route, which the resolve lane carries and the holds would queue: the
+ * backend replays it from a row the spec writes into its resolution
+ * cache, naming a stream the spec serves (lib/e2e-replay.cjs). What the
+ * holds must not delay is what a play does once it is open: its
+ * requests to the stream proxy.
+ *
  * No outcome is read off a clock. "At once" is read as an order:
- * the API call, the session and the play's first proxy request each
+ * the API call and the play's first proxy request each
  * answer while every held request is still held. A request queued on
  * a held lane goes out only once a held response has come in, and its
  * own answer needs a round trip more, so none of them can have waited
@@ -39,7 +46,8 @@
  *
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
-import { expect, test, type ElectronApplication } from '@playwright/test';
+import { type ElectronApplication } from '@playwright/test';
+import { expect, test } from './policy-guard';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import http from 'node:http';
@@ -47,6 +55,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
+import { REPLAY_CONFIG, metadataDb, replayKey, replayRow, seedReplay } from '../lib/e2e-replay.cjs';
 
 /** How many requests each held lane is given — more than Chromium's
  *  six, so every one of its connections is taken. */
@@ -89,8 +98,12 @@ async function silentServer(): Promise<{
 	};
 }
 
+/** The play the spec opens, as the renderer asks for one. */
+const PLAY = { title: 'Lanes Test Show', mode: 'sub', episode: '1' };
+
 /** An upstream serving a one-line master playlist, for a play's
- *  first proxy request. */
+ *  first proxy request (and the backend's check of it before the
+ *  replay). */
 async function upstream(): Promise<{ port: number; close: () => void }> {
 	const server = http.createServer((_req, res) => {
 		res.writeHead(200, { 'content-type': 'application/vnd.apple.mpegurl' });
@@ -103,7 +116,8 @@ async function upstream(): Promise<{ port: number; close: () => void }> {
 
 async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 	const tmp = path.join(os.tmpdir(), `ani-gui-e2e-lanes-${process.pid}-${Date.now()}`);
-	fs.mkdirSync(tmp, { recursive: true });
+	fs.mkdirSync(path.join(tmp, 'config', 'ani-gui'), { recursive: true });
+	fs.writeFileSync(path.join(tmp, 'config', 'ani-gui', 'config.toml'), REPLAY_CONFIG);
 	const app = await launchPackagedApp({
 		...process.env,
 		XDG_STATE_HOME: path.join(tmp, 'state'),
@@ -111,10 +125,10 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
 		XDG_DATA_HOME: path.join(tmp, 'data'),
 		ANI_GUI_UNATTENDED: '1'
-	});
+	}, { profile: tmp });
 	onLaunch(app);
 	const page = await appWindow(app);
-	return { app, page };
+	return { app, page, profile: tmp };
 }
 
 async function launch() {
@@ -143,9 +157,36 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 	test.setTimeout(90_000);
 	const silent = await silentServer();
 	const media = await upstream();
-	const { app, page } = await launch();
+	const { app, page, profile } = await launch();
 	try {
 		await page.waitForFunction(() => Boolean(window.aniGui?.apiBase));
+		// The play, opened before anything is held.
+		seedReplay(
+			metadataDb(path.join(profile, 'cache')),
+			replayKey(PLAY),
+			replayRow({
+				upstreamUrl: `http://127.0.0.1:${media.port}/master.m3u8`,
+				mediaKind: 'hls',
+				episode: PLAY.episode
+			})
+		);
+		const session = await page.evaluate(async (play) => {
+			const bridge = window.aniGui!;
+			const lanes = { ...(bridge.lanes ?? {}) } as Record<string, string>;
+			const res = await fetch(`${lanes.resolve}/api/play`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					// The API answers only a request carrying the launch's secret.
+					'x-ani-gui-internal-secret': bridge.internalSecret ?? ''
+				},
+				body: JSON.stringify(play)
+			});
+			return { ok: res.ok, body: await res.text() };
+		}, PLAY);
+		expect(session.ok, `the play was opened: ${session.body}`).toBe(true);
+		const opened = JSON.parse(session.body) as { media_url: string; cache_hit?: boolean };
+		expect(opened.cache_hit, 'the backend played the seeded row').toBe(true);
 		const lanes = await page.evaluate(
 			({ silentPort, heldLanes, heldPerLane }) => {
 				const bridge = window.aniGui!;
@@ -165,6 +206,8 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 					for (let i = 0; i < heldPerLane; i++) {
 						const hang = `https://127.0.0.1:${silentPort}/${lane}-${i}.jpg`;
 						void fetch(`${lanes[lane]}/api/image?url=${encodeURIComponent(hang)}`, {
+							// The API answers only a request carrying the launch's secret.
+							headers: { 'x-ani-gui-internal-secret': window.aniGui?.internalSecret ?? '' },
 							signal: stop.signal
 						})
 							.catch(() => {})
@@ -203,7 +246,7 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 		expect(releasedBeforeStart, 'no hold has let go yet').toBe(0);
 
 		const result = await page.evaluate(
-			async ({ mediaPort }) => {
+			async ({ mediaUrl }) => {
 				const bridge = window.aniGui!;
 				const api = bridge.apiBase!;
 				const lanes = { ...(bridge.lanes ?? {}) } as Record<string, string>;
@@ -218,6 +261,12 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 				const ordered = async (url: string, init?: RequestInit) => {
 					const settled = await fetch(url, {
 						...init,
+						// The API answers only a request carrying the launch's
+						// secret; the proxy's /healthz needs none and ignores it.
+						headers: {
+							...((init?.headers as Record<string, string> | undefined) ?? {}),
+							'x-ani-gui-internal-secret': bridge.internalSecret ?? ''
+						},
 						signal: stop.signal
 					}).then(
 						async (r) => ({ ok: r.ok, body: await r.text() }),
@@ -234,18 +283,7 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 				// connections carry, waits for one of the held to let go.
 				const control = ordered(`${lanes.probe}/healthz`);
 				const apiCall = await ordered(`${api}/api/settings`);
-				const session = await ordered(`${api}/api/sessions`, {
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({
-						upstream_url: `http://127.0.0.1:${mediaPort}/master.m3u8`,
-						referer: ''
-					})
-				});
-				const mediaUrl = session.settled.ok
-					? (JSON.parse(session.settled.body) as { media_url: string }).media_url
-					: '';
-				const firstProxyRequest = mediaUrl ? await ordered(mediaUrl) : null;
+				const firstProxyRequest = await ordered(mediaUrl);
 				// The control answers once the holds start to end on the
 				// backend's connect timeout; nothing aborts it before.
 				const controlled = await control;
@@ -254,12 +292,10 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 					api,
 					control: controlled,
 					apiCall,
-					session,
-					mediaUrl,
 					firstProxyRequest
 				};
 			},
-			{ mediaPort: media.port }
+			{ mediaUrl: opened.media_url }
 		);
 
 		const origins = new Set([result.api, ...Object.values(lanes)]);
@@ -275,17 +311,15 @@ test('requests held on the probe, resolve, download and image lanes delay neithe
 		).toBeGreaterThan(0);
 		expect(result.apiCall.settled.ok, 'the API answered').toBe(true);
 		expect(result.apiCall.released, 'the API answered while every hold stood').toBe(0);
-		expect(result.session.settled.ok, 'the session was made').toBe(true);
-		expect(result.session.released, 'the session was made while every hold stood').toBe(0);
-		expect(result.mediaUrl.startsWith(`${lanes.stream}/s/`)).toBe(true);
-		expect(result.firstProxyRequest?.settled.ok, "the play's first proxy request answered").toBe(
+		expect(opened.media_url.startsWith(`${lanes.stream}/s/`)).toBe(true);
+		expect(result.firstProxyRequest.settled.ok, "the play's first proxy request answered").toBe(
 			true
 		);
 		expect(
-			result.firstProxyRequest?.released,
+			result.firstProxyRequest.released,
 			"the play's first proxy request answered while every hold stood"
 		).toBe(0);
-		expect(result.firstProxyRequest?.settled.body).toContain('#EXTM3U');
+		expect(result.firstProxyRequest.settled.body).toContain('#EXTM3U');
 	} finally {
 		await page.evaluate(() =>
 			(window as unknown as { __stopHeld?: AbortController }).__stopHeld?.abort()

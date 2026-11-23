@@ -10,6 +10,8 @@
 	"hero_error_title": "Каталог недоступен",
 	"hero_error_body": "Kitsu не отвечает. Локальный поиск при этом работает, просто введите название.",
 	"hero_error_cta": "Открыть поиск",
+	"hero_empty_title": "Сейчас нечего показать.",
+	"hero_empty_body": "Список популярного пришёл пустым. Поиск работает, введите название.",
 	"hero_skeleton_eyebrow_key": "Загрузка",
 	"strip_continue_eyebrow": "Продолжить просмотр",
 	"strip_continue_caption": "из истории просмотров",
@@ -44,5 +46,10 @@
 	"clear_confirm_button": "Очистить всё",
 	"clear_history_failed": "Не удалось очистить историю. Попробуйте снова.",
 	"delete_failed": "Не удалось удалить «{title}» из истории. Попробуйте снова.",
-	"hero_error_eyebrow_value": "Kitsu не отвечает"
+	"hero_error_eyebrow_value": "Kitsu не отвечает",
+	"resume_guess_note": "Возможно, это не тот тайтл. В истории он записан как «{title}».",
+	"link_not_watched": "Не то, что вы смотрели?",
+	"link_pick_button": "Выбрать правильный тайтл",
+	"link_on_card": "На карточке",
+	"link_check_failed": "Не удалось проверить тайтл. Попробуйте снова."
 }

@@ -30,6 +30,21 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+// A re-resolve starts as a recovery, which asks its eviction as it
+// starts, in the fatal's own handler. Counting the eviction where it is
+// asked lets a case say no re-resolve began as soon as the fatal is
+// dispatched, rather than after a fixed wait for a stream that would
+// open only once the eviction has been answered.
+const seen = vi.hoisted(() => ({ evictions: 0 }));
+vi.mock('$lib/api', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/api')>();
+	const evictPlayCache: typeof real.evictPlayCache = (args) => {
+		seen.evictions += 1;
+		return real.evictPlayCache(args);
+	};
+	return { ...real, evictPlayCache };
+});
+
 // The engine double: the page's whole hls.js surface (isSupported,
 // construct, loadSource/attachMedia, on, startLoad, destroy) with an
 // event registry the test emits through.
@@ -75,6 +90,15 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 type FakeHlsT = InstanceType<typeof Hls> & {
 	startLoadCalls: number;
 	destroyed: boolean;
@@ -115,6 +139,7 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	seen.evictions = 0;
 	FakeEventSource.instances.length = 0;
 	hlsInstances().length = 0;
 	g.EventSource = FakeEventSource;
@@ -139,42 +164,51 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
 function useShowHandlers() {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([]))
 	);
 }
 
@@ -211,7 +245,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		const toast = toastStore.items[toastStore.items.length - 1];
 		expect(toast.message).toBe(m.play_stall_toast_nudge());
 		// Same stream retried — no session swap, no resolve stream.
-		await new Promise((r) => setTimeout(r, 100));
+		expect(seen.evictions, 'no recovery started').toBe(0);
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 
 		// The burst's later nudges retry without stacking toasts.
@@ -240,7 +274,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		hls.emit(events.ERROR, HOST_SLOW_FATAL);
 		hls.emit(events.ERROR, HOST_SLOW_FATAL);
 		expect(hls.startLoadCalls).toBe(4);
-		await new Promise((r) => setTimeout(r, 100));
+		expect(seen.evictions, 'no recovery started').toBe(0);
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 	});
 
@@ -295,7 +329,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 
 		fresh.emit(ERROR, HOST_SLOW_FATAL);
 		expect(fresh.startLoadCalls).toBe(1);
-		await new Promise((r) => setTimeout(r, 100));
+		expect(seen.evictions, 'no recovery started').toBe(0);
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 	});
 
@@ -310,7 +344,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 
 		hls.emit((Hls as unknown as { Events: { ERROR: string } }).Events.ERROR, HOST_SLOW_FATAL);
 		expect(hls.startLoadCalls).toBe(1);
-		await new Promise((r) => setTimeout(r, 100));
+		expect(seen.evictions, 'no recovery started').toBe(0);
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 	});
 
@@ -340,6 +374,19 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 			fragLoadPolicy: {
 				default: { maxLoadTimeMs: 15000, maxTimeToFirstByteMs: 10000 }
 			}
+		});
+	});
+
+	it('the engine is constructed with a bounded back buffer', async () => {
+		// Left at the engine default, everything already played stays
+		// in memory until Chromium's own cap: five minutes of 1080p held
+		// four and a half minutes of video in the page process. The
+		// page hands the engine the bound at construction, beside the
+		// load policy, which it keeps.
+		const hls = await mountPlayingHls();
+		expect(hls.config).toMatchObject({
+			backBufferLength: 30,
+			fragLoadPolicy: { default: { maxLoadTimeMs: 15000 } }
 		});
 	});
 

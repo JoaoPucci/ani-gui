@@ -12,6 +12,9 @@
 load '../helpers/loader'
 
 CANON='sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-'
+# Ubuntu 22.04 predates the deb822 file: its distro sources are the
+# one-line list.
+CANON_2204='sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list -o Dir::Etc::sourceparts=-'
 
 setup() {
     CHECK="$REPO_ROOT/tests/arch/apt_sources.sh"
@@ -47,6 +50,24 @@ plant() {
     printf '    %s\n' "$CANON" >>"$root/.github/workflows/x.yml"
     ARCH_REPO_ROOT="$root" run sh "$CHECK"
     [ "$status" -eq 0 ]
+}
+
+@test "the distro-only refresh of a 22.04 runner passes" {
+    root=$(planted_repo)
+    plant "$root" "$CANON_2204"
+    ARCH_REPO_ROOT="$root" run sh "$CHECK"
+    [ "$status" -eq 0 ]
+}
+
+@test "a refresh naming any other single source list is caught" {
+    # Only the distro's own lists qualify: a third-party list named as
+    # the one source is still a source the job never uses.
+    for list in /etc/apt/sources.list.d/microsoft-prod.list \
+        /etc/apt/sources.list.bak /etc/apt/sources.list.d/ubuntu.sources.orig; do
+        root=$(planted_repo)
+        plant "$root" "sudo apt-get update -o Dir::Etc::sourcelist=$list -o Dir::Etc::sourceparts=-"
+        ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    done
 }
 
 @test "a bare refresh is caught" {

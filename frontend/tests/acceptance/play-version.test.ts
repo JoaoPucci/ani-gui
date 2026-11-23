@@ -41,6 +41,16 @@ import { applyChoice } from '../../src/lib/versions/version-choice';
 import { rememberAudio } from '../../src/lib/play/audio-choice';
 import { rememberCaption } from '../../src/lib/play/caption-choice';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -98,17 +108,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
@@ -118,28 +128,37 @@ type Posted = Record<string, unknown>;
  *  of each handoff. */
 function useHandlers(posted: { external: Posted[]; syncplay: Posted[]; watched: Posted[] }) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
 			posted.watched.push((await request.json()) as Posted);
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
 		http.post(`${API_BASE}/api/play/external`, async ({ request }) => {
 			posted.external.push((await request.json()) as Posted);
 			return new HttpResponse(null, { status: 202 });
@@ -157,11 +176,13 @@ async function mountPlaying() {
 	await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
 	FakeEventSource.instances[0].dispatch(
 		'done',
-		JSON.stringify({
-			session_id: 'session-1',
-			media_url: `${API_BASE}/s/session-1/file.mp4`,
-			media_kind: 'mp4'
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: 'session-1',
+				media_url: `${API_BASE}/s/session-1/file.mp4`,
+				media_kind: 'mp4'
+			})
+		)
 	);
 	// The page carries the session in the URL and gets there by
 	// `goto`, which this tier stubs out — so the stub is moved by

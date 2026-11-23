@@ -27,6 +27,16 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import type { RefillEnded } from '../../src/lib/refill/refill-waiter';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '42';
 const TICKET = 11;
 const still = (n: number) => `https://img1.ak.crunchyroll.com/still-${n}.jpg`;
@@ -81,40 +91,52 @@ function useHeldStills(land: Promise<void>) {
 	let hasLanded = false;
 	void land.then(() => (hasLanded = true));
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Ongoing Show', 3), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({
+				...kitsuRef(KITSU_ID, 'Ongoing Show', 3),
+				status: 'finished'
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, ({ request }) => {
 			const p = new URL(request.url).searchParams.get('page') ?? '1';
-			if (p !== '1') return HttpResponse.json([]);
+			if (p !== '1') return HttpResponse.json<KitsuEpisode[]>([]);
 			seen.episodeReads += 1;
 			if (hasLanded) seen.readsAfter += 1;
 			const first = !hasLanded;
-			return HttpResponse.json(
+			return HttpResponse.json<KitsuEpisode[]>(
 				episodes(!first),
 				first ? { headers: { 'x-ani-gui-refill': String(TICKET) } } : undefined
 			);
 		}),
 		http.post(`${API_BASE}/api/refills/wait`, async () => {
 			await land;
-			return HttpResponse.json([{ ticket: TICKET, landed: true }]);
+			return HttpResponse.json<RefillEnded[]>([{ ticket: TICKET, landed: true }]);
 		}),
 		http.post(`${API_BASE}/api/refills/release`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 3, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 3,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 3,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/tmp'))
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 3,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/tmp'))
 	);
 	return seen;
 }

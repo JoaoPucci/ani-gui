@@ -9,12 +9,13 @@ use axum::http::{Request, StatusCode};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use super::build_api_router;
+use super::test_router;
 use super::tests::{body_string, test_app_state};
 
 async fn ask(kind: &str) -> (StatusCode, String) {
     let td = TempDir::new().expect("tempdir");
-    let router = build_api_router(Arc::new(test_app_state(&td)));
+    // Carries the launch's secret, as the renderer's requests do.
+    let router = test_router(Arc::new(test_app_state(&td)));
     let response = router
         .oneshot(
             Request::builder()

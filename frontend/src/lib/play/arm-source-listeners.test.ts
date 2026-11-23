@@ -69,6 +69,35 @@ describe('armSourceScopedListeners', () => {
 		expect(start('show-a', 8)).toBeNull();
 	});
 
+	it('ends a resume hold when told, starting nothing, and is harmless with no hold', () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		const holds: boolean[] = [];
+		const play = vi.fn(() => Promise.resolve());
+		video.play = play as unknown as HTMLVideoElement['play'];
+		const held = armSourceScopedListeners({
+			video,
+			showId: 'show-a',
+			episode: 6,
+			scope,
+			positions,
+			onResumeHold: (h) => holds.push(h)
+		});
+		expect(holds).toEqual([true]);
+		held.endHold();
+		expect(holds).toEqual([true, false]);
+		expect(play).not.toHaveBeenCalled();
+
+		const none = armSourceScopedListeners({
+			video,
+			showId: 'show-b',
+			episode: 1,
+			scope,
+			positions
+		});
+		expect(none.startAt).toBeNull();
+		expect(() => none.endHold()).not.toThrow();
+	});
+
 	it('arms no seek without a capture, and consumes mismatches', () => {
 		recoveryResume.capture('show-a', 6, 432.5);
 		arm('show-b', 6);
@@ -130,6 +159,22 @@ describe('armSourceScopedListeners', () => {
 		playAt(0);
 		video.dispatchEvent(new Event('loadedmetadata'));
 		expect(video.currentTime).toBe(612.5);
+	});
+
+	it("a switch's carried 0:00 wins over the saved position, with nothing to seek or hold", () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		recoveryResume.carry('show-a', 6, 0);
+		const start = armSourceScopedListeners({
+			video,
+			showId: 'show-a',
+			episode: 6,
+			scope,
+			positions
+		});
+		expect(start.startAt).toBeNull();
+		playAt(0);
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(video.currentTime).toBe(0);
 	});
 
 	it("a pending recovery's position wins over the saved one", () => {

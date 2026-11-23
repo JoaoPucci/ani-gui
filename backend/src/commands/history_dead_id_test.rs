@@ -22,8 +22,9 @@ const DETAIL_FIXTURE: &[u8] =
 const SHOW: &str = "cowboy-bebop-1";
 const TITLE: &str = "Cowboy Bebop";
 
-fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
-    AppState {
+fn state_at(history_path: PathBuf, kitsu_base: &str) -> crate::scratch::Scratch<AppState> {
+    let dirs = crate::scratch::dir();
+    let state = AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -34,22 +35,30 @@ fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path,
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-    }
+    };
+    dirs.hold(state)
 }
 
 /// A history holding one row that records `recorded`, with Kitsu
 /// answering `/anime/<recorded>` with `status`.
-async fn row_recording(recorded: &str, status: u16) -> (tempfile::TempDir, MockServer, AppState) {
+async fn row_recording(
+    recorded: &str,
+    status: u16,
+) -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+) {
     row_recording_titled(recorded, status, TITLE).await
 }
 
@@ -58,7 +67,11 @@ async fn row_recording_titled(
     recorded: &str,
     status: u16,
     title: &str,
-) -> (tempfile::TempDir, MockServer, AppState) {
+) -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+) {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path(format!("/anime/{recorded}")))
@@ -355,15 +368,23 @@ const OTHER: &str = "hianime:trigun-3";
 
 /// A history of two rows, `SHOW` recording 999 and `OTHER` recording
 /// 555, with Kitsu answering `/anime/999` with a 404.
-async fn two_rows_with_a_404() -> (tempfile::TempDir, MockServer, AppState) {
+async fn two_rows_with_a_404() -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+) {
     two_rows_answering_999(ResponseTemplate::new(404)).await
 }
 
 /// [`two_rows_with_a_404`], the 404 held until the returned gate is
 /// released ([`crate::held`]), so history can be removed while the read
 /// waits on Kitsu.
-async fn two_rows_with_a_held_404() -> (tempfile::TempDir, MockServer, AppState, crate::held::Gate)
-{
+async fn two_rows_with_a_held_404() -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+    crate::held::Gate,
+) {
     let (hold, gate) = crate::held::gate();
     let (tmp, mock, state) =
         two_rows_answering_999(crate::held::Held::new(hold, ResponseTemplate::new(404))).await;
@@ -372,7 +393,11 @@ async fn two_rows_with_a_held_404() -> (tempfile::TempDir, MockServer, AppState,
 
 async fn two_rows_answering_999(
     answer: impl wiremock::Respond + 'static,
-) -> (tempfile::TempDir, MockServer, AppState) {
+) -> (
+    tempfile::TempDir,
+    MockServer,
+    crate::scratch::Scratch<AppState>,
+) {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/anime/999"))

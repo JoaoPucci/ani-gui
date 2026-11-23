@@ -5,6 +5,8 @@ import ts from 'typescript-eslint';
 import { describe, expect, it } from 'vitest';
 import noHardcodedStrings from '../../tools/eslint-rules/no-hardcoded-strings.js';
 
+import { ruleMessages } from './rule-messages';
+
 // Runs the local rule through ESLint's own Linter with the same Svelte
 // parser setup eslint.config.js uses, so a case here behaves the way
 // it would in `pnpm run lint`. Each case is a whole component; the
@@ -118,9 +120,7 @@ describe('no-hardcoded-strings: where the project applies it', () => {
 	// which files the rule reaches, not just what it reports.
 	async function ruleHits(relPath: string, code: string): Promise<string[]> {
 		const [result] = await eslint.lintText(code, { filePath: `${frontendDir}${relPath}` });
-		return result.messages
-			.filter((msg) => msg.ruleId === 'local/no-hardcoded-strings')
-			.map((msg) => msg.message);
+		return ruleMessages(result, relPath, ['local/no-hardcoded-strings']);
 	}
 
 	const COPY = "export const label = 'Loading animation (LottieFiles)';\n";

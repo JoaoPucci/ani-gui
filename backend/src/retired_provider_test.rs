@@ -7,7 +7,7 @@ use crate::app::AppState;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::history::{read_all, write_atomic, HistoryEntry};
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const DAY: u64 = 86_400;
 
@@ -23,7 +23,7 @@ fn state_in(dir: &Path) -> AppState {
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: dir.join("history"),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dir.join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
         config_path: dir.join("config.toml"),
@@ -122,6 +122,53 @@ fn seed_history(state: &AppState, dir: &Path) {
         "1788436545407",
     );
     put_expired(state, "allmanga2kitsu:v3:naruto-shippuden-3687", "1555");
+}
+
+#[test]
+fn a_superseded_named_line_leaves_its_naming_on_the_walked_row_of_its_listing() {
+    // The user named the retired line's show, and its next play landed
+    // on the walked listing with the same words, which records the
+    // show. The sweep removes the retired line; the naming stays with
+    // the line that replaces it, so its card keeps the way to change
+    // the show again.
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    seed_history(&state, dir.path());
+    let mut rows = read_all(&state.history_path).unwrap();
+    rows[0].kitsu_id = Some("1555".into());
+    write_atomic(&state.history_path, &rows).expect("history");
+    crate::commands::linked_note::record(&state, "naruto-shippuden-3687", "1555").expect("note");
+
+    let _ = sweep(&state);
+
+    assert!(read_all(&state.history_path)
+        .unwrap()
+        .iter()
+        .all(|e| e.id != "naruto-shippuden-3687"));
+    assert_eq!(
+        crate::commands::linked_note::linked(&state, "test-a:naruto-shippuden-600").as_deref(),
+        Some("1555")
+    );
+    assert_eq!(
+        crate::commands::linked_note::linked(&state, "naruto-shippuden-3687"),
+        None
+    );
+}
+
+#[test]
+fn a_superseded_line_named_for_another_show_names_no_walked_row() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_in(dir.path());
+    seed_history(&state, dir.path());
+    // A stale note: the row records nothing it names.
+    crate::commands::linked_note::record(&state, "naruto-shippuden-3687", "9999").expect("note");
+
+    let _ = sweep(&state);
+
+    assert_eq!(
+        crate::commands::linked_note::linked(&state, "test-a:naruto-shippuden-600"),
+        None
+    );
 }
 
 #[test]

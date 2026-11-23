@@ -30,7 +30,14 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { failedHeroImages } from '../../src/lib/hero/framing';
 import { m } from '../../src/lib/paraglide/messages';
 
-const poster = (id: string) => ({ large: `https://media.kitsu.app/anime/${id}/poster/large.jpg` });
+import type { KitsuAnimeRef, KitsuPosterImage } from '../../src/lib/api';
+const poster = (id: string): KitsuPosterImage => ({
+	tiny: null,
+	small: null,
+	medium: null,
+	large: `https://media.kitsu.app/anime/${id}/poster/large.jpg`,
+	original: null
+});
 
 /** A show with only a poster: the hero would have to blur it. */
 function bare(id: string, title: string) {
@@ -40,7 +47,12 @@ function bare(id: string, title: string) {
 function withCover(id: string, title: string) {
 	return {
 		...bare(id, title),
-		cover_image: { large: `https://media.kitsu.app/anime/${id}/cover_image/large.jpg` }
+		cover_image: {
+			tiny: null,
+			small: null,
+			large: `https://media.kitsu.app/anime/${id}/cover_image/large.jpg`,
+			original: null
+		}
 	};
 }
 
@@ -69,10 +81,12 @@ afterEach(() => {
 	localStorage.clear();
 });
 
-function serve(trending: unknown[]) {
+function serve(trending: KitsuAnimeRef[]) {
 	server.use(
 		...homeHandlers({}, [
-			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json(trending))
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>(trending)
+			)
 		])
 	);
 }

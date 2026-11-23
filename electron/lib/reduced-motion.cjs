@@ -219,4 +219,5 @@ module.exports = {
   parseGsettingsAnswer,
   parsePortalAnswer,
   readReducedMotion,
+  readerEnv,
 };

@@ -31,11 +31,12 @@ vi.mock('$app/navigation', () => ({
 
 import SettingsPage from '../../src/routes/settings/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import type { AppInfo, Config, StandardProgram } from '../../src/lib/api';
+import { appInfoAnswer, configAnswer } from '../answers';
 
-const CONFIG = {
+const CONFIG: Config = configAnswer({
 	locale: 'en',
 	mode: 'sub',
-	quality: 'best',
 	external_player: 'mpv',
 	external_player_kind: 'mpv',
 	external_player_custom_args: '',
@@ -48,14 +49,13 @@ const CONFIG = {
 	use_custom_player_controls: true,
 	update_include_prereleases: false,
 	primary_account: ''
-};
+});
 
-const APP_INFO = {
+const APP_INFO: AppInfo = appInfoAnswer({
 	version: '0.12.0',
 	history_path: '/home/u/.local/state/ani-gui/history',
-	proxy_base_url: 'http://127.0.0.1:31337',
-	removed_legacy_paths: []
-};
+	proxy_base_url: 'http://127.0.0.1:31337'
+});
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
@@ -63,16 +63,20 @@ let saved: Record<string, unknown>[];
 
 function serve(over: Partial<typeof CONFIG> = {}) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json({ ...CONFIG, ...over })),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>({ ...CONFIG, ...over })),
 		http.put(`${API_BASE}/api/settings`, async ({ request }) => {
 			saved.push((await request.json()) as Record<string, unknown>);
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO)),
 		// Where each type's program is installed: nowhere, here.
 		http.get(`${API_BASE}/api/external-player/standard`, ({ request }) => {
 			const kind = new URL(request.url).searchParams.get('kind');
-			return HttpResponse.json({ name: kind === 'custom' ? null : kind, path: null });
+			return HttpResponse.json<StandardProgram>({
+				name: kind === 'custom' ? null : kind,
+				path: null,
+				supported: true
+			});
 		})
 	);
 }

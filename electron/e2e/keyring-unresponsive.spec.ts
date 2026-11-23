@@ -18,14 +18,24 @@
  * the main process must answer, the keyring notice must go up, and the
  * saved sign-in must be left as it was.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./policy-guard";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { groupEmpty, statFields } from "../lib/own-group.cjs";
-import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
-import { appWindow, launchPackagedApp, packagedBinary, routeContext, stopApp } from "./launch";
+import { appInfo, defaultSettings, emptyHistory, topRated, trending } from "./fixtures/kitsu";
+import {
+  appWindow,
+  cardLinesAnswer,
+  launchPackagedApp,
+  packagedBinary,
+  refuseUnstubbed,
+  remountFirstPage,
+  routeContext,
+  stopApp,
+} from "./launch";
+import { answer } from "./stubs";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
@@ -125,7 +135,12 @@ test("a secret service that never answers keeps neither the window nor the first
   const saved = Buffer.concat([Buffer.from("v11"), Buffer.alloc(32, 7)]);
   fs.writeFileSync(path.join(tokens, "anilist.bin"), saved);
 
-  const bus = await busWithSilentSecretService(path.join(tmp, "bus"));
+  const bus = await busWithSilentSecretService(path.join(tmp, "bus")).catch((err) => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    throw err;
+  });
+  // The teardown below stops the bus and removes the profile once the
+  // app is up; a bus or a launch that never starts is cleaned up here.
   const app = await launchPackagedApp({
     ...process.env,
     XDG_STATE_HOME: path.join(tmp, "state"),
@@ -139,6 +154,10 @@ test("a secret service that never answers keeps neither the window nor the first
     // basic_text at once and never touches the bus. A GNOME desktop is
     // where the freeze was seen.
     XDG_CURRENT_DESKTOP: "GNOME",
+  }).catch((err) => {
+    bus.stop();
+    fs.rmSync(tmp, { recursive: true, force: true });
+    throw err;
   });
   const pid = app.process().pid!;
   try {
@@ -148,18 +167,50 @@ test("a secret service that never answers keeps neither the window nor the first
       contentType: "application/json",
       body: JSON.stringify(body),
     });
-    await routeContext(context, "**/api/app-info", (r) => r.fulfill(json(appInfo)));
-    await routeContext(context, "**/api/history", (r) => r.fulfill(json(emptyHistory)));
-    await routeContext(context, "**/api/kitsu/trending", (r) =>
-      r.fulfill(json(trending)),
-    );
-    await routeContext(context, "**/api/kitsu/top-rated", (r) =>
-      r.fulfill(json(topRated)),
-    );
-    await routeContext(context, "**/api/image*", (r) => r.fulfill({ status: 503 }));
-
-    // The app's window, not the splash that opens before it.
+    // The app's window, not the splash that opens before it, and before
+    // any route: a route reaches only the windows Playwright has
+    // finished attaching when it is set (refuseUnstubbed).
     const page = await appWindow(app);
+    // First, so it answers only what the stubs below leave; checked
+    // empty at the end, for everything asked after the remount.
+    const unstubbed = await refuseUnstubbed(page);
+    let topRatedAsked: (() => void) | null = null;
+    await routeContext(context, "**/api/app-info", (r) => answer(r, json(appInfo)));
+    await routeContext(context, "**/api/history", (r) => answer(r, json(emptyHistory)));
+    await routeContext(context, "**/api/history/card-lines", (r) =>
+      answer(r, json(cardLinesAnswer(r.request().postDataJSON()))),
+    );
+    await routeContext(context, "**/api/kitsu/trending-anilist", (r) =>
+      answer(r, json(trending)),
+    );
+    await routeContext(context, "**/api/kitsu/top-rated", (r) => {
+      topRatedAsked?.();
+      return answer(r, json(topRated));
+    });
+    // Every card known playable, so nothing is handed to the warm queue.
+    await routeContext(context, "**/api/availability/batch", (r) => {
+      const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
+      return answer(r,
+        json({
+          cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
+          playable_episode_counts: {},
+        }),
+      );
+    });
+    await routeContext(context, "**/api/availability/warm", (r) => answer(r, { status: 202 }));
+    await routeContext(context, "**/api/watched-at", (r) => answer(r, json({})));
+    await routeContext(context, "**/api/update-check*", (r) => answer(r, { status: 204 }));
+    await routeContext(context, "**/api/settings", (r) => answer(r, json(defaultSettings)));
+    await routeContext(context, "**/api/image*", (r) => answer(r, { status: 503 }));
+
+    // Its first mount asked before the stubs were in place, and the
+    // backend, kept off the network, could not answer: mount it again,
+    // and go on once the new mount has asked a stub.
+    await remountFirstPage(
+      page,
+      () => new Promise<void>((resolve) => (topRatedAsked = resolve)),
+      { forget: unstubbed },
+    );
     // The first page renders, signed out.
     await expect(page.getByText(/top rated/i).first()).toBeVisible({
       timeout: 15_000,
@@ -183,6 +234,8 @@ test("a secret service that never answers keeps neither the window nor the first
     );
     // Nothing gave up on the saved sign-in.
     expect(fs.readFileSync(path.join(tokens, "anilist.bin"))).toEqual(saved);
+    // The page ran on its stubs alone.
+    expect(unstubbed, "requests no stub answered").toEqual([]);
 
     // One process asked the bus for the keyring: a helper of the app's,
     // not its main process, in the process group Playwright created for

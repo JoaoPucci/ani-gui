@@ -24,9 +24,6 @@
 #
 #   4. `frontend/src/`           imports nothing from outside its
 #      own `src/` tree (no `../../backend`, no `../../tools`, etc.).
-#      The auto-generated bindings carve-out lives at
-#      `src/lib/bindings/` and is the only allowed exception — but
-#      it doesn't exist yet.
 #
 # Failures print the offending file:line so cause is obvious.
 

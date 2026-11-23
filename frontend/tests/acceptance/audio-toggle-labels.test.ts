@@ -31,6 +31,18 @@ vi.mock('$app/navigation', () => ({
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import SettingsPage from '../../src/routes/settings/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import type {
+	AiringStatus,
+	AppInfo,
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	HistoryEntry,
+	HistoryRowByKitsu,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { appInfoAnswer, availabilityAnswer } from '../answers';
 
 const KITSU_ID = '40684';
 const TITLE = 'Two Audio Show';
@@ -65,35 +77,47 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 
 function useHandlers(locale: Locale) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json({ ...appConfig('sub'), locale })),
+		http.get(`${API_BASE}/api/settings`, () =>
+			HttpResponse.json<Config>({ ...appConfig('sub'), locale })
+		),
 		http.get(`${API_BASE}/api/app-info`, () =>
-			HttpResponse.json({
-				version: '0.17.0',
-				history_path: '/h',
-				proxy_base_url: 'http://127.0.0.1:1',
-				removed_legacy_paths: []
-			})
+			HttpResponse.json<AppInfo>(
+				appInfoAnswer({
+					version: '0.17.0',
+					history_path: '/h',
+					proxy_base_url: 'http://127.0.0.1:1'
+				})
+			)
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
 		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({ available: true, episode_count: 12, extra_episodes: [] })
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({ available: true, episode_count: 12, extra_episodes: [] })
+			)
 		),
 		http.post(`${API_BASE}/api/availability/batch`, () =>
-			HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+			HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 		),
 		http.post(`${API_BASE}/api/availability/warm`, () => new HttpResponse(null, { status: 202 })),
 		http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([])),
+		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 }
 

@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { KitsuAnimeRef } from '$lib/api';
+import type { AvailabilityResponse, KitsuAnimeRef } from '$lib/api';
 
 const apiMock = vi.hoisted(() => ({
-	availabilityBatch: vi.fn(),
-	availabilityWarm: vi.fn(),
-	checkAvailability: vi.fn(),
-	altTitlesFromKitsu: vi.fn((ref: { id: string } | null | undefined) =>
-		ref ? [`alt-${ref.id}`] : []
+	availabilityBatch: vi.fn<typeof Api.availabilityBatch>(),
+	availabilityWarm: vi.fn<typeof Api.availabilityWarm>(),
+	checkAvailability: vi.fn<typeof Api.checkAvailability>(),
+	altTitlesFromKitsu: vi.fn<typeof Api.altTitlesFromKitsu>(
+		(ref: { id: string } | null | undefined) => (ref ? [`alt-${ref.id}`] : [])
 	),
-	yearFromKitsuRef: vi.fn((ref: { start_date: string | null } | null | undefined) =>
-		ref?.start_date ? Number(ref.start_date.slice(0, 4)) : null
+	yearFromKitsuRef: vi.fn<typeof Api.yearFromKitsuRef>(
+		(ref: { start_date: string | null } | null | undefined) =>
+			ref?.start_date ? Number(ref.start_date.slice(0, 4)) : null
 	)
 }));
 vi.mock('$lib/api', () => apiMock);
@@ -17,10 +18,14 @@ vi.mock('$lib/api', () => apiMock);
 import { filterAvailableProgressive } from './progressive';
 import { probeScope } from './probe-scope';
 
+import type * as Api from '$lib/api';
+import { availabilityAnswer, malformedAs } from '$lib/testing/wire-answers';
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: `Title ${id}`,
+		titles: {},
+		abbreviated_titles: [],
 		slug: null,
 		synopsis: null,
 		start_date: null,
@@ -48,17 +53,19 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	/** A checkAvailability mock whose per-item promises resolve only
 	 *  when the test says so — models slow upstream probes. */
 	function hangingProbes() {
-		const resolvers = new Map<string, (r: { available: boolean }) => void>();
+		const resolvers = new Map<string, (r: Partial<AvailabilityResponse>) => void>();
 		apiMock.checkAvailability.mockImplementation(
-			(req: { kitsu_id: string }) =>
-				new Promise<{ available: boolean }>((res) => resolvers.set(req.kitsu_id, res))
+			(req) =>
+				new Promise<AvailabilityResponse>((res) =>
+					resolvers.set(req.kitsu_id ?? '', (r) => res(availabilityAnswer(r)))
+				)
 		);
 		return resolvers;
 	}
 
 	it('emits the kept list at the grace deadline while probes still hang', async () => {
 		vi.useFakeTimers();
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
 		hangingProbes();
 		const emit = vi.fn();
 		const items = [ref('a'), ref('b', { status: 'finished' }), ref('c')];
@@ -75,7 +82,7 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 
 	it('prunes a finished show when its late probe reports unavailable', async () => {
 		vi.useFakeTimers();
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
 		const resolvers = hangingProbes();
 		const emit = vi.fn();
 		const items = [ref('a'), ref('gone', { status: 'finished' })];
@@ -93,7 +100,7 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 
 	it('does not re-emit for late verdicts that keep the card', async () => {
 		vi.useFakeTimers();
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
 		const resolvers = hangingProbes();
 		const emit = vi.fn();
 		const done = filterAvailableProgressive([ref('a'), ref('b')], 'sub', emit, 2000);
@@ -110,8 +117,11 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 
 	it('emits once without waiting when every probe settles before the grace', async () => {
 		vi.useFakeTimers();
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true } });
-		apiMock.checkAvailability.mockResolvedValue({ available: false });
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true },
+			playable_episode_counts: {}
+		});
+		apiMock.checkAvailability.mockResolvedValue(availabilityAnswer({ available: false }));
 		const emit = vi.fn();
 		const items = [ref('a'), ref('gone', { status: 'finished' })];
 		await filterAvailableProgressive(items, 'sub', emit, 2000);
@@ -123,7 +133,10 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	});
 
 	it('emits once immediately when everything is already cached', async () => {
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true, b: false } });
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true, b: false },
+			playable_episode_counts: {}
+		});
 		const emit = vi.fn();
 		await filterAvailableProgressive([ref('a'), ref('b', { status: 'finished' })], 'sub', emit);
 		expect(emit).toHaveBeenCalledTimes(1);
@@ -139,8 +152,14 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		// `available: false` means nothing: the card stays, as it did
 		// when the request threw, and nothing is cached against the id.
 		for (const unsettled of [true, 'unanswered'] as const) {
-			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-			apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled });
+			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
+			// `true` is the answer a backend from before the reasons sent;
+			// none sends it now.
+			apiMock.checkAvailability.mockResolvedValue(
+				unsettled === true
+					? malformedAs<AvailabilityResponse>({ ...availabilityAnswer(), unsettled })
+					: availabilityAnswer({ available: false, unsettled })
+			);
 			const emit = vi.fn();
 			await filterAvailableProgressive([ref('a', { status: 'finished' })], 'sub', emit);
 			expect(
@@ -151,8 +170,10 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	});
 
 	it('drops a finished show the catalogue refused by name, as one it does not carry', async () => {
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled: 'refused' });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
+		apiMock.checkAvailability.mockResolvedValue(
+			availabilityAnswer({ available: false, unsettled: 'refused' })
+		);
 		const emit = vi.fn();
 		await filterAvailableProgressive([ref('a', { status: 'finished' })], 'sub', emit);
 		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual([]);
@@ -163,8 +184,10 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		// a false hides: only a finished show is confidently gone — any
 		// other may simply not be listed yet.
 		for (const status of ['current', 'upcoming', 'tba', 'unreleased', undefined]) {
-			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-			apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled: 'refused' });
+			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
+			apiMock.checkAvailability.mockResolvedValue(
+				availabilityAnswer({ available: false, unsettled: 'refused' })
+			);
 			const emit = vi.fn();
 			await filterAvailableProgressive([ref('a', { status })], 'sub', emit);
 			expect(
@@ -175,7 +198,7 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	});
 
 	it('keeps an item whose probe throws (defer to lazy path)', async () => {
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
 		apiMock.checkAvailability.mockRejectedValue(new Error('upstream 520'));
 		const emit = vi.fn();
 		await filterAvailableProgressive([ref('a', { status: 'finished' })], 'sub', emit);
@@ -191,6 +214,29 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		expect(emit.mock.calls[0][0]).toEqual(items);
 	});
 
+	it("hands the run's signal to the batch, so a search replaced or left cancels it", async () => {
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true },
+			playable_episode_counts: {}
+		});
+		const run = new AbortController();
+		await filterAvailableProgressive([ref('a')], 'sub', vi.fn(), 2000, 4, run.signal);
+		expect(apiMock.availabilityBatch).toHaveBeenLastCalledWith(['a'], 'sub', {
+			signal: run.signal
+		});
+	});
+
+	it('emits nothing for a batch cancelled with its run', async () => {
+		const run = new AbortController();
+		run.abort();
+		apiMock.availabilityBatch.mockRejectedValueOnce(
+			new DOMException('The operation was aborted.', 'AbortError')
+		);
+		const emit = vi.fn();
+		await filterAvailableProgressive([ref('a')], 'sub', emit, 2000, 4, run.signal);
+		expect(emit).not.toHaveBeenCalled();
+	});
+
 	it('emits an empty list without hitting the API', async () => {
 		const emit = vi.fn();
 		await filterAvailableProgressive([], 'sub', emit);
@@ -203,8 +249,8 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		// turns a cold ~20-hit search into a ~20-second wait (two
 		// admits per hit at 500 ms each). The user is actively
 		// waiting, so probes ride the interactive lane like a click.
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		apiMock.checkAvailability.mockResolvedValue({ available: true });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
+		apiMock.checkAvailability.mockResolvedValue(availabilityAnswer({ available: true }));
 		await filterAvailableProgressive([ref('a')], 'sub', vi.fn());
 		expect(apiMock.checkAvailability).not.toHaveBeenCalledWith(
 			expect.objectContaining({ background: true })
@@ -214,9 +260,12 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	it('probes only uncached items and applies their verdicts', async () => {
 		// b is cached false → drops. a is cached true → kept. c is
 		// uncached → probed → kept. d is uncached → probed → dropped.
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: { a: true, b: false } });
-		apiMock.checkAvailability.mockImplementation(async (args: { kitsu_id: string }) =>
-			args.kitsu_id === 'c' ? { available: true } : { available: false }
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { a: true, b: false },
+			playable_episode_counts: {}
+		});
+		apiMock.checkAvailability.mockImplementation(async (args) =>
+			availabilityAnswer({ available: args.kitsu_id === 'c' })
 		);
 		const emit = vi.fn();
 		await filterAvailableProgressive(
@@ -233,8 +282,8 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	it('keeps unaired shows visible even when the probe says unavailable', async () => {
 		// An upcoming season the provider hasn't catalogued yet still
 		// renders so the user can open and plan it.
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		apiMock.checkAvailability.mockResolvedValue({ available: false });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
+		apiMock.checkAvailability.mockResolvedValue(availabilityAnswer({ available: false }));
 		const emit = vi.fn();
 		await filterAvailableProgressive(
 			[ref('up', { status: 'unreleased' }), ref('gone', { status: 'finished' })],
@@ -248,8 +297,8 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		// Same symmetry rule as the lazy warm path: the probe must
 		// hand the backend picker the year so list-view cards resolve
 		// to the same provider show as the detail page.
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		apiMock.checkAvailability.mockResolvedValue({ available: true });
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
+		apiMock.checkAvailability.mockResolvedValue(availabilityAnswer({ available: true }));
 		await filterAvailableProgressive([ref('wing', { start_date: '1995-04-07' })], 'sub', vi.fn());
 		expect(apiMock.checkAvailability.mock.calls[0][0]).toMatchObject({
 			kitsu_id: 'wing',
@@ -264,7 +313,7 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		const g = globalThis as unknown as { location?: { pathname: string } };
 		g.location = { pathname: '/search' };
 		try {
-			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {}, playable_episode_counts: {} });
 			const resolvers = hangingProbes();
 			const items = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ref(id));
 			const done = filterAvailableProgressive(items, 'sub', () => {}, 2000, 2);

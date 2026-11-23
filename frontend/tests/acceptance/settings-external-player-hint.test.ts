@@ -32,11 +32,12 @@ vi.mock('$app/navigation', () => ({
 
 import SettingsPage from '../../src/routes/settings/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import type { AppInfo, Config, StandardProgram } from '../../src/lib/api';
+import { appInfoAnswer, configAnswer } from '../answers';
 
-const CONFIG = {
+const CONFIG: Config = configAnswer({
 	locale: 'en',
 	mode: 'sub',
-	quality: 'best',
 	external_player: '',
 	external_player_kind: 'mpv',
 	external_player_custom_args: '',
@@ -49,14 +50,13 @@ const CONFIG = {
 	use_custom_player_controls: true,
 	update_include_prereleases: false,
 	primary_account: ''
-};
+});
 
-const APP_INFO = {
+const APP_INFO: AppInfo = appInfoAnswer({
 	version: '0.12.0',
 	history_path: '/home/u/.local/state/ani-gui/history',
-	proxy_base_url: 'http://127.0.0.1:31337',
-	removed_legacy_paths: []
-};
+	proxy_base_url: 'http://127.0.0.1:31337'
+});
 
 /** The backend's answer about each type's standard program; a type
  *  it has no entry for answers 500, as an unreachable backend would. */
@@ -71,14 +71,16 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
 		http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(APP_INFO)),
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO)),
 		http.get(`${API_BASE}/api/external-player/standard`, ({ request }) => {
 			asked += 1;
 			const kind = new URL(request.url).searchParams.get('kind') ?? '';
 			const answer = standard[kind];
-			return answer ? HttpResponse.json(answer) : new HttpResponse(null, { status: 500 });
+			return answer
+				? HttpResponse.json<StandardProgram>({ supported: true, ...answer })
+				: new HttpResponse(null, { status: 500 });
 		})
 	);
 	standard = {};

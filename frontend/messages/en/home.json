@@ -10,6 +10,8 @@
 	"hero_error_title": "The catalogue is unreachable.",
 	"hero_error_body": "Kitsu didn't answer. You can still search locally by typing a title.",
 	"hero_error_cta": "Open Search",
+	"hero_empty_title": "Nothing to feature right now.",
+	"hero_empty_body": "The trending list came back empty. Search still works, type a title.",
 	"hero_skeleton_eyebrow_key": "Loading",
 	"strip_continue_eyebrow": "Continue watching",
 	"strip_continue_caption": "resume from history",
@@ -43,5 +45,10 @@
 	"clear_confirm_button": "Clear all",
 	"clear_history_failed": "Couldn't clear your history. Try again.",
 	"delete_failed": "Couldn't remove \"{title}\" from history. Try again.",
-	"hero_error_eyebrow_value": "No answer from Kitsu"
+	"hero_error_eyebrow_value": "No answer from Kitsu",
+	"resume_guess_note": "This may not be the show you meant. It’s saved in your history as “{title}”.",
+	"link_not_watched": "Not what you watched?",
+	"link_pick_button": "Pick the right show",
+	"link_on_card": "On the card",
+	"link_check_failed": "Couldn't check this show. Try again."
 }
