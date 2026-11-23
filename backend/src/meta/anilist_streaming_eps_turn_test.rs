@@ -153,7 +153,15 @@ async fn a_retry_does_not_take_the_turn_a_lane_waits_for() {
     // queue.
     let server = serve(fake(3)).await;
     let base = server.uri();
-    let gate = share_for_tests(&base, ANILIST);
+    // A wait long enough that no virtual time the paused clock runs
+    // through while the mock answers can spend the retry's.
+    let gate = share_for_tests(
+        &base,
+        Pace {
+            background_wait: Duration::from_secs(60),
+            ..ANILIST
+        },
+    );
     let client = reqwest::Client::new();
     let lane = "retry-behind-lane";
     let retry_lane = "retry-behind-lane-retry";
@@ -211,4 +219,64 @@ async fn callers_that_leave_a_lane_waiting_for_its_turn_leave_the_gate_free() {
     crate::held::until("nothing waits at the gate", || gate.waiting() == 0).await;
     assert_eq!(gate.let_go(), vec![Class::Background]);
     assert_eq!(asked_of(&server).await, vec![Asked::ByMal(1)]);
+}
+
+/// `want`'s lookup in `lane`, `after` the clock's start.
+async fn want_at(
+    client: &reqwest::Client,
+    lane: &str,
+    base: &str,
+    want: Want,
+    after: Duration,
+) -> crate::error::Result<StreamingListing> {
+    tokio::time::sleep(after).await;
+    in_background(streaming_listing_coalesced(client, lane, want, Some(base))).await
+}
+
+#[tokio::test]
+async fn a_lookup_kitsu_maps_to_anilist_alone_is_not_held_behind_a_mal_page() {
+    // A page of AniList ids goes only once the MAL page beside it has
+    // answered, so a show Kitsu maps to AniList alone would leave later
+    // in a held batch than alone. Arriving behind the first lookup, 30
+    // opens no held lane: it goes as its single lookup, as before. MAL
+    // id 2 then waits in a lane for the gate's turn, and 31, arriving
+    // while it waits, does not join it: it too goes alone.
+    let mut known = fake(3);
+    known.media.push(FakeMedia {
+        id: 30,
+        mal: None,
+        listed: 1,
+    });
+    known.media.push(FakeMedia {
+        id: 31,
+        mal: None,
+        listed: 1,
+    });
+    let server = serve(known).await;
+    let base = server.uri();
+    let _gate = share_for_tests(&base, ANILIST);
+    let client = reqwest::Client::new();
+    let lane = "anilist-alone";
+    let by_id = |id| Want {
+        mal: None,
+        anilist: Some(id),
+    };
+    tokio::time::pause();
+    let (a, b, c, d) = tokio::join!(
+        want_at(&client, lane, &base, by_mal(1), Duration::ZERO),
+        want_at(&client, lane, &base, by_id(30), Duration::from_millis(110)),
+        want_at(&client, lane, &base, by_mal(2), Duration::from_millis(130)),
+        want_at(&client, lane, &base, by_id(31), Duration::from_millis(230)),
+    );
+    tokio::time::resume();
+    assert!(a.is_ok() && b.is_ok() && c.is_ok() && d.is_ok());
+    let asked = asked_of(&server).await;
+    assert!(
+        asked.contains(&Asked::ById(30)) && asked.contains(&Asked::ById(31)),
+        "each alone: {asked:?}"
+    );
+    assert!(
+        !asked.iter().any(|a| matches!(a, Asked::PageById(_))),
+        "held in a page: {asked:?}"
+    );
 }

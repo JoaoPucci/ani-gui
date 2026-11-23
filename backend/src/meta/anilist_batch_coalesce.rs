@@ -204,6 +204,15 @@ pub(crate) fn waits_for_turn(class: Class, turn: Option<Duration>) -> bool {
     class == Class::Background && turn.is_some_and(|wait| !wait.is_zero())
 }
 
+/// What a lane waiting for the gate's turn does next, `left` of its
+/// lookups' wait: `Some(nap)` to look again after `nap`, `None` to hand
+/// its batch to the gate now. A stub: it waits out every turn inside
+/// the class's wait, whatever is left of the lookups'.
+pub(crate) fn next_look(class: Class, turn: Option<Duration>, _left: Duration) -> Option<Duration> {
+    let turn = turn.filter(|_| waits_for_turn(class, turn))?;
+    Some(turn.min(CLOSED_POLL))
+}
+
 /// The task gathering one lane's batches.
 struct Driver<K> {
     lane: String,
@@ -244,7 +253,11 @@ impl<K: Kind> Driver<K> {
             let base = self.base.clone();
             tokio::spawn(in_class(
                 self.class,
-                handing(place, deliver::<K>(client, base, wants, replies)),
+                handing(
+                    place,
+                    tokio::time::Instant::now(),
+                    deliver::<K>(client, base, wants, replies),
+                ),
             ));
         }
     }
@@ -370,3 +383,7 @@ impl<K: Kind> Drop for Closing<K> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "anilist_batch_coalesce_prop_test.rs"]
+mod prop_tests;

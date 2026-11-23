@@ -61,7 +61,11 @@ tokio::task_local! {
 /// turn, or until `f` ends: the lane's lookups handed to the gate keep
 /// the place they held in the lane, with no moment between in which a
 /// retry could take the turn.
-pub(crate) async fn handing<F: Future>(place: Option<Place>, f: F) -> F::Output {
+pub(crate) async fn handing<F: Future>(
+    place: Option<Place>,
+    _deadline: Instant,
+    f: F,
+) -> F::Output {
     HANDED.scope(RefCell::new(place), f).await
 }
 
