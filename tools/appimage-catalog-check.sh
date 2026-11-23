@@ -102,7 +102,8 @@ trap 'exit 2' HUP INT TERM
 ldd --version | sed -n 1p
 firejail --version | sed -n 1p
 if [ -r /proc/sys/kernel/unprivileged_userns_clone ]; then
-    echo "kernel.unprivileged_userns_clone = $(cat /proc/sys/kernel/unprivileged_userns_clone)"
+    read -r userns </proc/sys/kernel/unprivileged_userns_clone
+    echo "kernel.unprivileged_userns_clone = $userns"
 fi
 
 net=$(firejail --quiet --noprofile --net=none ls /sys/class/net 2>&1)
