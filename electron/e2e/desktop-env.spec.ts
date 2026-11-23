@@ -2,8 +2,8 @@
  * What the packaged app starts on Linux starts with the user's desktop
  * environment, and the app itself keeps the one Electron gave it.
  *
- * Electron rewrites its own environment as it starts: on an Ubuntu-style
- * session XDG_CURRENT_DESKTOP becomes `Unity`, with the session's value
+ * Electron rewrites its own environment as it starts: on a session whose
+ * desktop names Ubuntu, XDG_CURRENT_DESKTOP becomes `Unity`, with the session's value
  * kept in ORIGINAL_XDG_CURRENT_DESKTOP, CHROME_DESKTOP names the app's
  * desktop file, and Chromium's GTK start-up adds GDK_BACKEND (and, under
  * X11, NO_AT_BRIDGE). A browser started from a link with all of that
@@ -92,7 +92,13 @@ function expectUserDesktop(env: NodeJS.Dict<string>, what: string) {
 function backendPid(main: number): number {
 	const children = fs
 		.readdirSync(`/proc/${main}/task`)
-		.flatMap((tid) => fs.readFileSync(`/proc/${main}/task/${tid}/children`, 'utf-8').split(' '))
+		.flatMap((tid) => {
+			try {
+				return fs.readFileSync(`/proc/${main}/task/${tid}/children`, 'utf-8').split(' ');
+			} catch {
+				return []; // a thread that ended in between
+			}
+		})
 		.filter(Boolean)
 		.map(Number);
 	const backend = children.filter((pid) => {
@@ -159,6 +165,8 @@ test("what the app opens starts with the user's desktop environment, and the app
 		const before = await mainEnv();
 		// The app's own environment is Electron's: the condition this proves
 		// anything about.
+		expect(before.XDG_CURRENT_DESKTOP).toBe('Unity');
+		expect(before.ORIGINAL_XDG_CURRENT_DESKTOP).toBe(SESSION_DESKTOP);
 		expect(before.CHROME_DESKTOP).toBeTruthy();
 
 		await page.evaluate(() => window.aniGui.openExternal('https://example.invalid/bridge'));
