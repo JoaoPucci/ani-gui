@@ -81,7 +81,9 @@ function englishFor(key: string): string {
 function failingSearch(failure: AniErrorPayload = FAILURE) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
-		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+			HttpResponse.json<KitsuAnimeRef[]>([])
+		),
 		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/kitsu/search/page`, () => errorAnswer(502, failure))
 	);
