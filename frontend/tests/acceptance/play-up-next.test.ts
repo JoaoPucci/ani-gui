@@ -1075,7 +1075,9 @@ const OPENED_ON = { id: '9001', title: 'Long Saga', episodes: 24 };
 
 /**
  * Opens Long Saga's episode 12, then moves the page, reused, to Second
- * Arc's finale (episode 12 of 12), as back/forward can: the page keeps
+ * Arc's finale (episode 12 of 12). The route mounts a new page for
+ * another show (`routes/play/[id]/+layout.svelte`); this drives the page
+ * itself through the id change its guard still covers: the page keeps
  * the detail and availability it read at mount, Long Saga's, while the
  * franchise is read again for Second Arc.
  */

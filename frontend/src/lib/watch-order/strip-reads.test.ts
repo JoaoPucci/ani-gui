@@ -71,8 +71,8 @@ describe('stripReads', () => {
 	});
 
 	it('reads the rows again once a walk still out lands, for a link answered meanwhile', async () => {
-		// A revisit draws its remembered answer at once and walks again
-		// behind it; the walk's rows may have been read before the link.
+		// The walk's rows may have been read before the link, whatever is
+		// drawn while it is out (nothing on a first visit).
 		const { reads, rereads, drawn } = harness('remembered');
 		const walk = deferred<string | null>();
 		reads.walk(walk.promise);
@@ -147,6 +147,32 @@ describe('stripReads', () => {
 		rereads[0].read.answer(null);
 		await settle();
 		expect(drawn()).toBe('remembered');
+	});
+
+	it('names the visit an answer is drawn for, re-reads included', async () => {
+		// The page keeps what it draws under the show of the visit it
+		// belongs to, not whichever show it has moved to since.
+		const keys: (string | undefined)[] = [];
+		const rereads: ReturnType<typeof deferred<string | null>>[] = [];
+		let drawn: string | null = null;
+		const reads = stripReads<string>({
+			current: () => drawn,
+			reread: () => {
+				const read = deferred<string | null>();
+				rereads.push(read);
+				return read.promise;
+			},
+			show: (d, key) => {
+				drawn = d;
+				keys.push(key);
+			}
+		});
+		reads.walk(Promise.resolve('show A'), 'A');
+		await settle();
+		reads.linked();
+		rereads[0].answer('show A after the link');
+		await settle();
+		expect(keys).toEqual(['A', 'A']);
 	});
 
 	it('reads nothing again with nothing drawn and no walk out', async () => {
