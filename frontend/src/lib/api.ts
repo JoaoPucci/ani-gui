@@ -486,6 +486,17 @@ export interface StandardProgram {
 	supported: boolean;
 }
 
+/** Ask the backend what the External player command becomes when the
+ *  player's type changes from `from` to `to`. */
+export function externalPlayerCommandAfterKindChange(
+	command: string,
+	from: ExternalPlayerKind,
+	to: ExternalPlayerKind
+): Promise<string> {
+	const q = new URLSearchParams({ command, from, to });
+	return getJson<string>(`/api/external-player/after-kind-change?${q}`);
+}
+
 /** Ask the backend where a type's standard program is installed. */
 export function externalPlayerStandard(kind: ExternalPlayerKind): Promise<StandardProgram> {
 	return getJson<StandardProgram>(`/api/external-player/standard?kind=${encodeURIComponent(kind)}`);

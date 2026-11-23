@@ -11,6 +11,7 @@
 	import { resolve } from '$app/paths';
 	import {
 		appInfo,
+		externalPlayerCommandAfterKindChange,
 		externalPlayerStandard,
 		historyClear,
 		imageCacheClear,
@@ -25,7 +26,7 @@
 	import { failed, landed, type ErrorBlock } from '$lib/settings/error-block';
 	import { describeError } from '$lib/play/error-copy';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
-	import { commandAfterKindChange } from '$lib/settings/player-command';
+	import { createKindChange } from '$lib/settings/kind-change';
 	import {
 		createStandardLookup,
 		standardHint,
@@ -168,16 +169,11 @@
 		iina: m.settings_external_player_kind_iina,
 		custom: m.settings_external_player_kind_custom
 	};
+	// What the command becomes is the backend's to say
+	// ($lib/settings/kind-change.ts).
+	const changeKind = createKindChange(externalPlayerCommandAfterKindChange, () => cfg, persist);
 	function setExternalPlayerKind(kind: ExternalPlayerKind) {
-		if (!cfg) return;
-		// The command follows the type while it is the previous type's
-		// bare command ($lib/settings/player-command.ts).
-		const external_player = commandAfterKindChange(
-			cfg.external_player,
-			cfg.external_player_kind,
-			kind
-		);
-		void persist({ ...cfg, external_player_kind: kind, external_player });
+		void changeKind(kind);
 	}
 	function setExternalPlayerCustomArgs(value: string) {
 		if (!cfg) return;
