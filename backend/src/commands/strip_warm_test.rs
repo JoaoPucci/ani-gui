@@ -419,7 +419,9 @@ async fn a_warmed_strip_keeps_its_finished_shows_stills_for_the_week() {
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
     // Each show's detail held, finished long enough ago to have settled,
-    // as the cards' own matches leave it.
+    // as a launch whose detail rows are still cached leaves it. A warm on
+    // a cold cache runs before the cards' matches have read any detail,
+    // so its stills are kept the day (`show_settled::held_settled`).
     for id in &ids {
         let body = serde_json::json!({
             "id": id, "canonical_title": "Show", "titles": {}, "abbreviated_titles": [],

@@ -88,10 +88,12 @@ proptest::proptest! {
 // — A show's episode pages follow its status too ————————————————————
 //
 // The pages carry no status of their own; the show's detail row does,
-// and a card or the detail page reads it before the episodes. A page is
-// kept a week only while that row is held and says the show finished:
-// an airing, upcoming or unannounced show's page, and one written with
-// no detail held to say, is kept a day.
+// when one is held as the page is written (nothing orders the detail
+// read ahead of the episodes). A page is kept a week only while that
+// row is held, says the show finished, and the show has settled, a
+// week past its end date: an airing, upcoming or unannounced show's
+// page, a just-finished one's, and one written with no detail held to
+// say, is kept a day.
 
 const EPISODES_FIXTURE: &[u8] =
     include_bytes!("../../../tests/fixtures/kitsu/episodes_one_piece.json");
