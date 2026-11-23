@@ -27,6 +27,7 @@
 	import StripFranchiseLink from '$lib/watch-order/StripFranchiseLink.svelte';
 	import StripTrio from '$lib/watch-order/StripTrio.svelte';
 	import { loadWatchOrder, rereadRows, type WatchOrderData } from '$lib/watch-order/loader';
+	import { stripReads } from '$lib/watch-order/strip-reads';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { localDay } from '$lib/watch-order/entry';
 	import { numeral } from '$lib/watch-order/meta';
@@ -510,6 +511,13 @@
 	// we don't propose an episode that doesn't exist yet.
 	let resumeEntry = $state<HistoryEntry | null>(null);
 	let watchOrderData = $state<WatchOrderData | null>(null);
+	// The strip's walk and its rows read again after a history link
+	// ($lib/watch-order/strip-reads), on the shown visit's reads.
+	const strip = stripReads<WatchOrderData>({
+		current: () => watchOrderData,
+		reread: (shown) => showReads.keep(rereadRows(shown, watchOrderSources, showReads.signal)),
+		show: (d) => (watchOrderData = d)
+	});
 	// Only the latest resume lookup started answers ($lib/detail/resume-lookup).
 	const resumeLookups = latestLookup();
 	/** The resume row of `showId`, read under its visit `reads`
@@ -1222,9 +1230,11 @@
 		// The visit's end cancels both, so a walk Kitsu is slow to
 		// answer does not hold an API connection for nobody, and an
 		// ended visit's answer is never drawn.
-		void reads.keep(loadWatchOrder(currentId, watchOrderSources, reads.signal)).then((w) => {
-			if (id === currentId) watchOrderData = w;
-		});
+		strip.walk(
+			reads
+				.keep(loadWatchOrder(currentId, watchOrderSources, reads.signal))
+				.then((w) => (id === currentId ? w : null))
+		);
 		void reads
 			.keep(detailServed)
 			.then((d) => {
@@ -1799,13 +1809,8 @@
 		const reads = showReads;
 		readShowResume(id, reads, kitsuAnimeDetail(id, { signal: reads.signal }));
 		// The strip counts the rows the link wrote too; its franchise
-		// is the same ($lib/watch-order/loader).
-		const shown = watchOrderData;
-		if (shown) {
-			void reads.keep(rereadRows(shown, watchOrderSources, reads.signal)).then((w) => {
-				if (watchOrderData === shown) watchOrderData = w;
-			});
-		}
+		// is the same ($lib/watch-order/strip-reads).
+		strip.linked();
 	});
 	// The page going cancels the show question's reads still out; a link
 	// still out is saved all the same.

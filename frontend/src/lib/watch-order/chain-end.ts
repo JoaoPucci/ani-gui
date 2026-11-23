@@ -50,7 +50,8 @@ export function chainEndCard(
 	const run = drawn ? runOf(drawn) : null;
 	const entry = run?.entries.find((e) => e.id === id);
 	const main = runOf(data.franchise);
-	// A reading of another show (the page reused for a new one) says
+	// A reading of another show (a page that sees its id change, which
+	// the route's remount for another show leaves as a guard) says
 	// nothing about this entry, as for the Up next card.
 	const own = self?.id === id ? self : null;
 	if (!entry || !main || !isFinale(own ?? entry, episode)) return null;

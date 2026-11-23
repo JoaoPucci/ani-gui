@@ -55,9 +55,12 @@ export function upNextShown(state: UpNextState): boolean {
 /**
  * Whether the player's next-episode step is open: the next arrow, and
  * auto-play at the video's end. `hasNext` is the step the episode
- * counts allow; `countsStale` says they were read for another show (the
- * page reused for a new one); `finale` says this show's franchise found
- * the episode its finale (`playerUpNext` found a card to show).
+ * counts allow; `countsStale` says they were read for another show (a
+ * page that sees its id change: the route mounts a new page for another
+ * show, `routes/play/[id]/+layout.svelte`, but the guard predates that
+ * and still holds for any page that does); `finale` says this show's
+ * franchise found the episode its finale (`playerUpNext` found a card
+ * to show).
  */
 export function stepOpen(hasNext: boolean, countsStale: boolean, finale: boolean): boolean {
 	// A step counted for another show is not this show's at the finale
