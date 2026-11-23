@@ -647,7 +647,8 @@ on (`electron/e2e/flags/`). No release script enables it
 (`tests/arch/test_run_key.sh`, both platforms), and the e2e workflow
 builds the release-shaped Linux package, and the Windows backend as a
 Windows release builds it, in jobs of their own and checks that
-neither backend contains the key. `ANI_GUI_TEST_FLAGS_FILE` means nothing
+neither backend contains the key. The Packages workflow, which builds
+the release files, makes the same check on each package's backend. `ANI_GUI_TEST_FLAGS_FILE` means nothing
 without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
 it by watching the network: a test run never asks for
 raw.githubusercontent.com, and a normal launch does. Development runs

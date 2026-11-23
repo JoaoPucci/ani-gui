@@ -4,7 +4,7 @@ name: 'e2e (Playwright + Electron)'
 # Electron app, then drives the packaged binary via `_electron.launch()`
 # under Xvfb.
 #
-# Two packages, one per job, built in parallel:
+# Three jobs, built in parallel: two packages and a Windows backend.
 #
 #   - `e2e` drives the e2e package (`pnpm run package:e2e`): the
 #     release's Linux package except that its backend is built with the
@@ -18,8 +18,9 @@ name: 'e2e (Playwright + Electron)'
 #     linked, and holding no test-run key.
 #   - `release-backend-windows` builds the Windows backend with the
 #     script a Windows release runs (`pnpm run build:backend`) and
-#     checks it holds no test-run key. The Windows installer is not
-#     built in CI.
+#     checks it holds no test-run key. This workflow builds no Windows
+#     installer: the Packages workflow (packages.yml) does, and searches
+#     its backend for the key too.
 #
 # Always fires; the `filter` job decides whether downstream steps run
 # the real pipeline or no-op. See rust.yml for the design rationale.

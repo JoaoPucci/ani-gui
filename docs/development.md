@@ -507,8 +507,12 @@ key nor the probe, and checks that the e2e package's backend does hold
 the key, so the search is one that can find it. Another parallel job,
 on Windows, builds the backend with the script a Windows release runs
 (`pnpm run build:backend`) and makes the same key and probe search on
-it, and checks that it names no VC++ runtime DLL. The Windows installer
-is not built in CI.
+it, and checks that it names no VC++ runtime DLL. The Packages
+workflow (`.github/workflows/packages.yml`), which builds the release
+files, makes the same key and probe search on the backend of each
+package it builds: the Windows installer's and the AppImage and
+`.deb`'s. `tests/arch/test_run_key.sh` holds that all four searches
+exist.
 
 **Declaring a flag** (for the change that adds one). Declare it as a
 `pub const FlagDecl` of kind `FlagKind::Rollout`, list it in
