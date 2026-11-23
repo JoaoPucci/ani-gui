@@ -15,7 +15,7 @@
 		imageProxyUrl,
 		kitsuSearchPage,
 		kitsuTopRated,
-		kitsuTrending,
+		kitsuTrendingAnilist,
 		settingsGet,
 		type Config,
 		type KitsuAnimeRef,
@@ -25,6 +25,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import SearchProgress from '$lib/components/SearchProgress.svelte';
 	import Strip from '$lib/components/Strip.svelte';
+	import SkeletonRow from '$lib/components/SkeletonRow.svelte';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
@@ -49,6 +50,7 @@
 	import { cardPositions, scrollToAnchor } from '$lib/search/scroll-anchor';
 	import { followAddress } from '$lib/search/follow-address';
 	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
+	import { discoveryView, loadDiscoveryRows, LOADING, type RowLoad } from '$lib/rows/discovery';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { SEARCH_TYPE_FILTERS } from '$lib/search/type-filters';
 	import { resultCount } from '$lib/search/result-count';
@@ -75,10 +77,17 @@
 		void tick().then(() => sentinelWatch?.remeasure());
 	}
 
-	// Discovery rows for the empty state — same data as the home page so
-	// users have something to browse when they arrive without a query.
-	let trending = $state<KitsuAnimeRef[] | null>(null);
-	let topRated = $state<KitsuAnimeRef[] | null>(null);
+	// Discovery rows for the empty state, so users have something to
+	// browse when they arrive without a query. Trending is the home
+	// page's AniList list (kitsuTrendingAnilist, cached by the backend
+	// for an hour) and is drawn first, Top rated below it; what each
+	// slot shows is decided in $lib/rows/discovery.ts.
+	let rowLoads = $state<[RowLoad<KitsuAnimeRef>, RowLoad<KitsuAnimeRef>]>([LOADING, LOADING]);
+	const discovery = $derived(discoveryView(rowLoads));
+	const trendingSlot = $derived(discovery.slots[0]);
+	const topRatedSlot = $derived(discovery.slots[1]);
+	// Both rows loading or shown: what the page caption names is there.
+	const bothRowsThere = $derived(discovery.slots.every((slot) => slot.kind !== 'absent'));
 
 	// User settings — only `mode` matters here, used to scope the
 	// availability filter to the user's sub/dub preference. Settings
@@ -155,6 +164,10 @@
 	// focus moves to the folio's anchor rather than falling to the page
 	// body ($lib/search/keep-focus.ts).
 	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => focusAnchor);
+	// The same for the discovery notice's Try again, which leaves as the
+	// rows start loading again.
+	let discoveryAnchor = $state<HTMLElement | null>(null);
+	const keepFocusOnPage = (node: HTMLElement) => keepFocus(node, () => discoveryAnchor);
 
 	function sentinel(node: HTMLElement) {
 		const watch = watchSentinel(node, (inReach) => (reach = measured(inReach)));
@@ -177,31 +190,33 @@
 		searchRunner.stop();
 	});
 
-	onMount(async () => {
-		// Resolve settings before kicking off the discovery requests
-		// so the filter calls below see the user's actual mode. Naive
-		// parallel start would race — trending could resolve first
-		// and call filterAvailable(t, pickAvailabilityMode(null))
-		// which falls back to 'sub' and never reflects the real mode.
-		// settingsGet is a single fast IPC; awaiting once on mount is
-		// cheap.
-		try {
-			config = await pageReads.keep(settingsGet({ signal: pageReads.signal }));
-		} catch {
-			// Settings fetch failed — fall through with config null;
-			// pickAvailabilityMode handles that with 'sub' default.
-		}
-		const mode = pickAvailabilityMode(config);
+	onMount(() => void loadDiscovery());
+
+	/** Ask for both discovery rows, each landing in its own slot
+	 *  ($lib/rows/discovery: loadDiscoveryRows). Also the notice's
+	 *  Try again. Every read goes through the page's visit, so none
+	 *  lands after the page has gone. */
+	function loadDiscovery() {
+		rowLoads = [LOADING, LOADING];
 		const signal = pageReads.signal;
-		void pageReads
-			.keep(kitsuTrending({ signal }).then((t) => filterAvailable(t, mode, { signal })))
-			.then((t) => (trending = t))
-			.catch(() => (trending = []));
-		void pageReads
-			.keep(kitsuTopRated({ signal }).then((t) => filterAvailable(t, mode, { signal })))
-			.then((t) => (topRated = t))
-			.catch(() => (topRated = []));
-	});
+		return loadDiscoveryRows<KitsuAnimeRef, Config>({
+			config: () => config,
+			readConfig: () => pageReads.keep(settingsGet({ signal })),
+			keepConfig: (read) => (config = read),
+			pickMode: pickAvailabilityMode,
+			rows: [
+				(mode) =>
+					pageReads.keep(
+						kitsuTrendingAnilist({ signal }).then((t) => filterAvailable(t, mode, { signal }))
+					),
+				(mode) =>
+					pageReads.keep(
+						kitsuTopRated({ signal }).then((t) => filterAvailable(t, mode, { signal }))
+					)
+			],
+			onRow: (index, row) => (rowLoads[index] = row)
+		});
+	}
 
 	// Drive the search off the URL ?q=… param. The global topbar from
 	// +layout.svelte writes that param on submit; this page reacts to
@@ -305,7 +320,7 @@
 	const searchRunner = createSearchRunner({
 		searchPage: (q, offset, order, signal) => kitsuSearchPage(q, offset, order, { signal }),
 		getConfig: async () => {
-			// Same race as onMount: a fast ?q= deeplink can fire before
+			// Same race as loadDiscoveryRows: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
 			// the result so DUB users never search under the 'sub'
 			// fallback twice.
@@ -421,7 +436,20 @@
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				<span class="eyebrow-value">{m.search_eyebrow_value_empty()}</span>
 			</p>
-			<p class="eyebrow-caption">{m.search_empty_caption()}</p>
+			<!-- Names both rows below, so it is hidden, from sight and from
+			     screen readers, when either is not there: dropped, or both
+			     gone behind the notice. It stays in the page with its words,
+			     so it keeps its height (wrapped or not) and a row already
+			     shown below never moves up, and the live region it sits in
+			     sees no change of text (it is announced again only when it
+			     returns, after a retry has loaded the rows). -->
+			<p
+				class="eyebrow-caption"
+				class:caption-hidden={!bothRowsThere}
+				aria-hidden={bothRowsThere ? undefined : 'true'}
+			>
+				{m.search_empty_caption()}
+			</p>
 		{/if}
 	</section>
 
@@ -509,23 +537,57 @@
 			</p>
 		</div>
 	{:else if !submitted}
-		<!-- No query yet: surface the same discovery rows the home page uses. -->
-		{#if trending && trending.length > 0}
+		<!-- No query yet: the discovery rows. A row keeps a skeleton in
+		     its place until every row above it has settled, so a row on
+		     screen is never pushed down; a row that failed or came back
+		     empty is dropped ($lib/rows/discovery). -->
+		<!-- Mounted with the rows, so a notice that appears once the rows
+		     have been asked for lands in a live region already in place
+		     and is announced. Focus on its Try again, which leaves as the
+		     rows load again, moves to the silent anchor before it. -->
+		<span class="discovery-anchor" tabindex="-1" bind:this={discoveryAnchor}></span>
+		<div role="status">
+			{#if discovery.nothing}
+				<div class="state state-empty">
+					<p class="state-headline">{m.search_discovery_nothing_headline()}</p>
+					<p class="state-detail">{m.search_discovery_nothing_detail()}</p>
+					<button
+						type="button"
+						class="folio-action state-action"
+						use:keepFocusOnPage
+						onclick={() => loadDiscovery()}
+					>
+						{m.search_discovery_retry()}
+					</button>
+				</div>
+			{/if}
+		</div>
+		{#if trendingSlot.kind === 'skeleton'}
+			<SkeletonRow
+				eyebrow={m.search_discovery_trending_eyebrow()}
+				caption={m.search_discovery_trending_caption_loading()}
+			/>
+		{:else if trendingSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_trending_eyebrow()}
 				caption={m.search_discovery_trending_caption()}
 			>
-				{#each trending as hit (hit.id)}
+				{#each trendingSlot.items as hit (hit.id)}
 					<PosterCard anime={hit} />
 				{/each}
 			</Strip>
 		{/if}
-		{#if topRated && topRated.length > 0}
+		{#if topRatedSlot.kind === 'skeleton'}
+			<SkeletonRow
+				eyebrow={m.search_discovery_top_rated_eyebrow()}
+				caption={m.search_discovery_top_rated_caption_loading()}
+			/>
+		{:else if topRatedSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_top_rated_eyebrow()}
 				caption={m.search_discovery_top_rated_caption()}
 			>
-				{#each topRated as hit (hit.id)}
+				{#each topRatedSlot.items as hit (hit.id)}
 					<PosterCard anime={hit} />
 				{/each}
 			</Strip>
@@ -743,6 +805,9 @@
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
 		color: var(--bone-300);
+	}
+	.eyebrow-caption.caption-hidden {
+		visibility: hidden;
 	}
 
 	/* — Grid: dense, never centered, never gappy. */
@@ -1118,6 +1183,16 @@
 		font-size: var(--type-body);
 		color: var(--bone-300);
 		max-inline-size: 60ch;
+	}
+	.state-action {
+		margin-block-start: var(--space-4);
+	}
+	.discovery-anchor {
+		display: block;
+		block-size: 0;
+	}
+	.discovery-anchor:focus {
+		outline: none;
 	}
 
 	/* Sort + filter controls — match settings' .field grouping so

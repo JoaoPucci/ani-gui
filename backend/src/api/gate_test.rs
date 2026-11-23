@@ -72,7 +72,7 @@ const ROUTES: &[(&str, &str, &str)] = &[
     ("GET", "/api/settings", ""),
     ("PUT", "/api/settings", "{}"),
     ("POST", "/api/kitsu/search", r#"{"query":"x"}"#),
-    ("GET", "/api/kitsu/trending", ""),
+    ("GET", "/api/kitsu/trending-anilist", ""),
     ("GET", "/api/image?url=https%3A%2F%2Fe.example%2Fa.jpg", ""),
     ("GET", "/api/play/stream?title=a&episode=1&mode=sub", ""),
     ("GET", "/api/download/stream?title=a&episode=1&mode=sub", ""),
