@@ -74,7 +74,14 @@
  * spread around the element's box, and a `::before` chip's box from its
  * size, centred on its control as the window buttons place it: a
  * pseudo-element has no box a script can read. Every API request is
- * stubbed.
+ * stubbed, but for the player test's play and stream, which run on the
+ * backend's replay of a seeded row (see real-play.ts).
+ *
+ * A ring on an element inside a control is found only through a rule
+ * that sets its outline or shadow under `:focus-visible`: one drawn
+ * through `:focus-within`, or by a rule that changes only an outline's
+ * colour, width or offset, is not seen. Rings under the mouse are not
+ * either: the walk keeps the pointer in the window's corner.
  */
 import { type CDPSession, type ElectronApplication, type Page } from '@playwright/test';
 import { expect, test } from './policy-guard';
@@ -601,7 +608,7 @@ function assertStops(
 	expect(
 		stops.length,
 		`${at}: the keyboard reached controls (${stops.map((s) => s.name).join(' | ')})`
-	).toBeGreaterThan(2);
+	).toBeGreaterThan(3);
 	const kinds = new Set(stops.map((s) => s.kind));
 	for (const k of required) {
 		expect.soft(kinds.has(k), `${at}: the walk reached a ${k} control`).toBe(true);
@@ -611,6 +618,15 @@ function assertStops(
 			.soft(
 				stops.some((s) => s.hits.includes(sel)),
 				`${at}: the walk reached ${sel} (${stops.map((s) => s.name).join(' | ')})`
+			)
+			.toBe(true);
+	}
+	// What the walk was sent to reach shows a ring.
+	for (const s of stops.filter((s) => s.hits.length > 0)) {
+		expect
+			.soft(
+				s.drawn || s.chipRing !== null || s.childRings.length > 0,
+				`${at}: ${s.name} shows a ring`
 			)
 			.toBe(true);
 	}
@@ -926,7 +942,10 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 					body: ''
 				});
 			}
-			if (p === '/api/download/default-dir') return j('/tmp/ani-gui-e2e-downloads');
+			// Every download request is stubbed: nothing is written there.
+			if (p === '/api/download/default-dir') {
+				return j(path.join(os.tmpdir(), 'ani-gui-e2e-downloads'));
+			}
 			return r.fallback();
 		});
 		await remount(page);
@@ -1028,6 +1047,14 @@ async function mediaServer(): Promise<{ origin: string; close: () => void }> {
 test("the rings on the player's skip button and its guess note are drawn once and whole", async () => {
 	test.setTimeout(180_000);
 	const media = await mediaServer();
+	try {
+		await walkPlayer(media.origin);
+	} finally {
+		media.close();
+	}
+});
+
+async function walkPlayer(origin: string) {
 	const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ani-gui-focus-rings-player-'));
 	writeReplayConfig(profile, 'locale = "en"\n');
 	const app = await launchPackagedApp(
@@ -1047,7 +1074,7 @@ test("the rings on the player's skip button and its guess note are drawn once an
 		const play = await routeRealPlay(page, {
 			profile,
 			settings: { locale: 'en', use_custom_player_controls: true },
-			stream: { upstreamUrl: `${media.origin}/master.m3u8`, mediaKind: 'hls' }
+			stream: { upstreamUrl: `${origin}/master.m3u8`, mediaKind: 'hls' }
 		});
 		// The opening runs from the first second, so the skip button shows;
 		// the session is a guess, so the note under the player asks about
@@ -1073,22 +1100,24 @@ test("the rings on the player's skip button and its guess note are drawn once an
 		await playFromContinue(page, play);
 		const skip = page.locator('.player-skip-btn');
 		await expect(skip).toBeVisible({ timeout: 30_000 });
-		// Held inside the button's window while the walk runs.
-		await page.evaluate(() => {
-			const video = document.querySelector('video');
-			if (!video) return;
-			video.pause();
-			video.currentTime = 2;
-		});
-		await expect(skip).toBeVisible();
+		const hold = () =>
+			page.evaluate(() => {
+				const video = document.querySelector('video');
+				if (!video) return;
+				video.pause();
+				video.currentTime = 2;
+			});
+		await hold();
 		await expect(page.locator('.guess-slip .act').first()).toBeVisible({ timeout: 15_000 });
 		const needs = ['.player-skip-btn', '.guess-slip .act', '.guess-slip .hide'];
 		for (const key of ['Tab', 'Shift+Tab'] as const) {
+			// Held inside the button's window while the walk runs.
+			await hold();
+			await expect(skip).toBeVisible();
 			const at = `the player, ${key}`;
 			assertStops(await walk(page, key, { selectors: needs }), at, [], needs);
 		}
 	} finally {
 		await stopApp(app);
-		media.close();
 	}
-});
+}
