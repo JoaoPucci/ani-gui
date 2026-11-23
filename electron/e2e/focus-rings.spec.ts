@@ -81,8 +81,8 @@
  * smallest and the maximized windows are not walked in that theme.
  *
  * Home's hero with nothing to feature and with trending unanswered is
- * walked too, at the desktop size, under the mouse and in forced
- * colours; the player test types a number so the episode field's Go
+ * walked too, forward only, at the desktop size, under the mouse and in
+ * forced colours; the player test types a number so the episode field's Go
  * button is reached.
  *
  * What it does not reach: the Account, About and Debug pages, and the
@@ -108,11 +108,13 @@
  * colour, width or offset, is not seen.
  *
  * Under the mouse: at the desktop size, the forward walks of the four
- * pages (and of the show's page with an episode typed) rest the mouse
- * on every stop that shows, and a hover style must neither replace its
- * ring nor add a second; the read must find the control under the
- * mouse. Whether a lifted, hovered control's ring stays whole is not
- * checked, and the state tests do not rest the mouse.
+ * pages (and of the show's page with an episode typed), of the hero's
+ * empty and failed states and of the player rest the mouse on every
+ * stop that shows, and a hover style must neither replace its ring nor
+ * add a second; the read must find the control under the mouse.
+ * Whether a lifted, hovered control's ring stays whole is not checked,
+ * and the other state tests (Continue Watching, its link dialog, the
+ * download bar and list) do not rest the mouse.
  */
 import { type CDPSession, type ElectronApplication, type Page } from '@playwright/test';
 import { expect, test } from './policy-guard';
@@ -1445,9 +1447,16 @@ async function walkPlayer(origin: string) {
 				await hold();
 				await expect(skip).toBeVisible();
 				const at = `the player${forced ? ', forced colours' : ''}, ${key}`;
-				const stops = await walk(page, key, { selectors: needs });
+				// Forward, the walk also rests the mouse on every stop.
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, {
+					selectors: needs,
+					hovered: underMouse ? hovered : undefined
+				});
 				if (forced) assertForced(stops, at, [], needs);
 				else assertStops(stops, at, [], needs);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
 			}
 		}
 	} finally {
