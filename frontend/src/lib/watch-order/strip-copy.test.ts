@@ -6,7 +6,6 @@ import {
 	captionText,
 	columnCountText,
 	columnKeyText,
-	emptyColumn,
 	emptyColumnText,
 	seamKeyText,
 	stackPartsText,
@@ -44,19 +43,6 @@ describe('the strip copy', () => {
 
 	it("says nothing under a side story's parents: two parents are not a join", () => {
 		expect(columnCountText('side', 'before', 2, true)).toBeNull();
-	});
-
-	it('says the run starts or ends, or that nothing follows a side story', () => {
-		expect(emptyColumn({ kind: 'run', complete: true }, 'before')).toBe('first');
-		expect(emptyColumn({ kind: 'run', complete: true }, 'after')).toBe('last');
-		expect(emptyColumn({ kind: 'side', complete: true }, 'before')).toBe('first');
-		expect(emptyColumn({ kind: 'side', complete: true }, 'after')).toBe('side_end');
-	});
-
-	it('says nothing in an empty column of a franchise read in part: entries may be missing there', () => {
-		for (const kind of ['run', 'side'] as const)
-			for (const side of ['before', 'after'] as const)
-				expect(emptyColumn({ kind, complete: false }, side)).toBeNull();
 	});
 
 	it('says why a column is empty', () => {

@@ -9,7 +9,7 @@
  * before"/"Released after" there. A side story's parents are its
  * parents in either order.
  */
-import type { WatchOrder } from '$lib/api';
+import type { StripWire, WatchOrder } from '$lib/api';
 
 export type ColumnWord = 'prequel' | 'sequel' | 'parent' | 'released_before' | 'released_after';
 
@@ -33,4 +33,20 @@ function roleWord(order: WatchOrder, kind: 'run' | 'side', before: boolean): Col
 	if (kind === 'side' && before) return 'parent';
 	if (kind === 'run' && order === 'released') return before ? 'released_before' : 'released_after';
 	return before ? 'prequel' : 'sequel';
+}
+
+/** What an empty column says. */
+export type EmptyColumn = 'first' | 'last' | 'side_end';
+
+/**
+ * The text an empty column carries; null for a franchise read in part
+ * (`complete` false), where the column may only be missing its entries.
+ */
+export function emptyColumn(
+	strip: Pick<StripWire, 'kind' | 'complete'>,
+	side: 'before' | 'after'
+): EmptyColumn | null {
+	if (!strip.complete) return null;
+	if (side === 'before') return 'first';
+	return strip.kind === 'side' ? 'side_end' : 'last';
 }

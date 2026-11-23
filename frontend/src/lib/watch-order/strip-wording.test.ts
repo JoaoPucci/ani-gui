@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { relationKey } from './strip-wording';
+import { emptyColumn, relationKey } from './strip-wording';
 
 describe('relationKey', () => {
 	it('names the link by its Kitsu role in link order', () => {
@@ -42,5 +42,20 @@ describe('relationKey', () => {
 				expect(relationKey(o, k, s, c1).word).toBe(relationKey(o, k, s, c2).word);
 			})
 		);
+	});
+});
+
+describe('emptyColumn', () => {
+	it('says the run starts or ends, or that nothing follows a side story', () => {
+		expect(emptyColumn({ kind: 'run', complete: true }, 'before')).toBe('first');
+		expect(emptyColumn({ kind: 'run', complete: true }, 'after')).toBe('last');
+		expect(emptyColumn({ kind: 'side', complete: true }, 'before')).toBe('first');
+		expect(emptyColumn({ kind: 'side', complete: true }, 'after')).toBe('side_end');
+	});
+
+	it('says nothing in an empty column of a franchise read in part: entries may be missing there', () => {
+		for (const kind of ['run', 'side'] as const)
+			for (const side of ['before', 'after'] as const)
+				expect(emptyColumn({ kind, complete: false }, side)).toBeNull();
 	});
 });

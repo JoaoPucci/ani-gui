@@ -5,8 +5,8 @@
  */
 import { m } from '$lib/paraglide/messages';
 import { loopText, numeral } from './meta';
-import type { FranchiseSummary, Seam, StripCaption, StripKind, StripWire } from '$lib/api';
-import type { ColumnKey, ColumnWord } from './strip-wording';
+import type { FranchiseSummary, Seam, StripCaption, StripKind } from '$lib/api';
+import type { ColumnKey, ColumnWord, EmptyColumn } from './strip-wording';
 
 const WORDS: Record<ColumnWord, readonly [() => string, () => string]> = {
 	prequel: [m.watchorder_strip_word_prequel, m.watchorder_strip_word_prequels],
@@ -44,22 +44,6 @@ export function columnCountText(
 	return side === 'before'
 		? m.watchorder_strip_join({ count })
 		: m.watchorder_strip_ways({ count });
-}
-
-/** What an empty column says. */
-export type EmptyColumn = 'first' | 'last' | 'side_end';
-
-/**
- * The text an empty column carries; null for a franchise read in part
- * (`complete` false), where the column may only be missing its entries.
- */
-export function emptyColumn(
-	strip: Pick<StripWire, 'kind' | 'complete'>,
-	side: 'before' | 'after'
-): EmptyColumn | null {
-	if (!strip.complete) return null;
-	if (side === 'before') return 'first';
-	return strip.kind === 'side' ? 'side_end' : 'last';
 }
 
 /** Why a column is empty: the story starts here, or nothing follows yet.

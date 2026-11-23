@@ -33,11 +33,10 @@
 		captionText,
 		columnCountText,
 		columnKeyText,
-		emptyColumn,
 		emptyColumnText,
 		seamKeyText
 	} from './strip-copy';
-	import { relationKey } from './strip-wording';
+	import { emptyColumn, relationKey } from './strip-wording';
 
 	let { model, order, id }: { model: StripWire; order: WatchOrder; id: string } = $props();
 
