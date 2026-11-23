@@ -56,13 +56,15 @@
 # Both platforms' packaging scripts are covered, Windows's
 # `build:backend` among them. CI also builds each platform's release
 # backend with the release's own script and checks that the binary does
-# not hold the key: on Linux the e2e workflow's release-shaped job
+# not hold the key: in the e2e workflow, the Linux release-shaped job
 # ("The release-shaped backend trusts no test-run key"), with the e2e
 # package's binary checked to hold it, so the search is seen to find
-# it; on Windows a job of its own on windows-latest. This check holds
-# that both jobs exist, build with the release's script and name the
-# right binary (last rule below), not what their steps go on to do.
-# Nothing builds the Windows installer in CI.
+# it, and a Windows job of its own on windows-latest; and in the
+# Packages workflow, after each package the release files come from
+# is built. This check holds that those jobs exist, build with the
+# release's script and name the right binary (last rule below), not
+# what their steps go on to do. The e2e workflow builds no Windows
+# installer; the Packages workflow does.
 
 set -eu
 
@@ -171,12 +173,13 @@ if grep -nE 'cargo build.*(--all-features|--features|[[:space:]]-F)' .github/wor
 fi
 
 # Both platforms' release backends are built in CI and searched for the
-# key. Read with PyYAML: some job runs on windows-latest, builds the
-# backend with electron's own `build:backend` (the script `package:win`
-# runs), and has a later step that names the binary that build makes
-# and the key's file. The Linux side is the release-shaped job's (`pnpm
-# run dist`), whose steps name dist/linux-unpacked's backend the same
-# way. What the steps do with those names is theirs; this holds that
+# key, twice each. Read with PyYAML: for each shape in PLATFORMS, some
+# job runs on that runner, runs that script in electron/, and has a
+# later step that names the binary that build makes and the key's file.
+# The e2e workflow's release-shaped jobs build with `build:backend`
+# (the script `package:win` runs) and `pnpm run dist`, on every pull
+# request the e2e filter takes; the Packages workflow's jobs build the
+# release files themselves, with `package:win` and `package:release`. What the steps do with those names is theirs; this holds that
 # the jobs are there and point at the right binaries. It does not read
 # whether they run or count: a job's or step's `if:` (every step here
 # carries the filter's), `continue-on-error`, the workflow's triggers,
@@ -196,10 +199,14 @@ import glob, sys
 import yaml
 
 KEY = 'backend/tests/fixtures/flags-signature/test-run-key.pub'
-PLATFORMS = {
-    'windows-latest': ('pnpm run build:backend', 'target/release/ani-gui-backend.exe'),
-    'ubuntu-latest': ('pnpm run dist', 'dist/linux-unpacked/resources/ani-gui-backend'),
-}
+# (runner, build, binary): the e2e workflow's release-shaped jobs, and
+# the Packages workflow's jobs, whose packages are the release files.
+PLATFORMS = [
+    ('windows-latest', 'pnpm run build:backend', 'target/release/ani-gui-backend.exe'),
+    ('ubuntu-latest', 'pnpm run dist', 'dist/linux-unpacked/resources/ani-gui-backend'),
+    ('windows-latest', 'pnpm run package:win', 'target/release/ani-gui-backend.exe'),
+    ('ubuntu-24.04', 'pnpm run package:release', 'dist/linux-unpacked/resources/ani-gui-backend'),
+]
 
 
 def checks(job, build, binary):
@@ -217,12 +224,12 @@ for path in sorted(glob.glob('.github/workflows/*.yml')):
     with open(path, encoding='utf-8') as f:
         doc = yaml.safe_load(f) or {}
     for job in (doc.get('jobs') or {}).values():
-        for runner, (build, binary) in PLATFORMS.items():
+        for shape in PLATFORMS:
+            runner, build, binary = shape
             if job.get('runs-on') == runner and checks(job, build, binary):
-                found.add(runner)
-missing = sorted(set(PLATFORMS) - found)
-for runner in missing:
-    build, binary = PLATFORMS[runner]
+                found.add(shape)
+missing = [shape for shape in PLATFORMS if shape not in found]
+for runner, build, binary in missing:
     print(f'no {runner} job runs `{build}` in electron/ and then searches {binary} for the test-run key', file=sys.stderr)
 sys.exit(1 if missing else 0)
 PY
