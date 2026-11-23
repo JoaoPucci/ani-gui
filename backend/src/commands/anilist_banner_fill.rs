@@ -55,3 +55,11 @@ pub(crate) async fn banner_for_show(
 fn shared_key(lane: &str, kitsu_id: &str) -> String {
     format!("{lane}\u{0}{kitsu_id}")
 }
+
+/// How many callers wait on `kitsu_id`'s banner lookup now, beside the
+/// one running it.
+#[cfg(test)]
+pub(crate) fn sharing(state: &AppState, kitsu_id: &str, anilist_base: Option<&str>) -> usize {
+    let lane = crate::commands::strip_warm::fill_lane(state, anilist_base);
+    BANNERS_IN_FLIGHT.sharing(&shared_key(&lane, kitsu_id))
+}

@@ -204,7 +204,9 @@ async fn a_warm_skips_what_the_cache_already_holds() {
 #[tokio::test]
 async fn a_warm_whose_caller_left_sends_nothing_more() {
     // Home left: the warm's request is dropped, and so is every lookup
-    // only it was waiting on.
+    // only it was waiting on. The gate keeps half a minute between
+    // requests, so the warm's second request waits there when Home
+    // leaves.
     let (ids, _) = strip();
     let kitsu = serve(Kitsu, "GET").await;
     let anilist = serve(
@@ -216,20 +218,26 @@ async fn a_warm_whose_caller_left_sends_nothing_more() {
     .await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
-    let _gate = crate::meta::anilist_gate::share_for_tests(
+    let gate = crate::meta::anilist_gate::share_for_tests(
         &base,
         crate::meta::anilist_gate::Pace {
-            min_gap: Duration::from_secs(2),
-            background_wait: Duration::from_secs(5),
+            min_gap: Duration::from_secs(30),
+            background_wait: Duration::from_secs(60),
             ..crate::meta::anilist_gate::ANILIST
         },
     );
-    let left = tokio::time::timeout(
-        Duration::from_millis(400),
-        warm_strip(&state, &ids, Some(&base)),
-    );
-    assert!(left.await.is_err(), "the warm was still out");
-    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let queued = crate::held::until("the warm's next request waits for its turn", || {
+        gate.waiting() > 0
+    });
+    tokio::select! {
+        () = warm_strip(&state, &ids, Some(&base)) => panic!("the warm ended inside the gap"),
+        () = queued => {}
+    }
+    crate::held::until("the warm's requests leave the queue", || {
+        gate.waiting() == 0
+    })
+    .await;
+    assert_eq!(gate.let_go().len(), 1, "requests sent for nobody");
     let asked = asked_of(&anilist).await;
     assert!(asked.len() <= 1, "requests sent for nobody: {asked:?}");
 }
@@ -364,24 +372,38 @@ async fn a_warmed_banner_since_found_gone_is_forgotten_and_asked_again() {
 
 #[tokio::test]
 async fn a_card_reading_its_detail_while_the_warm_asks_for_its_banner_shares_that_lookup() {
-    // The warm's banner page is slow to answer. A card whose detail is
-    // read while it is out takes the warm's answer instead of asking
-    // AniList for its banner on its own.
+    // The warm's banner page is held. A card whose detail is read while
+    // it is out takes the warm's answer instead of asking AniList for
+    // its banner on its own.
     let (ids, fake) = strip();
     let kitsu = serve(Kitsu, "GET").await;
     let anilist = wiremock::MockServer::start().await;
+    let (hold, held) = crate::held::gate();
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .respond_with(SlowBanners(fake.clone(), Duration::from_millis(600)))
+        .respond_with(HeldBanners(hold, fake.clone()))
         .mount(&anilist)
         .await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
     let warm = warm_strip(&state, &ids, Some(&base));
     let card = async {
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, &ids[0], Some(&base))
-            .await
-            .expect("a detail")
+        held.asked().await;
+        let mut card = std::pin::pin!(
+            crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(
+                &state,
+                &ids[0],
+                Some(&base)
+            )
+        );
+        let joined = crate::held::until("the card waits on the warm's banner lookup", || {
+            crate::commands::anilist_banner_fill::sharing(&state, &ids[0], Some(&base)) > 0
+        });
+        tokio::select! {
+            _ = &mut card => panic!("the card read its detail before the warm's banner answered"),
+            () = joined => {}
+        }
+        held.release();
+        card.await.expect("a detail")
     };
     let ((), detail) = tokio::join!(warm, card);
     assert_eq!(
@@ -396,16 +418,15 @@ async fn a_card_reading_its_detail_while_the_warm_asks_for_its_banner_shares_tha
     );
 }
 
-/// The stand-in answering banner queries after `delay`.
-struct SlowBanners(FakeAniList, Duration);
+/// The stand-in answering banner queries once the test lets them
+/// through.
+struct HeldBanners(crate::held::Hold, FakeAniList);
 
-impl wiremock::Respond for SlowBanners {
+impl wiremock::Respond for HeldBanners {
     fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
-        let answer = self.0.respond(request);
         if String::from_utf8_lossy(&request.body).contains("bannerImage") {
-            answer.set_delay(self.1)
-        } else {
-            answer
+            self.0.wait_blocking();
         }
+        self.1.respond(request)
     }
 }
