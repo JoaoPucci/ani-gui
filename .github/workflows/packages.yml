@@ -8,11 +8,12 @@ name: 'Packages'
 #     tag or commit, it uploads the three packages as artifacts with a
 #     SHA256SUMS naming them, so they can be installed on a machine
 #     nobody in CI has, and a release can take its files from one run
-#     on its commit. Only a deliberate run uploads: release-style builds
-#     appearing beside a pull request on their own would invite someone
-#     who does not know what they are to install one.
-#   - On every pull request it builds and publishes nothing. The
-#     filter job (tools/packages-filter.sh, which
+#     on its commit. Only a deliberate run uploads the packages:
+#     release-style builds appearing beside a pull request on their own
+#     would invite someone who does not know what they are to install
+#     one.
+#   - On every pull request it publishes nothing. The filter job
+#     (tools/packages-filter.sh, which
 #     tests/bash/arch/packages_filter.bats runs) decides whether the
 #     pull request changed how a package is built or what it installs;
 #     the builds run only then. The `packages-build` job always
@@ -26,9 +27,9 @@ name: 'Packages'
 # on ubuntu-22.04, offline under firejail, and it has to come up. On a
 # pull request the AppImage reaches that job as a one-day artifact
 # under a name of its own, catalog-check-appimage, not as a package
-# to install. Nothing here installs a package or runs the Windows
-# installer, and none is signed, as the hand-built release packages
-# are not.
+# to install. Nothing here installs an ani-gui package or runs the
+# Windows installer, and none is signed, as the hand-built release
+# packages are not.
 on:
   pull_request:
   workflow_dispatch:
@@ -328,7 +329,8 @@ jobs:
       - name: Hand the AppImage to the start-up check
         # A pull request publishes no package; the catalog job still
         # needs the file, on a runner of its own. One day, and a name
-        # that says what it is for.
+        # that says what it is for; re-running the catalog job alone
+        # after that day finds no file, and the whole run is re-run.
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
@@ -359,15 +361,20 @@ jobs:
     # every release: on GitHub's ubuntu-22.04 runner (glibc 2.35), in
     # Xvfb with icewm, under `firejail --net=none`, a window within 30
     # seconds. v0.14.1 failed it, its backend built against a newer
-    # glibc than the catalog's. This runs the same launch on the same
+    # glibc than the catalog's. This runs that launch on the same
     # runner image, directly rather than in a container: firejail
     # inside one cannot make its namespaces and runs the app online.
-    # What the script asks beyond the catalog's own criterion is in
-    # tools/appimage-catalog-check.sh.
+    # tools/appimage-catalog-check.sh says what it asks beyond the
+    # catalog's own criterion, and where its firejail differs from the
+    # build the catalog installs.
+    #
+    # Its apt list has no master-saved cache to restore on most runs
+    # (this workflow runs on master only when started there), so the
+    # timeout leaves room for the runners' slow mirror.
     needs: [filter, linux]
     name: AppImage starts on the catalog's system
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -375,13 +382,13 @@ jobs:
           persist-credentials: false
 
       - name: What the launch needs
-        # The catalog's tools, fuse3 for firejail to mount the
-        # AppImage with, and the libraries Electron loads, most of
-        # which the runner image already has.
+        # The catalog's tools (its test installs libfuse2 too), and the
+        # libraries Electron loads, most of which the runner image
+        # already has.
         uses: ./.github/actions/apt-install
         with:
           packages: >-
-            fuse3 libfuse2 firejail xvfb icewm x11-utils xdotool imagemagick
+            libfuse2 firejail xvfb icewm x11-utils xdotool imagemagick
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0
             libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0
             libcairo2 libasound2 libgtk-3-0 libxss1 libxtst6 libsecret-1-0 fonts-dejavu-core
@@ -436,7 +443,7 @@ jobs:
             exit 1
           fi
           {
-            printf '### Packages\n\nUnsigned, and none installed by CI; the catalog job starts the AppImage. SHA-256:\n\n'
+            printf '### Packages\n\nUnsigned, and none installed by CI. Whether the AppImage started is the result of the catalog job. SHA-256:\n\n'
             # Indented four spaces: a Markdown code block.
             sed 's/^/    /' SHA256SUMS
           } >> "$GITHUB_STEP_SUMMARY"

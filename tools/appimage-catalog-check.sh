@@ -7,9 +7,9 @@
 # The catalog (AppImage/appimage.github.io, code/worker.sh) launches a
 # listed AppImage on GitHub's ubuntu-22.04 runner, glibc 2.35: Xvfb at
 # 800x600 with icewm, `firejail --quiet --noprofile --net=none
-# --appimage`, and a visible window within 30 seconds. This runs the
-# same launch, and is stricter where the catalog's own criterion passes
-# an app that did not start:
+# --appimage`, and a visible window within 30 seconds. This runs that
+# launch, and is stricter where the catalog's own criterion passes an
+# app that did not start:
 #
 #   - the window has to be one of the app's own (class ani-gui): icewm's
 #     taskbar is a visible window from the moment icewm starts;
@@ -24,6 +24,14 @@
 # cannot make a namespace, says so, and runs its command unsandboxed,
 # which would leave the app online while the run read as offline.
 #
+# One difference from the catalog is deliberate: its worker installs a
+# firejail build of its own over the system's (a 2023 Alpine build,
+# made setuid) and sets kernel.unprivileged_userns_clone=1, while this
+# uses the firejail Ubuntu 22.04 ships (0.9.66) and the runner's
+# kernel settings, where unprivileged user namespaces are already on.
+# A failure particular to either firejail build would show in one and
+# not the other; the glibc, the display and the launch are the same.
+#
 # It writes <out-dir>/app.log (everything the app printed),
 # <out-dir>/screen.png (the screen at the verdict) and
 # <out-dir>/xvfb.log. Each failed criterion prints a line beginning
@@ -31,9 +39,9 @@
 # not, and 2 when the environment could not run the check.
 #
 # It needs Xvfb, icewm, xdotool, xdpyinfo (x11-utils), import
-# (imagemagick), firejail and fuse3 (firejail mounts the AppImage with
-# it). .github/workflows/packages.yml installs them and runs this on
-# the AppImage it built.
+# (imagemagick) and firejail, which mounts the AppImage's image itself
+# through a loop device. .github/workflows/packages.yml installs them
+# and runs this on the AppImage it built.
 #
 # What this does NOT check: anything after the first page renders.
 # Playback, search and every other request need the network the
@@ -90,6 +98,10 @@ trap cleanup EXIT
 trap 'exit 2' HUP INT TERM
 
 ldd --version | head -n 1
+firejail --version | head -n 1
+if [ -r /proc/sys/kernel/unprivileged_userns_clone ]; then
+    echo "kernel.unprivileged_userns_clone = $(cat /proc/sys/kernel/unprivileged_userns_clone)"
+fi
 
 net=$(firejail --quiet --noprofile --net=none ls /sys/class/net 2>&1)
 if [ "$net" != lo ]; then
