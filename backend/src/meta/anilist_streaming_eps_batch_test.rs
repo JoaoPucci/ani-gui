@@ -147,6 +147,27 @@ async fn a_mal_id_several_media_record_is_settled_by_its_single_lookup() {
 }
 
 #[tokio::test]
+async fn a_mal_id_several_media_record_is_asked_once_for_every_show_naming_it() {
+    // Two shows name MAL id 1, one with an AniList id beside it: the
+    // single lookup by MAL id goes once, since AniList records media
+    // for the id and no show falls back past it.
+    let fake = FakeAniList {
+        media: vec![media(11, Some(1)), media(12, Some(1))],
+    };
+    let server = serve(fake.clone()).await;
+    let wants = vec![want(Some(1), None), want(Some(1), Some(50))];
+    let got = listings(
+        streaming_listings_batch(&reqwest::Client::new(), &wants, Some(&server.uri())).await,
+    );
+    assert_eq!(got[0], fake.single_path(Some(1), None));
+    assert_eq!(got[1], fake.single_path(Some(1), Some(50)));
+    assert_eq!(
+        asked_of(&server).await,
+        vec![Asked::PageByMal(vec![1]), Asked::ByMal(1)]
+    );
+}
+
+#[tokio::test]
 async fn more_shows_than_a_page_holds_go_in_pages_of_fifty() {
     let fake = FakeAniList {
         media: (1..=60).map(|i| media(1000 + i, Some(i))).collect(),
@@ -304,6 +325,25 @@ fn a_key_two_nodes_answer_is_handed_over() {
     };
     assert!(once.is_empty());
     assert_eq!(several, vec![1]);
+}
+
+#[test]
+fn a_node_that_cannot_be_read_is_handed_to_its_single_lookup() {
+    // AniList may null an entry of one media's list: that show is asked
+    // by its single lookup, which reads the failure for it alone, and
+    // the rest of the page stands.
+    let body = r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[
+        {"idMal":1,"episodes":1,"status":"FINISHED","streamingEpisodes":[null]},
+        {"idMal":2,"episodes":1,"status":"FINISHED","streamingEpisodes":[]},
+        {"idMal":3,"episodes":"x","status":"FINISHED","streamingEpisodes":[]}
+    ]}}}"#;
+    let Page::Whole((once, several)) =
+        parse_streaming_page(body.as_bytes(), Space::Mal).expect("parses")
+    else {
+        panic!("a whole page");
+    };
+    assert_eq!(once.keys().copied().collect::<Vec<_>>(), vec![2]);
+    assert_eq!(several, vec![1, 3]);
 }
 
 #[test]

@@ -154,3 +154,7 @@ impl Drop for Closing {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "anilist_streaming_eps_coalesce_test.rs"]
+mod tests;
