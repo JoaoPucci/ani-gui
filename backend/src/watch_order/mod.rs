@@ -189,3 +189,27 @@ mod franchise_page_tests;
 #[cfg(test)]
 #[path = "parity_test.rs"]
 mod parity_tests;
+
+#[cfg(test)]
+#[path = "scenarios_test.rs"]
+pub(crate) mod scenarios;
+
+#[cfg(test)]
+#[path = "scenario_strip_test.rs"]
+mod scenario_strip_tests;
+
+#[cfg(test)]
+#[path = "scenario_franchise_page_test.rs"]
+mod scenario_franchise_page_tests;
+
+#[cfg(test)]
+#[path = "scenario_up_next_test.rs"]
+mod scenario_up_next_tests;
+
+#[cfg(test)]
+#[path = "scenario_handoff_test.rs"]
+mod scenario_handoff_tests;
+
+#[cfg(test)]
+#[path = "scenario_arrival_test.rs"]
+mod scenario_arrival_tests;

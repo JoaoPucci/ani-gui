@@ -1,0 +1,1144 @@
+{
+  "today": "2026-11-24",
+  "franchises": {
+    "11244231500c": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "42"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": false
+    },
+    "29efb968e91f": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "5",
+          "title": "Saga: Origins",
+          "subtype": "OVA",
+          "start": "2013-04-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "42"
+        ],
+        [
+          "42",
+          "50"
+        ],
+        [
+          "5",
+          "10"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "54d734aa1c75": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "5702e1229d2e": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "50"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "recaps": [],
+      "parents": {
+        "42": [
+          "10",
+          "50"
+        ]
+      },
+      "complete": true
+    },
+    "660717d0d5fe": {
+      "anchor": "99",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [],
+      "links": [],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "919c9652718a": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [],
+      "versions": [],
+      "films": [
+        {
+          "id": "60",
+          "title": "Saga: The Movie",
+          "subtype": "movie",
+          "start": "2015-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "sides": [
+        {
+          "id": "61",
+          "title": "Saga: Side Story",
+          "subtype": "OVA",
+          "start": "2013-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "9c15d6f7ba14": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "5",
+          "title": "Saga: Origins",
+          "subtype": "OVA",
+          "start": "2013-04-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "42"
+        ],
+        [
+          "42",
+          "50"
+        ],
+        [
+          "5",
+          "10"
+        ]
+      ],
+      "versions": [],
+      "films": [
+        {
+          "id": "60",
+          "title": "Saga: The Movie",
+          "subtype": "movie",
+          "start": "2015-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "9ddd40d6467e": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": false
+    },
+    "f3340cced690": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [],
+      "versions": [],
+      "films": [
+        {
+          "id": "60",
+          "title": "Saga: The Movie",
+          "subtype": "movie",
+          "start": "2015-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "sides": [
+        {
+          "id": "61",
+          "title": "Saga: Side Story",
+          "subtype": "OVA",
+          "start": "2013-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "recaps": [],
+      "parents": {},
+      "complete": false
+    }
+  },
+  "cases": [
+    {
+      "name": "detail route — the watch-order strip > shows what comes before and after, and the place in the run · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {},
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": {
+          "after": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            }
+          ],
+          "before": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "10",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2010-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga",
+              "unaired": false
+            }
+          ],
+          "caption": {
+            "kind": "position",
+            "position": 3,
+            "total": 4
+          },
+          "complete": true,
+          "eyebrow": {
+            "position": 3,
+            "total": 4
+          },
+          "kind": "run",
+          "outside": false,
+          "seams": {
+            "after": null,
+            "before": null
+          },
+          "similar_hidden": [
+            "10",
+            "5",
+            "50"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 0,
+              "main": 4,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 4
+            }
+          },
+          "watching": null
+        }
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip > keeps the franchise link beside the card for the entry being watched · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {
+        "5": "3"
+      },
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": {
+          "after": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            }
+          ],
+          "before": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "10",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2010-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga",
+              "unaired": false
+            }
+          ],
+          "caption": {
+            "kind": "position",
+            "position": 3,
+            "total": 4
+          },
+          "complete": true,
+          "eyebrow": {
+            "position": 3,
+            "total": 4
+          },
+          "kind": "run",
+          "outside": false,
+          "seams": {
+            "after": null,
+            "before": null
+          },
+          "similar_hidden": [
+            "10",
+            "5",
+            "50"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 0,
+              "main": 4,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 4
+            }
+          },
+          "watching": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "5",
+              "poster": null,
+              "progress": {
+                "episode": 3.0,
+                "kind": "partway",
+                "total": 12
+              },
+              "start": "2013-04-01",
+              "status": "finished",
+              "subtype": "OVA",
+              "title": "Saga: Origins",
+              "unaired": false
+            },
+            "episode": 3.0
+          }
+        }
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip > takes its neighbours and its place from the order setting · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "released",
+      "franchise": "29efb968e91f",
+      "resumes": {},
+      "answer": {
+        "link": null,
+        "order": "released",
+        "strip": {
+          "after": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "5",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2013-04-01",
+              "status": "finished",
+              "subtype": "OVA",
+              "title": "Saga: Origins",
+              "unaired": false
+            }
+          ],
+          "before": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "10",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2010-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga",
+              "unaired": false
+            }
+          ],
+          "caption": {
+            "kind": "position",
+            "position": 2,
+            "total": 4
+          },
+          "complete": true,
+          "eyebrow": {
+            "position": 2,
+            "total": 4
+          },
+          "kind": "run",
+          "outside": false,
+          "seams": {
+            "after": null,
+            "before": null
+          },
+          "similar_hidden": [
+            "10",
+            "5",
+            "50"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 0,
+              "main": 4,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 4
+            }
+          },
+          "watching": null
+        }
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip > gives a row's progress to the entry the backend names it for, when Kitsu deleted the recorded one · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {
+        "4": "3",
+        "5": "3"
+      },
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": {
+          "after": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            }
+          ],
+          "before": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "10",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2010-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga",
+              "unaired": false
+            }
+          ],
+          "caption": {
+            "kind": "position",
+            "position": 3,
+            "total": 4
+          },
+          "complete": true,
+          "eyebrow": {
+            "position": 3,
+            "total": 4
+          },
+          "kind": "run",
+          "outside": false,
+          "seams": {
+            "after": null,
+            "before": null
+          },
+          "similar_hidden": [
+            "10",
+            "5",
+            "50"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 0,
+              "main": 4,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 4
+            }
+          },
+          "watching": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "5",
+              "poster": null,
+              "progress": {
+                "episode": 3.0,
+                "kind": "partway",
+                "total": 12
+              },
+              "start": "2013-04-01",
+              "status": "finished",
+              "subtype": "OVA",
+              "title": "Saga: Origins",
+              "unaired": false
+            },
+            "episode": 3.0
+          }
+        }
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip > leaves the whole franchise out of Similar titles, and only the franchise · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "9c15d6f7ba14",
+      "resumes": {},
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": {
+          "after": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            }
+          ],
+          "before": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "10",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2010-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga",
+              "unaired": false
+            }
+          ],
+          "caption": {
+            "kind": "position",
+            "position": 3,
+            "total": 4
+          },
+          "complete": true,
+          "eyebrow": {
+            "position": 3,
+            "total": 4
+          },
+          "kind": "run",
+          "outside": false,
+          "seams": {
+            "after": null,
+            "before": null
+          },
+          "similar_hidden": [
+            "10",
+            "5",
+            "50",
+            "60"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 1,
+              "main": 4,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 5
+            }
+          },
+          "watching": null
+        }
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip > shows the strip without progress when the history cannot be read · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": null,
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": {
+          "after": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            }
+          ],
+          "before": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "10",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2010-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga",
+              "unaired": false
+            }
+          ],
+          "caption": {
+            "kind": "position",
+            "position": 3,
+            "total": 4
+          },
+          "complete": true,
+          "eyebrow": {
+            "position": 3,
+            "total": 4
+          },
+          "kind": "run",
+          "outside": false,
+          "seams": {
+            "after": null,
+            "before": null
+          },
+          "similar_hidden": [
+            "10",
+            "5",
+            "50"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 0,
+              "main": 4,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 4
+            }
+          },
+          "watching": null
+        }
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip > claims no place, total or end for a franchise the backend read only in part · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "11244231500c",
+      "resumes": {},
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": {
+          "after": [],
+          "before": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "10",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2010-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga",
+              "unaired": false
+            }
+          ],
+          "caption": {
+            "kind": "partial"
+          },
+          "complete": false,
+          "eyebrow": null,
+          "kind": "run",
+          "outside": false,
+          "seams": {
+            "after": null,
+            "before": null
+          },
+          "similar_hidden": [
+            "10"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 0,
+              "main": 2,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 2
+            }
+          },
+          "watching": null
+        }
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip > names a side story's parent stories, and nothing after it · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "5702e1229d2e",
+      "resumes": {},
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": {
+          "after": [],
+          "before": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "10",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2010-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga",
+              "unaired": false
+            },
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            }
+          ],
+          "caption": {
+            "kind": "side"
+          },
+          "complete": true,
+          "eyebrow": null,
+          "kind": "side",
+          "outside": false,
+          "seams": {
+            "after": null,
+            "before": null
+          },
+          "similar_hidden": [
+            "10",
+            "50"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 0,
+              "main": 2,
+              "posters": [],
+              "recaps": 0,
+              "sides": 1,
+              "total": 3
+            }
+          },
+          "watching": null
+        }
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip > keeps no strip or place from the show before, moving to one without a run · show 99",
+      "route": "show",
+      "id": "99",
+      "order": "linked",
+      "franchise": "660717d0d5fe",
+      "resumes": {},
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": null
+      }
+    },
+    {
+      "name": "detail route — the franchise link without a strip > links to the franchise page from a show that is its main story alone · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "919c9652718a",
+      "resumes": {},
+      "answer": {
+        "link": {
+          "complete": true,
+          "similar_hidden": [
+            "60",
+            "61"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 1,
+              "main": 1,
+              "posters": [],
+              "recaps": 0,
+              "sides": 1,
+              "total": 3
+            }
+          }
+        },
+        "order": "linked",
+        "strip": null
+      }
+    },
+    {
+      "name": "detail route — the franchise link without a strip > links there without counts from a franchise read in part · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "f3340cced690",
+      "resumes": {},
+      "answer": {
+        "link": {
+          "complete": false,
+          "similar_hidden": [
+            "60",
+            "61"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 1,
+              "main": 1,
+              "posters": [],
+              "recaps": 0,
+              "sides": 1,
+              "total": 3
+            }
+          }
+        },
+        "order": "linked",
+        "strip": null
+      }
+    },
+    {
+      "name": "detail route — the franchise link without a strip > gives no link for a show that is the franchise alone (read whole) · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "54d734aa1c75",
+      "resumes": {},
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": null
+      }
+    },
+    {
+      "name": "detail route — the franchise link without a strip > gives no link for a show that is the franchise alone (read in part) · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "9ddd40d6467e",
+      "resumes": {},
+      "answer": {
+        "link": null,
+        "order": "linked",
+        "strip": null
+      }
+    }
+  ],
+  "rails": []
+}

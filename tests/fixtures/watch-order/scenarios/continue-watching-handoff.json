@@ -1,0 +1,3570 @@
+{
+  "today": "2026-11-24",
+  "franchises": {
+    "760107c39ed6": {
+      "anchor": "30",
+      "name": "Tide Bell: Spring",
+      "name_from": "30",
+      "entries": [
+        {
+          "id": "30",
+          "title": "Tide Bell: Spring",
+          "subtype": "TV",
+          "start": "2015-01-01",
+          "episodes": 13,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "40",
+          "title": "Tide Bell: Summer",
+          "subtype": "TV",
+          "start": "2016-01-01",
+          "episodes": 13,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "30",
+          "40"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "8c3d971070b8": {
+      "anchor": "10",
+      "name": "Arc of the Moon: First Night",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Arc of the Moon: First Night",
+          "subtype": "TV",
+          "start": "2020-01-01",
+          "episodes": 13,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "20",
+          "title": "Arc of the Moon: Second Night",
+          "subtype": "TV",
+          "start": "2021-01-01",
+          "episodes": 13,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "20"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "aa35e357aa2d": {
+      "anchor": "10",
+      "name": "Arc of the Moon: First Night",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "5",
+          "title": "Arc of the Moon",
+          "subtype": "TV",
+          "start": "2019-01-01",
+          "episodes": 13,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true,
+      "chain": {
+        "entries": [
+          {
+            "id": "5",
+            "title": "Arc of the Moon",
+            "subtype": "TV",
+            "start": "2019-01-01",
+            "episodes": 13,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          },
+          {
+            "id": "10",
+            "title": "Arc of the Moon: First Night",
+            "subtype": "TV",
+            "start": "2020-01-01",
+            "episodes": 13,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          },
+          {
+            "id": "20",
+            "title": "Arc of the Moon: Second Night",
+            "subtype": "TV",
+            "start": "2021-01-01",
+            "episodes": 13,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          }
+        ],
+        "links": [
+          [
+            "5",
+            "10"
+          ],
+          [
+            "10",
+            "20"
+          ]
+        ],
+        "seams": [
+          "5"
+        ]
+      }
+    },
+    "ae38ce43f9e7": {
+      "anchor": "10",
+      "name": "Arc of the Moon: First Night",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Arc of the Moon: First Night",
+          "subtype": "TV",
+          "start": "2020-01-01",
+          "episodes": 13,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "20",
+          "title": "Arc of the Moon: Second Night",
+          "subtype": "TV",
+          "start": "2021-01-01",
+          "episodes": 13,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "25",
+          "title": "Arc of the Moon: Other Night",
+          "subtype": "TV",
+          "start": "2022-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "20"
+        ],
+        [
+          "10",
+          "25"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "be73cf812d25": {
+      "anchor": "10",
+      "name": "Arc of the Moon: First Night",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Arc of the Moon: First Night",
+          "subtype": "TV",
+          "start": "2020-01-01",
+          "episodes": 13,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "20",
+          "title": "Arc of the Moon: Second Night",
+          "subtype": "TV",
+          "start": "2021-01-01",
+          "episodes": 13,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "20"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": false
+    }
+  },
+  "cases": [
+    {
+      "name": "Continue Watching after a finale > moves the finished show's card on to the next show's page · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "8c3d971070b8",
+      "resumes": {
+        "10": "13"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "10",
+            "poster": null,
+            "start": "2020-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: First Night"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "20",
+            "poster": null,
+            "start": "2021-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: Second Night"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves a show outside the main story on along its own chain · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "aa35e357aa2d",
+      "resumes": {
+        "10": "13"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "10",
+            "poster": null,
+            "start": "2020-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: First Night"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "20",
+            "poster": null,
+            "start": "2021-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: Second Night"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps both ordinary cards once the next show has a row of its own · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "8c3d971070b8",
+      "resumes": {
+        "10": "13",
+        "20": "3",
+        "30": "13"
+      },
+      "answer": {
+        "handoff": null
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps both ordinary cards once the next show has a row of its own · handoff 30",
+      "route": "handoff",
+      "id": "30",
+      "order": "linked",
+      "franchise": "760107c39ed6",
+      "resumes": {
+        "10": "13",
+        "20": "3",
+        "30": "13"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "30",
+            "poster": null,
+            "start": "2015-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Spring"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "40",
+            "poster": null,
+            "start": "2016-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Summer"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card, with no error, when the series cannot be read · handoff 30",
+      "route": "handoff",
+      "id": "30",
+      "order": "linked",
+      "franchise": "760107c39ed6",
+      "resumes": {
+        "10": "13",
+        "30": "13"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "30",
+            "poster": null,
+            "start": "2015-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Spring"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "40",
+            "poster": null,
+            "start": "2016-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Summer"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card where the show leads two ways as linked · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "ae38ce43f9e7",
+      "resumes": {
+        "10": "13",
+        "30": "13"
+      },
+      "answer": {
+        "handoff": null
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves on to the next show by release date when the setting says so · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "released",
+      "franchise": "ae38ce43f9e7",
+      "resumes": {
+        "10": "13"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "10",
+            "poster": null,
+            "start": "2020-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: First Night"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "20",
+            "poster": null,
+            "start": "2021-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: Second Night"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row with no recorded id · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "8c3d971070b8",
+      "resumes": {
+        "10": "13",
+        "30": "13"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "10",
+            "poster": null,
+            "start": "2020-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: First Night"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "20",
+            "poster": null,
+            "start": "2021-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: Second Night"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row whose recorded entry Kitsu deleted · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "8c3d971070b8",
+      "resumes": {
+        "10": "13",
+        "30": "13",
+        "99": "2"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "10",
+            "poster": null,
+            "start": "2020-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: First Night"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "20",
+            "poster": null,
+            "start": "2021-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: Second Night"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row whose recorded entry Kitsu deleted · handoff 30",
+      "route": "handoff",
+      "id": "30",
+      "order": "linked",
+      "franchise": "760107c39ed6",
+      "resumes": {
+        "10": "13",
+        "30": "13",
+        "99": "2"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "30",
+            "poster": null,
+            "start": "2015-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Spring"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "40",
+            "poster": null,
+            "start": "2016-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Summer"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show's page would resume from a row · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "8c3d971070b8",
+      "resumes": {
+        "10": "13",
+        "20": "4",
+        "30": "13"
+      },
+      "answer": {
+        "handoff": null
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show's page would resume from a row · handoff 30",
+      "route": "handoff",
+      "id": "30",
+      "order": "linked",
+      "franchise": "760107c39ed6",
+      "resumes": {
+        "10": "13",
+        "20": "4",
+        "30": "13"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "30",
+            "poster": null,
+            "start": "2015-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Spring"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "40",
+            "poster": null,
+            "start": "2016-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Summer"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves on once the row the next show's page would resume from is removed · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "8c3d971070b8",
+      "resumes": {
+        "10": "13",
+        "20": "4",
+        "30": "13",
+        "77": "4"
+      },
+      "answer": {
+        "handoff": null
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves on once the row the next show's page would resume from is removed · handoff 30",
+      "route": "handoff",
+      "id": "30",
+      "order": "linked",
+      "franchise": "760107c39ed6",
+      "resumes": {
+        "10": "13",
+        "20": "4",
+        "30": "13",
+        "77": "4"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "30",
+            "poster": null,
+            "start": "2015-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Spring"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "40",
+            "poster": null,
+            "start": "2016-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Summer"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps a moved-on card in place while another row is removed · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "8c3d971070b8",
+      "resumes": {
+        "10": "13",
+        "30": "13",
+        "77": "4"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "10",
+            "poster": null,
+            "start": "2020-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: First Night"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "20",
+            "poster": null,
+            "start": "2021-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Arc of the Moon: Second Night"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps a moved-on card in place while another row is removed · handoff 30",
+      "route": "handoff",
+      "id": "30",
+      "order": "linked",
+      "franchise": "760107c39ed6",
+      "resumes": {
+        "10": "13",
+        "30": "13",
+        "77": "4"
+      },
+      "answer": {
+        "handoff": {
+          "finished": {
+            "cover": null,
+            "episodes": 13,
+            "id": "30",
+            "poster": null,
+            "start": "2015-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Spring"
+          },
+          "next": {
+            "cover": null,
+            "episodes": 13,
+            "id": "40",
+            "poster": null,
+            "start": "2016-01-01",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "Tide Bell: Summer"
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the resume lookup cannot be read · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "8c3d971070b8",
+      "resumes": null,
+      "answer": {
+        "handoff": null
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the resume lookup cannot be read · handoff 30",
+      "route": "handoff",
+      "id": "30",
+      "order": "linked",
+      "franchise": "760107c39ed6",
+      "resumes": null,
+      "answer": {
+        "handoff": null
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the series was read only in part · handoff 10",
+      "route": "handoff",
+      "id": "10",
+      "order": "linked",
+      "franchise": "be73cf812d25",
+      "resumes": {
+        "10": "13",
+        "30": "13"
+      },
+      "answer": {
+        "handoff": null
+      }
+    }
+  ],
+  "rails": [
+    {
+      "name": "Continue Watching after a finale > moves the finished show's card on to the next show's page",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {},
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-first": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves the finished show's card on to the next show's page",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-first": "10"
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves the finished show's card on to the next show's page",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-first": "10"
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves the finished show's card on to the next show's page",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {
+          "p-first": "10"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-first": "10"
+        },
+        "handoffs": {
+          "p-first": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "10",
+              "poster": null,
+              "start": "2020-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Arc of the Moon: First Night"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "20",
+              "poster": null,
+              "start": "2021-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Arc of the Moon: Second Night"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps both ordinary cards once the next show has a row of its own",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": null,
+            "ep_no": "3",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "20"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {},
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": null,
+          "p-first": null,
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps both ordinary cards once the next show has a row of its own",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": {
+              "id": "20",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "3",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "20"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": "20"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps both ordinary cards once the next show has a row of its own",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": {
+              "id": "20",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "3",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "20"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": "20"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps both ordinary cards once the next show has a row of its own",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": {
+              "id": "20",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "3",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "20"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": "20"
+        },
+        "series": {
+          "10": null,
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {
+          "p-control": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "30",
+              "poster": null,
+              "start": "2015-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Spring"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "40",
+              "poster": null,
+              "start": "2016-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Summer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > asks for no series while the show is short of its finale",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": null,
+            "ep_no": "12",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {},
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-first": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > asks for no series while the show is short of its finale",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "12",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-first": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > asks for no series while the show is short of its finale",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "12",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-first": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps offering a finale left part-way, asking for no series",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": true
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-first": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps offering a finale left part-way, asking for no series",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": true
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-first": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card, with no error, when the series cannot be read",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {},
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": null,
+          "p-first": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card, with no error, when the series cannot be read",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card, with no error, when the series cannot be read",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card, with no error, when the series cannot be read",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {
+          "10": null
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card, with no error, when the series cannot be read",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {
+          "10": null,
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "handoffs": {
+          "p-control": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "30",
+              "poster": null,
+              "start": "2015-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Spring"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "40",
+              "poster": null,
+              "start": "2016-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Summer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row with no recorded id",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": null,
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": null
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {},
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": null,
+          "p-first": null,
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row with no recorded id",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": null,
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": null
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row with no recorded id",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": null,
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": null
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row with no recorded id",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": null,
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": null
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          },
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row with no recorded id",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": {
+              "id": "20",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": null
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": "20"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          },
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {
+          "p-control": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "30",
+              "poster": null,
+              "start": "2015-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Spring"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "40",
+              "poster": null,
+              "start": "2016-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Summer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row with no recorded id",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": {
+              "id": "20",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "2",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": null
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": "20"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          },
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {
+          "p-control": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "30",
+              "poster": null,
+              "start": "2015-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Spring"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "40",
+              "poster": null,
+              "start": "2016-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Summer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row whose recorded entry Kitsu deleted",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": null,
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "99"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {},
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": null,
+          "p-first": null,
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row whose recorded entry Kitsu deleted",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": null,
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "99"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row whose recorded entry Kitsu deleted",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": null,
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "99"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row whose recorded entry Kitsu deleted",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": null,
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "99"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          },
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row whose recorded entry Kitsu deleted",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": {
+              "id": "20",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "2",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "99"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": "20"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          },
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {
+          "p-control": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "30",
+              "poster": null,
+              "start": "2015-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Spring"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "40",
+              "poster": null,
+              "start": "2016-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Summer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card when the next show was played from a row whose recorded entry Kitsu deleted",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-second",
+            "matched": {
+              "id": "20",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "2",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-second",
+            "kitsu_id": "99"
+          },
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": "20"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          },
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-second": null
+        },
+        "handoffs": {
+          "p-control": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "30",
+              "poster": null,
+              "start": "2015-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Spring"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "40",
+              "poster": null,
+              "start": "2016-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Summer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves on once the row the next show's page would resume from is removed",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-other",
+            "matched": null,
+            "ep_no": "4",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-other",
+            "kitsu_id": "77"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {},
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": null,
+          "p-first": null,
+          "p-other": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves on once the row the next show's page would resume from is removed",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-other",
+            "matched": {
+              "id": "77",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "4",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-other",
+            "kitsu_id": "77"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-other": "77"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-other": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves on once the row the next show's page would resume from is removed",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-other",
+            "matched": {
+              "id": "77",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "4",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-other",
+            "kitsu_id": "77"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-other": "77"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-other": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves on once the row the next show's page would resume from is removed",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-other",
+            "matched": {
+              "id": "77",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "4",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-other",
+            "kitsu_id": "77"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-other": "77"
+        },
+        "series": {
+          "10": null,
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-other": null
+        },
+        "handoffs": {
+          "p-control": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "30",
+              "poster": null,
+              "start": "2015-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Spring"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "40",
+              "poster": null,
+              "start": "2016-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Summer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > moves on once the row the next show's page would resume from is removed",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          },
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "handoffs": {
+          "p-control": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "30",
+              "poster": null,
+              "start": "2015-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Spring"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "40",
+              "poster": null,
+              "start": "2016-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Summer"
+            }
+          },
+          "p-first": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "10",
+              "poster": null,
+              "start": "2020-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Arc of the Moon: First Night"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "20",
+              "poster": null,
+              "start": "2021-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Arc of the Moon: Second Night"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps a moved-on card in place while another row is removed",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-other",
+            "matched": {
+              "id": "77",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "4",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-other",
+            "kitsu_id": "77"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-other": "77"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          },
+          "30": {
+            "finished": {
+              "id": "30",
+              "title": "Tide Bell: Spring",
+              "subtype": "TV",
+              "start": "2015-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "40",
+              "title": "Tide Bell: Summer",
+              "subtype": "TV",
+              "start": "2016-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10",
+          "p-other": null
+        },
+        "handoffs": {
+          "p-control": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "30",
+              "poster": null,
+              "start": "2015-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Spring"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "40",
+              "poster": null,
+              "start": "2016-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Tide Bell: Summer"
+            }
+          },
+          "p-first": {
+            "finished": {
+              "cover": null,
+              "episodes": 13,
+              "id": "10",
+              "poster": null,
+              "start": "2020-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Arc of the Moon: First Night"
+            },
+            "next": {
+              "cover": null,
+              "episodes": 13,
+              "id": "20",
+              "poster": null,
+              "start": "2021-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Arc of the Moon: Second Night"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > keeps the ordinary card, with no error, when the series cannot be read",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-control",
+            "matched": {
+              "id": "30",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          },
+          {
+            "id": "p-control",
+            "kitsu_id": "30"
+          }
+        ],
+        "matches": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "series": {
+          "10": null,
+          "30": null
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-control": "30",
+          "p-first": "10"
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > offers the source's episode past Kitsu's count rather than moving on",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 14,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {
+          "p-first": "10"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-first": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching after a finale > offers the source's episode past Kitsu's count rather than moving on",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-first",
+            "matched": {
+              "id": "10",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 14,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-first",
+            "kitsu_id": "10"
+          }
+        ],
+        "matches": {
+          "p-first": "10"
+        },
+        "series": {
+          "10": {
+            "finished": {
+              "id": "10",
+              "title": "Arc of the Moon: First Night",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "20",
+              "title": "Arc of the Moon: Second Night",
+              "subtype": "TV",
+              "start": "2021-01-01",
+              "episodes": 13,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "p-first": null
+        },
+        "handoffs": {}
+      }
+    }
+  ]
+}
