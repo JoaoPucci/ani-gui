@@ -4,10 +4,9 @@
 // pushing it down.
 //
 // The two rows are separate requests. Trending is the home page's
-// AniList list (/api/kitsu/trending-anilist; the Kitsu-only
-// /api/kitsu/trending is not asked, and an unhandled request fails the
-// scenario). Top rated is cached for six hours and Trending for one,
-// so on most visits Top rated answers first. Drawn as it landed, it
+// AniList list (/api/kitsu/trending-anilist; an unhandled request
+// fails the scenario). Top rated is cached for six hours and Trending
+// for one, so on most visits Top rated answers first. Drawn as it landed, it
 // took the top of the page, and when Trending arrived a moment later
 // it was inserted above and the row the reader was looking at slid
 // down. These scenarios hold each request in turn and look at the page
