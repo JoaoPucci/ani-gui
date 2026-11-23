@@ -37,7 +37,14 @@
 /** The lanes the renderer reaches, besides the API's (`apiBase`). The
  *  handshake records any lowercase name it is told; only these become
  *  sources. */
-const LANE_NAMES = Object.freeze(["stream", "image", "probe", "resolve", "download"]);
+const LANE_NAMES = Object.freeze([
+  "stream",
+  "image",
+  "probe",
+  "resolve",
+  "download",
+  "franchise",
+]);
 
 /** What the backend binds: 127.0.0.1, a port, nothing after it. A
  *  string that is not exactly this is dropped, never widened: an origin
@@ -66,10 +73,13 @@ function loopbackOrigin(value) {
  *  a fixed order. Empty before the handshake. */
 function loopbackOrigins(backend) {
   if (!backend || typeof backend !== "object") return [];
-  const lanes = backend.lanes && typeof backend.lanes === "object" ? backend.lanes : {};
+  const lanes =
+    backend.lanes && typeof backend.lanes === "object" ? backend.lanes : {};
   const candidates = [
     backend.apiBase,
-    ...LANE_NAMES.map((name) => (Object.hasOwn(lanes, name) ? lanes[name] : null)),
+    ...LANE_NAMES.map((name) =>
+      Object.hasOwn(lanes, name) ? lanes[name] : null,
+    ),
   ];
   const out = [];
   for (const candidate of candidates) {
@@ -137,7 +147,9 @@ function rendererPolicy({ backend, devOrigin }) {
     ["form-action", ["'none'"]],
     ["frame-ancestors", ["'none'"]],
   ];
-  return directives.map(([name, sources]) => `${name} ${sources.join(" ")}`).join("; ");
+  return directives
+    .map(([name, sources]) => `${name} ${sources.join(" ")}`)
+    .join("; ");
 }
 
 /**
@@ -158,10 +170,14 @@ function withPolicyHeader(details, { devOrigin, policy }) {
   if (u.origin !== devOrigin) return {};
   const headers = { ...(details.responseHeaders || {}) };
   const key =
-    Object.keys(headers).find((k) => k.toLowerCase() === "content-security-policy") ||
-    "Content-Security-Policy";
+    Object.keys(headers).find(
+      (k) => k.toLowerCase() === "content-security-policy",
+    ) || "Content-Security-Policy";
   const existing = headers[key];
-  headers[key] = [...(Array.isArray(existing) ? existing : existing ? [existing] : []), policy];
+  headers[key] = [
+    ...(Array.isArray(existing) ? existing : existing ? [existing] : []),
+    policy,
+  ];
   return { responseHeaders: headers };
 }
 
