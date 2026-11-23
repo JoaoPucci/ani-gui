@@ -142,11 +142,8 @@ impl Singles {
 
     /// Run every lookup at once — the gate paces them — and hand each
     /// answer to its shows as it comes in.
-    pub(super) async fn run<T, S, SF>(
-        self,
-        mut single: S,
-        on_answer: &mut impl FnMut(usize, Result<T>),
-    ) where
+    pub(super) async fn run<T, S, SF>(self, single: &mut S, on_answer: &impl Fn(usize, Result<T>))
+    where
         T: Clone,
         S: FnMut(Want) -> SF,
         SF: Future<Output = Result<T>>,

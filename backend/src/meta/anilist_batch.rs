@@ -162,15 +162,22 @@ where
 pub(crate) async fn resolve_each<T: Clone + Default, P, PF, S, SF>(
     wants: &[Want],
     mut ask: P,
-    single: S,
-    mut on_answer: impl FnMut(usize, Result<T>),
+    mut single: S,
+    on_answer: impl FnMut(usize, Result<T>),
 ) where
     P: FnMut(Space, Vec<u32>) -> PF,
     PF: Future<Output = Result<Page<Keyed<T>>>>,
     S: FnMut(Want) -> SF,
     SF: Future<Output = Result<T>>,
 {
-    let mut singles = Singles::new();
+    // Answers land from the MAL page's single lookups and the AniList-id
+    // page at once: one caller-facing callback, shared.
+    let on_answer = std::sync::Mutex::new(on_answer);
+    let answer = |i: usize, a: Result<T>| {
+        (on_answer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner))(i, a);
+    };
     let mal_keys: Vec<u32> = wants
         .iter()
         .filter_map(|w| w.mal)
@@ -180,6 +187,7 @@ pub(crate) async fn resolve_each<T: Clone + Default, P, PF, S, SF>(
     let by_mal = answers(Space::Mal, &mal_keys, &mut ask).await;
     // The shows asked by AniList id: those Kitsu maps to AniList alone,
     // and those whose MAL id AniList answered without.
+    let mut mal_singles = Singles::new();
     let mut by_id_wanted = Vec::new();
     for (i, w) in wants.iter().enumerate() {
         let got = match w.mal {
@@ -187,14 +195,14 @@ pub(crate) async fn resolve_each<T: Clone + Default, P, PF, S, SF>(
             None => Got::Absent,
         };
         match (got, w.anilist) {
-            (Got::Listing(l), _) => on_answer(i, Ok(l)),
-            (Got::Failed(e), _) => on_answer(i, Err(e)),
+            (Got::Listing(l), _) => answer(i, Ok(l)),
+            (Got::Failed(e), _) => answer(i, Err(e)),
             (Got::Single, _) => {
-                singles.add(Settles::Key(Space::Mal, w.mal.unwrap_or_default()), *w, i);
+                mal_singles.add(Settles::Key(Space::Mal, w.mal.unwrap_or_default()), *w, i);
             }
-            (Got::Unread, _) => singles.add(Settles::Show(*w), *w, i),
+            (Got::Unread, _) => mal_singles.add(Settles::Show(*w), *w, i),
             (Got::Absent, Some(_)) => by_id_wanted.push(i),
-            (Got::Absent, None) => on_answer(i, Ok(T::default())),
+            (Got::Absent, None) => answer(i, Ok(T::default())),
         }
     }
     let id_keys: Vec<u32> = by_id_wanted
@@ -203,7 +211,14 @@ pub(crate) async fn resolve_each<T: Clone + Default, P, PF, S, SF>(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let by_id = answers(Space::AniList, &id_keys, &mut ask).await;
+    // The MAL page's single lookups go while the AniList-id page is
+    // asked: neither waits on the other's shows.
+    let (by_id, ()) = futures_util::future::join(
+        answers(Space::AniList, &id_keys, &mut ask),
+        mal_singles.run(&mut single, &answer),
+    )
+    .await;
+    let mut id_singles = Singles::new();
     for i in by_id_wanted {
         let Some(id) = wants[i].anilist else { continue };
         let want = Want {
@@ -211,11 +226,11 @@ pub(crate) async fn resolve_each<T: Clone + Default, P, PF, S, SF>(
             anilist: Some(id),
         };
         match by_id.get(id) {
-            Got::Listing(l) => on_answer(i, Ok(l)),
-            Got::Failed(e) => on_answer(i, Err(e)),
-            Got::Single | Got::Unread => singles.add(Settles::Key(Space::AniList, id), want, i),
-            Got::Absent => on_answer(i, Ok(T::default())),
+            Got::Listing(l) => answer(i, Ok(l)),
+            Got::Failed(e) => answer(i, Err(e)),
+            Got::Single | Got::Unread => id_singles.add(Settles::Key(Space::AniList, id), want, i),
+            Got::Absent => answer(i, Ok(T::default())),
         }
     }
-    singles.run(single, &mut on_answer).await;
+    id_singles.run(&mut single, &answer).await;
 }
