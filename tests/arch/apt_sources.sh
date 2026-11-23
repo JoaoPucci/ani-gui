@@ -29,8 +29,8 @@
 # install refreshes there), on which `apt` or `apt-get` is followed by
 # an `update` word — ended by whitespace, punctuation or the end of
 # the line — must be exactly one of those two commands, leading
-# indentation and a leading `run:` or `- run:` key aside. A line spelling the refresh
-# any other way — bare, with extra flags, with `|| true`, chained with
+# indentation and a leading `run:` or `- run:` key aside. A line
+# spelling the refresh any other way — bare, with extra flags, with `|| true`, chained with
 # `;` or `&&` — is a finding, and so is a comment that happens to
 # spell it, so write comments around the refresh without naming the
 # command.
@@ -42,6 +42,9 @@
 # line. Deciding what a
 # multi-line shell command does means parsing shell, which AGENTS.md
 # §2 puts out of bounds here; a green run says nothing about those.
+# Nor does it match a form to the runner a job uses: either is
+# accepted anywhere, and the 22.04 form on a newer runner refreshes
+# no source at all.
 
 set -eu
 

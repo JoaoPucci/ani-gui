@@ -81,9 +81,9 @@ filter() {
     # the lockfile and workspace manifests that pin electron-builder;
     # the linker flags the backend is built with and the toolchain it
     # is built by; this workflow with its filter, the AppImage start-up
-    # check it runs and the install actions it calls. An electron-builder config file or an .npmrc
-    # does not exist today, and either would be read by the build the
-    # moment it did.
+    # check it runs and the install actions it calls. An
+    # electron-builder config file or an .npmrc does not exist today,
+    # and either would be read by the build the moment it did.
     for path in electron/package.json \
         electron/build-resources/installer.nsh \
         electron/build-resources/deb-after-install.sh \
