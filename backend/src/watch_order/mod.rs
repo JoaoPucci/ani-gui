@@ -25,6 +25,7 @@ pub mod rail;
 pub mod run;
 pub mod segments;
 pub mod sequence;
+pub mod strip_view;
 
 /// A prequel → sequel pair between two run members.
 pub type RunLink = (String, String);
@@ -142,6 +143,10 @@ pub(crate) mod fixtures;
 #[cfg(test)]
 #[path = "order_test.rs"]
 mod order_tests;
+
+#[cfg(test)]
+#[path = "strip_test.rs"]
+mod strip_tests;
 
 #[cfg(test)]
 #[path = "strategies_test.rs"]
