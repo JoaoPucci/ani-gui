@@ -176,6 +176,11 @@
 
 	/* — Focus ring: 2px outer in current accent, 2px inner offset in ink. */
 	--ring: 0 0 0 2px var(--ink-000), 0 0 0 4px var(--accent);
+	/* — The same ring drawn inside the box, for a control whose outside is
+	   cut: one flush with the window's edge (the rail's links), or inside
+	   a box that clips what overflows it (a segmented control's track).
+	   Accent at the edge, ink inside it. */
+	--ring-inset: inset 0 0 0 2px var(--accent), inset 0 0 0 4px var(--ink-000);
 }
 
 /* The surface a home row sits on (Strip.svelte). Registered as a colour

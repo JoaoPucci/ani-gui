@@ -847,15 +847,15 @@
 	}
 	/* Drop the browser default focus ring (the chunky blue outline
 	   visible on first paint when Chromium auto-focuses the first
-	   tabbable element). Keyboard users still get a visible halo
-	   via :focus-visible — accent-tinted to match the rail. */
+	   tabbable element). Keyboard users get the ring the rail's links
+	   show, drawn inside the mark's box: the rail starts at the window's
+	   edge, which cut the side off a ring drawn outside it. */
 	.brand:focus {
 		outline: none;
 	}
 	.brand:focus-visible {
-		outline: 2px solid color-mix(in oklab, var(--accent) 70%, transparent);
-		outline-offset: 4px;
-		border-radius: var(--radius-pill);
+		box-shadow: var(--ring-inset);
+		border-radius: var(--radius-control);
 	}
 	.brand-word {
 		display: inline-flex;
@@ -934,6 +934,10 @@
 			align-items: center;
 			padding-block: var(--space-2);
 		}
+	}
+	/* Inside the link's box: the rail starts at the window's edge. */
+	.nav-link:focus-visible {
+		box-shadow: var(--ring-inset);
 	}
 	.nav-link:hover {
 		color: var(--bone-100);
@@ -1064,11 +1068,13 @@
 		color: var(--bone-100);
 		background: color-mix(in oklab, var(--bone-100) 4%, transparent);
 	}
+	/* Inside the link's box, in the brand's colour: the rail starts at
+	   the window's edge. */
 	.rail-foot:focus-visible {
 		outline: none;
 		box-shadow:
-			0 0 0 2px var(--ink-000),
-			0 0 0 4px var(--brand);
+			inset 0 0 0 2px var(--brand),
+			inset 0 0 0 4px var(--ink-000);
 	}
 	.rail-foot.active {
 		color: var(--bone-100);

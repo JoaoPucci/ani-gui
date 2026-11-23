@@ -916,6 +916,10 @@
 	.seg-btn:last-child {
 		border-inline-end: 0;
 	}
+	/* Inside the button's box: the track clips what overflows it. */
+	.seg-btn:focus-visible {
+		box-shadow: var(--ring-inset);
+	}
 	.seg-btn:hover:not(.active) {
 		color: var(--bone-100);
 	}
