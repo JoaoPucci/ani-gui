@@ -523,9 +523,10 @@
 		current: () => watchOrderData,
 		reread: (shown) => showReads.keep(rereadRows(shown, watchOrderSources, showReads.signal)),
 		// Whatever the strip draws is what the session remembers for the
-		// show, a link's re-read included, so a later visit's first frame
-		// draws the rows the link wrote ($lib/watch-order/session-memo).
-		show: (d) => (watchOrderData = settledAnswer(id, d))
+		// show of the visit it belongs to (`key`), a link's re-read
+		// included, so a later visit's first frame draws the rows the link
+		// wrote ($lib/watch-order/session-memo).
+		show: (d, key) => (watchOrderData = settledAnswer(key ?? id, d))
 	});
 	// Only the latest resume lookup started answers ($lib/detail/resume-lookup).
 	const resumeLookups = latestLookup();
@@ -1250,7 +1251,7 @@
 			const shown = visitAnswer(currentId, w, reads.signal);
 			return shown && id === currentId ? shown : null;
 		});
-		strip.walk(walked);
+		strip.walk(walked, currentId);
 		// The details wait a moment for the walk's first hop, so the
 		// room the strip will take is held from the page's first frame.
 		// A show whose answer is remembered needs no hop, only the order
