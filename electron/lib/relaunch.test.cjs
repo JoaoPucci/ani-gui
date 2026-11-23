@@ -10,7 +10,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const fc = require("fast-check");
 
-const { LAUNCHER_SWITCHES, WAIT_THEN_EXEC, relaunch, relaunchPlan, userArgs } = require("./relaunch.cjs");
+const { LAUNCHER_SWITCHES, WAIT_THEN_EXEC, relaunch, relaunchPlan, restart, userArgs } = require("./relaunch.cjs");
 
 const appImageEnv = {
   APPIMAGE: "/home/me/Apps/ani-gui-0.18.0-x86_64.AppImage",
@@ -224,6 +224,61 @@ test("planned from the user's environment, the AppImage's restart changes only i
   }
   assert.equal(after.env.APPIMAGE, appImageEnv.APPIMAGE);
   assert.equal(after.env.OWD, appImageEnv.OWD);
+});
+
+test("Restart in the AppImage starts the waiter from the user's environment, not this process's", () => {
+  // What the splash's Restart calls (main.js onRestart): handed the
+  // launch's environment and this process's, it plans from the user's
+  // (lib/child-env.cjs). Planned from this process's own instead, the
+  // waiter, and the AppImage it runs, would start with Unity as the
+  // session's desktop and what Electron added.
+  const launch = { ...appImageEnv, XDG_CURRENT_DESKTOP: "ubuntu:GNOME" };
+  const now = {
+    ...appImageEnv,
+    XDG_CURRENT_DESKTOP: "Unity",
+    ORIGINAL_XDG_CURRENT_DESKTOP: "ubuntu:GNOME",
+    CHROME_DESKTOP: "ani-gui.desktop",
+    GDK_BACKEND: "wayland",
+    NO_AT_BRIDGE: "1",
+  };
+  const spawned = [];
+  restart(
+    { platform: "linux", launch, now, execPath: appImageExec, argv: [appImageExec], pid: 4242 },
+    {
+      app: { relaunch: () => assert.fail("the AppImage does not use Electron's relaunch") },
+      spawn: (cmd, args, opts) => (spawned.push(opts.env), { unref: () => {}, on: () => {} }),
+      exists: () => true,
+      logError: () => {},
+    },
+  );
+  assert.equal(spawned.length, 1);
+  const [env] = spawned;
+  assert.equal(env.XDG_CURRENT_DESKTOP, "ubuntu:GNOME");
+  for (const k of ["ORIGINAL_XDG_CURRENT_DESKTOP", "CHROME_DESKTOP", "GDK_BACKEND", "NO_AT_BRIDGE", "APPDIR"]) {
+    assert.ok(!(k in env), k);
+  }
+  assert.equal(env.APPIMAGE, appImageEnv.APPIMAGE);
+});
+
+test("Restart everywhere else asks for Electron's relaunch inside the user's environment", () => {
+  let inside = false;
+  const calls = [];
+  restart(
+    { platform: "linux", launch: { HOME: "/home/me" }, now: { HOME: "/home/me" }, execPath: "/opt/ani-gui/ani-gui", argv: ["/opt/ani-gui/ani-gui"], pid: 1 },
+    {
+      app: { relaunch: () => calls.push(inside) },
+      spawn: () => assert.fail(),
+      asUser: (open) => {
+        inside = true;
+        try {
+          return open();
+        } finally {
+          inside = false;
+        }
+      },
+    },
+  );
+  assert.deepEqual(calls, [true]);
 });
 
 test("the waiter is spawned detached, silent and let go, with its own environment", () => {
