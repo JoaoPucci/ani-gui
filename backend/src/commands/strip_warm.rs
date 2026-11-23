@@ -21,7 +21,9 @@
 //! warm caches only what they would: the thumbnail listing under its
 //! row, and AniList's answer for a show's banner — the banner, or that
 //! it has none — where the detail read looks for it when Kitsu has no
-//! cover (`anilist_banner_memo::take_warmed`), once. A
+//! cover (`anilist_banner_memo::take_warmed`), once. A show the
+//! mappings read says Kitsu has a cover for is asked no banner: its
+//! detail never looks for one. A
 //! warm whose caller has gone is dropped with it.
 
 use crate::app::AppState;
@@ -61,7 +63,8 @@ pub(crate) async fn warm_strip(state: &AppState, kitsu_ids: &[String], anilist_b
     )
     .await;
     // Gathered: the warm's lookups go as one page per kind, none sent
-    // ahead alone. A card's own lookup still opens a lane at once.
+    // ahead alone. A card's own lookup still opens a lane, at once when
+    // the gate would let it go.
     let stills = futures_util::future::join_all(ids.iter().map(|id| {
         crate::commands::anilist_eps_thumbs::thumbs_for_show_with_anilist_base(
             state,
@@ -74,12 +77,13 @@ pub(crate) async fn warm_strip(state: &AppState, kitsu_ids: &[String], anilist_b
     crate::meta::anilist_batch::gathered(futures_util::future::join(stills, banners)).await;
 }
 
-/// Remember the banner AniList has for `kitsu_id`, unless its detail is
-/// already kept (its banner, or its cover, decided) or one is
-/// remembered.
+/// Remember the banner AniList has for `kitsu_id`, unless Kitsu has a
+/// cover for it, its detail is already kept (its banner, or its cover,
+/// decided) or one is remembered.
 async fn warm_banner(state: &AppState, kitsu_id: &str, anilist_base: Option<&str>) {
     let detail = crate::commands::kitsu::anime_detail_key(kitsu_id);
-    if matches!(meta_cache_get(&state.cache_pool, &detail), Ok(Some(_)))
+    if crate::commands::external_ids::kitsu_has_cover(&state.cache_pool, kitsu_id) == Some(true)
+        || matches!(meta_cache_get(&state.cache_pool, &detail), Ok(Some(_)))
         || crate::commands::anilist_banner_memo::remembered(&state.cache_pool, kitsu_id).is_some()
         || crate::commands::anilist_banner_memo::warmed(&state.cache_pool, kitsu_id).is_some()
     {

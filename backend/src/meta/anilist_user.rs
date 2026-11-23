@@ -36,6 +36,7 @@ use crate::account::provider::{
 };
 use crate::account::status::ListStatus;
 use crate::error::{AniError, Result};
+use crate::meta::anilist_gate::{Ask, Purpose};
 
 /// User-agent advertised on every AniList request. Matches the format
 /// used by [`crate::meta::anilist`] so AniList's Cloudflare layer
@@ -180,6 +181,7 @@ impl AniListProvider {
         &self,
         tokens: &Tokens,
         body: &serde_json::Value,
+        ask: Ask,
     ) -> Result<bytes::Bytes> {
         // A write is sent as the user made it, never folded into another.
         // It moves the bearer's write count on as it goes and as it is
@@ -190,7 +192,7 @@ impl AniListProvider {
             // Moved on again when the write is done with — answered, or
             // dropped by its caller after it went out.
             let _done = WriteDone(&tokens.access_token);
-            return self.post_graphql_once(tokens, body).await;
+            return self.post_graphql_once(tokens, body, ask).await;
         }
         // The same query for the same bearer, sent while one is out and
         // no write has gone between them, waits for that answer
@@ -206,7 +208,7 @@ impl AniListProvider {
             writes_of(&tokens.access_token)
         );
         ACCOUNT_IN_FLIGHT
-            .run(key, || self.post_graphql_once(tokens, body))
+            .run(key, || self.post_graphql_once(tokens, body, ask))
             .await
     }
 
@@ -215,6 +217,7 @@ impl AniListProvider {
         &self,
         tokens: &Tokens,
         body: &serde_json::Value,
+        ask: Ask,
     ) -> Result<bytes::Bytes> {
         // AniList counts this client, not the token: the account's
         // requests spend the same budget, through the same gate, as
@@ -229,7 +232,7 @@ impl AniListProvider {
                 .json(body)
                 .send()
         };
-        let resp = super::anilist_gate::send(self.api_url(), send).await?;
+        let resp = super::anilist_gate::send(self.api_url(), ask, send).await?;
         let status = resp.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(AniError::InvalidToken);
@@ -367,7 +370,9 @@ impl UserListProvider for AniListProvider {
 
     async fn me(&self, tokens: &Tokens) -> Result<UserProfile> {
         let body = serde_json::json!({ "query": VIEWER_GQL });
-        let bytes = self.post_graphql(tokens, &body).await?;
+        let bytes = self
+            .post_graphql(tokens, &body, Ask::unkeyed(Purpose::Account))
+            .await?;
         parse_viewer_response(&bytes)
     }
 
@@ -388,7 +393,9 @@ impl UserListProvider for AniListProvider {
                 "query": MEDIA_LIST_GQL,
                 "variables": { "userId": user_id, "chunk": chunk },
             });
-            let bytes = self.post_graphql(tokens, &body).await?;
+            let bytes = self
+                .post_graphql(tokens, &body, Ask::unkeyed(Purpose::UserList))
+                .await?;
             let page = parse_media_list_page(&bytes)?;
             for entry in page.entries {
                 out.push(entry);
@@ -432,7 +439,9 @@ impl UserListProvider for AniListProvider {
             "query": SAVE_ENTRY_GQL,
             "variables": vars,
         });
-        let bytes = self.post_graphql(tokens, &body).await?;
+        let bytes = self
+            .post_graphql(tokens, &body, Ask::one(Purpose::ListWrite))
+            .await?;
         parse_save_entry_response(&bytes)
     }
 
@@ -459,13 +468,17 @@ impl UserListProvider for AniListProvider {
             "query": MEDIA_LIST_ROW_ID_GQL,
             "variables": { "mediaId": id.0, "userId": user_id },
         });
-        let lookup_bytes = self.post_graphql(tokens, &lookup_body).await?;
+        let lookup_bytes = self
+            .post_graphql(tokens, &lookup_body, Ask::one(Purpose::ListDelete))
+            .await?;
         let row_id = parse_media_list_row_id(&lookup_bytes)?;
         let delete_body = serde_json::json!({
             "query": DELETE_ENTRY_GQL,
             "variables": { "id": row_id },
         });
-        let bytes = self.post_graphql(tokens, &delete_body).await?;
+        let bytes = self
+            .post_graphql(tokens, &delete_body, Ask::one(Purpose::ListDelete))
+            .await?;
         // AniList answers with `{ deleted: Boolean }`; `false` is its
         // documented failure signal. Surface it as an error so a future
         // retry/cache layer doesn't drop the local row + stop retrying
@@ -486,7 +499,9 @@ impl UserListProvider for AniListProvider {
             "query": MEDIA_PROGRESS_GQL,
             "variables": { "mediaId": id.0 },
         });
-        let bytes = self.post_graphql(tokens, &body).await?;
+        let bytes = self
+            .post_graphql(tokens, &body, Ask::one(Purpose::ListEntry))
+            .await?;
         parse_media_entry_response(&bytes)
     }
 
@@ -495,7 +510,9 @@ impl UserListProvider for AniListProvider {
             "query": MEDIA_TRACKED_GQL,
             "variables": { "mediaId": id.0 },
         });
-        let bytes = self.post_graphql(tokens, &body).await?;
+        let bytes = self
+            .post_graphql(tokens, &body, Ask::one(Purpose::TrackedMedia))
+            .await?;
         parse_tracked_media_response(&bytes)
     }
 
@@ -504,7 +521,9 @@ impl UserListProvider for AniListProvider {
             "query": evidence::MEDIA_EVIDENCE_GQL,
             "variables": { "mediaId": id.0 },
         });
-        let bytes = self.post_graphql(tokens, &body).await?;
+        let bytes = self
+            .post_graphql(tokens, &body, Ask::one(Purpose::MediaEvidence))
+            .await?;
         evidence::parse_media_evidence_response(&bytes)
     }
 }

@@ -2,8 +2,6 @@
 //! line, once the answer lands, with the kind, which request, how many
 //! ids it carried, how it ended and how long it took — and no ids.
 
-use std::time::Duration;
-
 use super::*;
 use crate::meta::anilist_batch::Want;
 use crate::meta::anilist_gate::in_background;
@@ -38,8 +36,13 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
 fn lines_of<F: Future>(f: impl FnOnce() -> F) -> Vec<String> {
     let captured = Captured::default();
     let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::new("ani_gui=info"))
+        .with_env_filter(tracing_subscriber::EnvFilter::new(
+            crate::DEFAULT_LOG_FILTER,
+        ))
         .with_ansi(false)
+        // No timestamp: the lines are searched for ids, and a clock's
+        // digits would match one.
+        .without_time()
         .with_writer(captured.clone())
         .finish();
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -105,7 +108,9 @@ fn by_mal(mal: u32) -> Want {
 }
 
 /// A strip's lookups through `lookup`: show 9 opens the lane, then two
-/// MAL-mapped shows and one mapped to AniList alone gather behind it.
+/// MAL-mapped shows and one mapped to AniList alone gather behind it, in
+/// the same turn — polled in order, on one thread, before the lane's
+/// driver can take a window.
 async fn strip<F, Fut, T>(lookup: F)
 where
     F: Fn(Want) -> Fut,
@@ -113,7 +118,6 @@ where
 {
     let lookup = &lookup;
     let rest = async {
-        tokio::time::sleep(Duration::from_millis(10)).await;
         tokio::join!(
             lookup(by_mal(1)),
             lookup(by_mal(2)),

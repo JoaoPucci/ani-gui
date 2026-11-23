@@ -18,6 +18,17 @@ path = "src/lib.rs"
 name = "ani-gui-backend"
 path = "src/bin/backend.rs"
 
+[features]
+# Test builds only. A test run's flags file (ANI_GUI_TEST_FLAGS_FILE)
+# is then trusted under the fixture test-run key as well, whose secret
+# anyone can derive from tests/fixtures/flags-signature/make.py, and the
+# backend declares the probe flag the e2e suite drives (src/flags/
+# test_run.rs). The live fetch never trusts the key. `cargo test
+# --all-features` turns it on, and so does the e2e suite's package
+# (electron's `build:backend:e2e`, into target-e2e); no release script
+# may (tests/arch/test_run_key.sh).
+test-run-key = []
+
 [dependencies]
 # Async runtime + HTTP server (streaming proxy + API)
 tokio = { version = "1.41", features = ["full"] }
@@ -67,6 +78,11 @@ cbc = { version = "0.1", features = ["alloc", "block-padding"] }
 
 # ANSI escape stripping for spawned tools' output
 strip-ansi-escapes = "0.2"
+
+# minisign signature verification for the remote flags file: Ed25519
+# over a BLAKE2b-512 hash, pure Rust with no dependencies of its own, so
+# the packages carry nothing new on either platform.
+minisign-verify = "0.3.0"
 
 # URLs + bytes streaming
 url = "2.5"
@@ -126,6 +142,10 @@ serde_urlencoded = "0.7"
 # without binding a real socket. Used by `api::tests`.
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+# Signs the flags file inside a test with minisign's own code, so the
+# verifier is checked against the real format rather than a vector this
+# repository built by hand. Throwaway keys made per run; never a real key.
+minisign = "0.10"
 
 [profile.release]
 opt-level = 3
