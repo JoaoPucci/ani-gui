@@ -556,8 +556,9 @@
 		white-space: nowrap;
 		border: 0;
 	}
-	/* At least the bar's width, so a queued row's cancel lines up with a
-	   running one's, and wider when a translation needs it. */
+	/* At least the bar's width, so the label starts where a running
+	   row's bar does and a queued title is cut where a running one is;
+	   wider when a translation needs it, instead of overflowing. */
 	.dl-row-queued {
 		flex-shrink: 0;
 		min-inline-size: 5rem;
