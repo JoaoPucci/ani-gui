@@ -18,6 +18,7 @@
 //! [`crate::commands::player_locate`]'s to find, at launch.
 
 use super::ExternalPlayerKind;
+use crate::commands::player_locate::standard_name;
 
 /// The command after the type changes from `from` to `to`.
 #[must_use]
@@ -26,8 +27,14 @@ pub fn command_after_kind_change(
     from: ExternalPlayerKind,
     to: ExternalPlayerKind,
 ) -> String {
-    let _ = (from, to);
-    command.to_string()
+    let Some(next) = to.standard_program() else {
+        return command.to_string();
+    };
+    match (from.standard_program(), standard_name(command)) {
+        (None, Some(_)) => String::new(),
+        (Some(previous), Some(name)) if name == previous => next.to_string(),
+        _ => command.to_string(),
+    }
 }
 
 #[cfg(test)]

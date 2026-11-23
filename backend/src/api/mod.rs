@@ -124,6 +124,10 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             "/api/external-player/standard",
             get(get_external_player_standard),
         )
+        .route(
+            "/api/external-player/after-kind-change",
+            get(get_external_player_after_kind_change),
+        )
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
         .route(
@@ -340,6 +344,23 @@ async fn get_external_player_standard(
         .await
         .unwrap_or_else(|_| crate::commands::external_player::standard_program_unknown(q.kind)),
     )
+}
+
+/// `?command=&from=&to=` of the type-change question.
+#[derive(Debug, Deserialize)]
+struct KindChangeQuery {
+    command: String,
+    from: crate::commands::external_player::ExternalPlayerKind,
+    to: crate::commands::external_player::ExternalPlayerKind,
+}
+
+/// What the External player command becomes when Settings changes the
+/// player's type
+/// ([`crate::commands::external_player::command_after_kind_change`]).
+async fn get_external_player_after_kind_change(Query(q): Query<KindChangeQuery>) -> Json<String> {
+    Json(crate::commands::external_player::command_after_kind_change(
+        &q.command, q.from, q.to,
+    ))
 }
 
 /// The rows a link would write
