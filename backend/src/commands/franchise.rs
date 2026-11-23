@@ -4,8 +4,11 @@
 //! Each listing is the detailed relations read
 //! ([`crate::meta::kitsu::KitsuClient::franchise_relations`]), cached
 //! under `kitsu:franchise-rel:v1:<id>` for a week, or a day when it
-//! relates an anime that has not finished ([`listing_ttl`]). Two reads
-//! of one listing at the same time share one request. The entry asked
+//! relates an anime that has not finished ([`listing_ttl`]). Its
+//! presigned artwork is warmed as it is written and read, as in the
+//! other Kitsu caches that hold artwork
+//! ([`crate::commands::kitsu_warm`]). Two reads of one listing at the
+//! same time share one request. The entry asked
 //! about takes its fields from the cached detail read
 //! ([`crate::commands::kitsu::kitsu_anime_detail`]), which the show page
 //! reading the same detail at the same time shares; every other entry,
@@ -19,6 +22,7 @@ use crate::app::AppState;
 use crate::cache::ttl::{ANIME_DETAIL_TTL, EPISODES_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::franchise_walk::{plan, Franchise, Plan};
+use crate::commands::kitsu_warm::warm_signed_image_urls;
 use crate::error::Result;
 use crate::meta::inflight::Inflight;
 use crate::meta::kitsu::{FranchiseEntry, FranchiseListing, KitsuAnimeRef};
@@ -57,6 +61,7 @@ pub async fn franchise_listing(state: &AppState, id: &str) -> Result<FranchiseLi
     let key = listing_key(id);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(listing) = serde_json::from_str(&body) {
+            warm_signed_image_urls(state, &body);
             return Ok(listing);
         }
     }
@@ -68,6 +73,9 @@ pub async fn franchise_listing(state: &AppState, id: &str) -> Result<FranchiseLi
             let listing = state.kitsu.franchise_relations(id).await?;
             if let Ok(body) = serde_json::to_string(&listing) {
                 let _ = meta_cache_put(&state.cache_pool, &key, &body, listing_ttl(&listing));
+                // A related entry's art can be a presigned link that
+                // expires long before the listing does.
+                warm_signed_image_urls(state, &body);
             }
             Ok(listing)
         })
