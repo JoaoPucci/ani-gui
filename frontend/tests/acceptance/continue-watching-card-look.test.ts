@@ -231,6 +231,26 @@ describe('Continue Watching card artwork', () => {
 		]);
 	});
 
+	it('waits most of a second for the episode details, so a slow first lookup still lands on its thumbnail', async () => {
+		// A cold lookup on the first launch of the day (Kitsu's page and
+		// AniList's stills both asked) takes well past half a second.
+		const episodes = held<KitsuEpisode[]>();
+		server.use(...rowHandlers({ episodes: () => episodes.answer }));
+		app = mount(HomePage, { target });
+		await until(() => resumeButton() !== null, 'the matched card');
+		const looks = watchLooks();
+		await sleep(700);
+		expect(look()).toBe('pending');
+		episodes.release([episode(4, THUMB)]);
+		await until(() => look() === 'image', 'the card to settle');
+		expect(imageSource()).toBe(THUMB);
+		looks.stop();
+		expect(looks.seen).toEqual([
+			'pending | - |',
+			`image | ${THUMB} | Cowboy Bebop Episode title 4`
+		]);
+	});
+
 	it('settles on the poster when the episode details are slow, and keeps it when they land', async () => {
 		const episodes = held<KitsuEpisode[]>();
 		server.use(...rowHandlers({ episodes: () => episodes.answer }));
