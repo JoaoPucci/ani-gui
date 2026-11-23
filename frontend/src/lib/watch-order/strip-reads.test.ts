@@ -108,6 +108,47 @@ describe('stripReads', () => {
 		expect(drawn()).toBe('show B');
 	});
 
+	it('draws nothing from a re-read that fails', async () => {
+		const { reads, rereads, drawn } = harness();
+		reads.walk(Promise.resolve('walked'));
+		await settle();
+		reads.linked();
+		rereads[0].read.fail(new Error('no backend'));
+		await settle();
+		expect(drawn()).toBe('walked');
+	});
+
+	it("draws nothing from the visit before's walk, answered or failed", async () => {
+		const { reads, rereads, drawn } = harness();
+		const before = deferred<string | null>();
+		const failing = deferred<string | null>();
+		reads.walk(before.promise);
+		reads.walk(failing.promise);
+		reads.linked();
+		reads.walk(Promise.resolve('show C'));
+		await settle();
+		before.answer('show A');
+		failing.fail(new Error('kitsu unreachable'));
+		await settle();
+		expect(drawn()).toBe('show C');
+		// The link was answered under show B's walk, which never landed.
+		expect(rereads).toEqual([]);
+	});
+
+	it('draws nothing for a walk with nothing to draw, and reads again for a link meanwhile', async () => {
+		const { reads, rereads, drawn } = harness('remembered');
+		const walk = deferred<string | null>();
+		reads.walk(walk.promise);
+		reads.linked();
+		walk.answer(null);
+		await settle();
+		expect(drawn()).toBe('remembered');
+		expect(rereads.map((r) => r.shown)).toEqual(['remembered']);
+		rereads[0].read.answer(null);
+		await settle();
+		expect(drawn()).toBe('remembered');
+	});
+
 	it('reads nothing again with nothing drawn and no walk out', async () => {
 		const { reads, rereads } = harness();
 		reads.linked();
