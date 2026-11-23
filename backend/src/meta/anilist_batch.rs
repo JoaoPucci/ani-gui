@@ -162,7 +162,7 @@ where
 pub(crate) async fn resolve_each<T: Clone + Default, P, PF, S, SF>(
     wants: &[Want],
     mut ask: P,
-    mut single: S,
+    single: S,
     on_answer: impl FnMut(usize, Result<T>),
 ) where
     P: FnMut(Space, Vec<u32>) -> PF,
@@ -177,6 +177,14 @@ pub(crate) async fn resolve_each<T: Clone + Default, P, PF, S, SF>(
         (on_answer
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner))(i, a);
+    };
+    // Both branches start single lookups; each call only makes the
+    // lookup's future, so the lock is never held across an await.
+    let single = std::sync::Mutex::new(single);
+    let single = |want: Want| {
+        (single
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner))(want)
     };
     let mal_keys: Vec<u32> = wants
         .iter()
@@ -212,25 +220,27 @@ pub(crate) async fn resolve_each<T: Clone + Default, P, PF, S, SF>(
         .into_iter()
         .collect();
     // The MAL page's single lookups go while the AniList-id page is
-    // asked: neither waits on the other's shows.
-    let (by_id, ()) = futures_util::future::join(
-        answers(Space::AniList, &id_keys, &mut ask),
-        mal_singles.run(&mut single, &answer),
-    )
-    .await;
-    let mut id_singles = Singles::new();
-    for i in by_id_wanted {
-        let Some(id) = wants[i].anilist else { continue };
-        let want = Want {
-            mal: None,
-            anilist: Some(id),
-        };
-        match by_id.get(id) {
-            Got::Listing(l) => answer(i, Ok(l)),
-            Got::Failed(e) => answer(i, Err(e)),
-            Got::Single | Got::Unread => id_singles.add(Settles::Key(Space::AniList, id), want, i),
-            Got::Absent => answer(i, Ok(T::default())),
+    // asked, and the id page's answers are handed out as it comes in:
+    // neither branch waits on the other's shows.
+    let id_branch = async {
+        let by_id = answers(Space::AniList, &id_keys, &mut ask).await;
+        let mut id_singles = Singles::new();
+        for i in by_id_wanted {
+            let Some(id) = wants[i].anilist else { continue };
+            let want = Want {
+                mal: None,
+                anilist: Some(id),
+            };
+            match by_id.get(id) {
+                Got::Listing(l) => answer(i, Ok(l)),
+                Got::Failed(e) => answer(i, Err(e)),
+                Got::Single | Got::Unread => {
+                    id_singles.add(Settles::Key(Space::AniList, id), want, i);
+                }
+                Got::Absent => answer(i, Ok(T::default())),
+            }
         }
-    }
-    id_singles.run(&mut single, &answer).await;
+        id_singles.run(&single, &answer).await;
+    };
+    futures_util::future::join(id_branch, mal_singles.run(&single, &answer)).await;
 }
