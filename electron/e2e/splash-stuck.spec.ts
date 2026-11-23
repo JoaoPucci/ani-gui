@@ -75,9 +75,9 @@ function packagedWithPage(name: string, page: 'never' | 'late'): string {
  *  in their own teardown, once the app and anything it restarted have
  *  gone; a launch that never starts has no teardown to reach, so its
  *  profile is removed here. */
-async function launchOn(env: Parameters<typeof launchPackagedApp>[0], binary: string, tmp: string) {
+async function launchOn(env: Parameters<typeof launchPackagedApp>[0], binary: string, tmp: string, cwd?: string) {
 	try {
-		return await launchPackagedApp(env, { binary });
+		return await launchPackagedApp(env, { binary, cwd });
 	} catch (err) {
 		fs.rmSync(tmp, { recursive: true, force: true });
 		throw err;
@@ -353,7 +353,10 @@ test('Restart starts the new instance with the user’s desktop environment, in 
 	const userEnv: NodeJS.ProcessEnv = { ...env, XDG_CURRENT_DESKTOP: 'ubuntu:GNOME' };
 	const injected = ['ORIGINAL_XDG_CURRENT_DESKTOP', 'CHROME_DESKTOP', 'GDK_BACKEND', 'NO_AT_BRIDGE'];
 	for (const name of injected) delete userEnv[name];
-	const app = await launchOn(userEnv, binary, tmp);
+	// Started in a directory of its own, not the runner's, so the new
+	// instance being in it says the restart kept it.
+	const cwd = fs.realpathSync(tmp);
+	const app = await launchOn(userEnv, binary, tmp, cwd);
 	const pid = app.process().pid!;
 	const exited = new Promise<number | null>((resolve) => app.process().once('exit', (code) => resolve(code)));
 	let relaunched: number | null = null;
@@ -364,7 +367,7 @@ test('Restart starts the new instance with the user’s desktop environment, in 
 		const own = await app.evaluate(() => ({ ...process.env }));
 		expect(own.XDG_CURRENT_DESKTOP).toBe('Unity');
 		expect(own.GDK_BACKEND).toBeTruthy();
-		const cwd = fs.readlinkSync(`/proc/${pid}/cwd`);
+		expect(fs.readlinkSync(`/proc/${pid}/cwd`)).toBe(cwd);
 		await splash.getByRole('button', { name: 'Restart' }).click();
 		expect(await exited).toBe(0);
 		await expect
