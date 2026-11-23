@@ -43,8 +43,12 @@ function dropUnbalanced(text: string): string {
 	return chars.map((ch, i) => (unmatched.has(i) ? ' ' : ch)).join('');
 }
 
+/** The mark that keeps a sidecar track's label apart from a
+ *  playlist rendition's name ($lib/play/caption-engine's LABEL_MARK). */
+const MARK = /\u2060/g;
+
 function cleanOnce(label: string): string {
-	return dropUnbalanced(label.replace(SDH, ' '))
+	return dropUnbalanced(label.replace(MARK, '').replace(SDH, ' '))
 		.replace(ROUND, (_, inner: string) => qualifier(inner, '(', ')'))
 		.replace(SQUARE, (_, inner: string) => qualifier(inner, '[', ']'))
 		.replace(/([([])[\s\-–]+/g, '$1')
