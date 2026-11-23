@@ -20,7 +20,7 @@ name: 'e2e (Playwright + Electron)'
 #     script a Windows release runs (`pnpm run build:backend`) and
 #     checks it holds no test-run key. This workflow builds no Windows
 #     installer: the Packages workflow (packages.yml) does, and searches
-#     its backend for the key too.
+#     its backend for the key too, whenever it builds.
 #
 # Always fires; the `filter` job decides whether downstream steps run
 # the real pipeline or no-op. See rust.yml for the design rationale.

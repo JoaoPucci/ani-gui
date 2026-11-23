@@ -12,7 +12,13 @@
 
 const FLAGS_FILE = "ANI_GUI_TEST_FLAGS_FILE";
 
-/** What every test run's app is given over the shell's environment. */
+/** What every test launch sets, whatever the spec passes: a test run
+ *  (`ANI_GUI_UNATTENDED=1`). A boot that fails then exits instead of
+ *  waiting on a dialog nobody reads (lib/boot-failure.cjs), and the
+ *  backend takes its flags from the test (`ANI_GUI_TEST_FLAGS_FILE`, or
+ *  the defaults) and never asks GitHub for the live file, so a flipped
+ *  flag or a slow CDN cannot change a test's result
+ *  (backend/src/flags/launch.rs). */
 const TEST_RUN_ENV = Object.freeze({ ANI_GUI_UNATTENDED: "1" });
 
 /** The proxy settings every test launch carries, pointing at `origin`:

@@ -179,11 +179,13 @@ fi
 # The e2e workflow's release-shaped jobs build with `build:backend`
 # (the script `package:win` runs) and `pnpm run dist`, on every pull
 # request the e2e filter takes; the Packages workflow's jobs build the
-# release files themselves, with `package:win` and `package:release`. What the steps do with those names is theirs; this holds that
-# the jobs are there and point at the right binaries. It does not read
-# whether they run or count: a job's or step's `if:` (every step here
-# carries the filter's), `continue-on-error`, the workflow's triggers,
-# or an `env` (RUSTFLAGS among them) that changes the build.
+# release files themselves, with `package:win` and `package:release`.
+# What the steps do with those names is theirs; this holds that the
+# jobs are there and point at the right binaries. It does not read
+# whether they run or count: a job's or step's `if:` (e2e.yml's steps
+# carry its filter's, packages.yml's jobs carry theirs at job level),
+# `continue-on-error`, the workflow's triggers, or an `env` (RUSTFLAGS
+# among them) that changes the build.
 py=''
 for candidate in python3 /usr/bin/python3; do
     if "$candidate" -I -c 'import yaml' 2>/dev/null; then

@@ -163,7 +163,8 @@ jobs:
       - name: The installer's backend trusts no test-run key
         # The search e2e.yml's release-shaped jobs make (see there for
         # why the key and the probe flag must not be in a release),
-        # here on the backend this installer carries.
+        # here on the release backend package:win built, the file the
+        # installer stages (build.win.extraResources).
         # tests/arch/test_run_key.sh holds that this step exists.
         working-directory: electron
         shell: bash

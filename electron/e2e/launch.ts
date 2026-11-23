@@ -38,7 +38,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
-import { appEnv, TEST_RUN_ENV } from '../lib/e2e-launch-env.cjs';
+import { appEnv } from '../lib/e2e-launch-env.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
 import { guardOutput, guardPolicy, recordAppOutput } from './policy-guard';
 import { answer } from './stubs';
@@ -63,15 +63,6 @@ export const packagedBinary = path.join(
  *
  *  `--mute-audio` so a test run makes no sound. */
 export const testLaunchSwitches = ['--no-sandbox', '--mute-audio'] as const;
-
-/** What every test launch sets, whatever the spec passes: a test
- *  run (`ANI_GUI_UNATTENDED=1`). A boot that fails then exits instead
- *  of waiting on a dialog nobody reads (lib/boot-failure.cjs), and the
- *  backend takes its flags from the test — `ANI_GUI_TEST_FLAGS_FILE`,
- *  or the defaults — and never asks GitHub for the live file, so a
- *  flipped flag or a slow CDN cannot change a test's result
- *  (backend/src/flags/launch.rs). */
-export const testRunEnv: Readonly<Record<string, string>> = TEST_RUN_ENV;
 
 /** A proxy that lets nothing through. It answers every request with
  *  403 and closes, and records the request line: `CONNECT host:port`
@@ -212,8 +203,9 @@ export async function launchPackagedApp(
  *  launchPackagedApp — the display refusal, testLaunchSwitches, the
  *  refusing proxy and a test run's environment (lib/e2e-launch-env.cjs,
  *  which drops a flags file the shell left set; this launch names
- *  none) — and the same policy guard, over the child's stdout and stderr where they are pipes (the
- *  driver's page listeners need Playwright attached, which it is not).
+ *  none) — and the same policy guard, over the child's stdout and
+ *  stderr where they are pipes (the driver's page listeners need
+ *  Playwright attached, which it is not).
  *
  *  `via` is a program to start the app under, which gets the app's
  *  command line as its arguments (a terminal of its own:
