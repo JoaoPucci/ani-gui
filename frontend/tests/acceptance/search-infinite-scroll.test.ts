@@ -78,7 +78,9 @@ const CONFIG: Config = {
 function baseHandlers() {
 	return [
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
-		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+			HttpResponse.json<KitsuAnimeRef[]>([])
+		),
 		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const { kitsu_ids } = (await request.json()) as { kitsu_ids: string[] };

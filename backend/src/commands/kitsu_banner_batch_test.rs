@@ -131,7 +131,29 @@ async fn a_strip_of_ten_coverless_shows_reads_its_banners_in_two_requests() {
     )
     .await;
     let state = state_with_kitsu_at(&kitsu.uri());
-    let got = read_all(&state, &ids, &anilist.uri()).await;
+    let base = anilist.uri();
+    // Each detail read asks Kitsu for the detail before its banner, on
+    // the real network. Tokio's clock stands still until every read has
+    // reached the lane, so the opener's window cannot pass before the
+    // last of them arrives however long Kitsu's answers take.
+    let lane = crate::commands::strip_warm::fill_lane(&state, Some(&base));
+    let all_in = async move {
+        tokio::task::spawn_blocking(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            while crate::meta::anilist_media::banners_gathered(&lane) < 9 {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "the reads never reached the lane"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        })
+        .await
+        .expect("the watch ends");
+    };
+    let got = crate::held::frozen_until(read_all(&state, &ids, &base), all_in)
+        .await
+        .out;
     for ((id, detail), m) in ids.iter().zip(&got).zip(&media) {
         assert_eq!(banner_of(detail), m.banner(), "kitsu {id}");
         let row = meta_cache_get(&state.cache_pool, &anime_detail_key(id))
@@ -140,12 +162,14 @@ async fn a_strip_of_ten_coverless_shows_reads_its_banners_in_two_requests() {
         let kept: KitsuAnimeRef = serde_json::from_str(&row).expect("a detail");
         assert_eq!(banner_of(&kept), m.banner(), "kitsu {id}");
     }
-    // Each detail read asks Kitsu for the detail before its banner, so
-    // whichever answer lands first opens the lane: that one goes alone,
-    // and the other nine share one page.
+    // Whichever Kitsu answer lands first opens the lane: that one goes
+    // alone, and the other nine share one page. The two are out at once,
+    // so the mock may have read them in either order.
     let asked = asked_of(&anilist).await;
-    let [Asked::ByMal(first), Asked::PageByMal(page)] = asked.as_slice() else {
-        panic!("the first alone, then one page: {asked:?}");
+    let (first, page) = match asked.as_slice() {
+        [Asked::ByMal(first), Asked::PageByMal(page)]
+        | [Asked::PageByMal(page), Asked::ByMal(first)] => (first, page),
+        _ => panic!("one alone and one page: {asked:?}"),
     };
     let mut all: Vec<u32> = page.iter().copied().chain([*first]).collect();
     all.sort_unstable();
@@ -176,8 +200,23 @@ async fn a_strip_refused_by_anilist_keeps_none_of_its_details() {
             "kitsu {id} was kept"
         );
     }
+    // The first read's lookup goes alone; any other request is a page.
+    // Out at once, they may be recorded in either order.
     let asked = asked_of(&anilist).await;
-    assert!(matches!(asked.first(), Some(Asked::ByMal(_))), "{asked:?}");
+    assert_eq!(
+        asked
+            .iter()
+            .filter(|a| matches!(a, Asked::ByMal(_)))
+            .count(),
+        1,
+        "{asked:?}"
+    );
+    assert!(
+        asked
+            .iter()
+            .all(|a| matches!(a, Asked::ByMal(_) | Asked::PageByMal(_))),
+        "{asked:?}"
+    );
     assert!(asked.len() <= 3, "{asked:?}");
 }
 

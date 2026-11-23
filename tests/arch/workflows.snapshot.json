@@ -50,12 +50,14 @@
       "lint": "Shellcheck + Shfmt (per-file dialect)"
     },
     "crap.yml": {
-      "crap": "lizard + ratchet",
+      "crap": "CRAP + ratchet",
       "filter": "filter"
     },
     "e2e.yml": {
       "e2e": "Playwright + _electron",
-      "filter": "filter"
+      "filter": "filter",
+      "release-backend-windows": "release-shaped backend (Windows)",
+      "release-package": "release-shaped package"
     },
     "frontend.yml": {
       "filter": "filter",

@@ -17,7 +17,7 @@
  * audio) cut into 1-second HLS segments, the same as an MP4, and
  * WebVTT cues for a subtitle rendition and a sidecar track.
  *
- * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
+ * Pre-condition: `pnpm run package:e2e` has produced `dist-e2e/linux-unpacked/`.
  */
 import { type ElectronApplication, type Page } from '@playwright/test';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
@@ -45,7 +45,7 @@ const mediaDir = path.join(__dirname, 'fixtures/media');
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
-		throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`);
+		throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`);
 	}
 });
 
