@@ -144,7 +144,7 @@
 	"link_hide_aria": "Скрыть это уведомление",
 	"link_slip_aria": "Об этом тайтле",
 	"link_menu_item": "Не тот тайтл…",
-	"link_playing_now": "Сейчас играет",
+	"link_playing_now": "Сейчас идёт",
 	"link_change_button": "Нет",
 	"link_dialog_body": "В истории записан как «{title}». Сейчас идёт серия {episode}.",
 	"link_warning_episode": "Сейчас идёт серия {episode}, а у этого тайтла серий: {count}.",
