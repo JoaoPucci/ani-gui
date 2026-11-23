@@ -7,7 +7,8 @@
 // show the user played, so as soon as the history is loaded Home hands
 // the backend those ids at once, and the backend asks AniList for the
 // whole strip together; a card that asks later finds its answer kept,
-// or shares the lookup still out.
+// or shares the lookup still out. A card whose show's warm is still out
+// waits for it ($lib/history/cap-timers).
 
 import type { HistoryEntry } from '$lib/api';
 

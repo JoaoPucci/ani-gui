@@ -23,7 +23,8 @@ import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 
 /**
  * How long a matched card waits for its episode details before it
- * settles on the show's poster. A return to Home, or a launch whose
+ * settles on the show's poster, when no strip warm is out for its show
+ * (see EPISODE_WAIT_CEILING_MS for one that is). A return to Home, or a launch whose
  * episode pages and stills are cached, settles well inside 400 ms. The
  * wait matters for a card whose show's rows have expired, so that its
  * details are a cold lookup (Kitsu's episode page, then AniList's
@@ -38,8 +39,12 @@ import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 export const EPISODE_WAIT_CAP_MS = 1000;
 
 /**
- * The longest a matched card waits for its episode details while
- * Home's strip warm is still out for its show ($lib/history/cap-timers).
+ * The longest a matched card waits for its episode details, from its
+ * first offer, when Home's strip warm is still out for its show at the
+ * cap ($lib/history/cap-timers). On a cold launch the card's own read
+ * shares the warm's AniList lookup, so its details come back with the
+ * whole strip's, past a second; the ceiling keeps a stalled warm from
+ * holding the skeleton.
  */
 export const EPISODE_WAIT_CEILING_MS = 3000;
 
