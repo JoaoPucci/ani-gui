@@ -916,9 +916,17 @@
 	.seg-btn:last-child {
 		border-inline-end: 0;
 	}
-	/* Inside the button's box: the track clips what overflows it. */
+	/* Inside the button's box: a segmented control's track clips what
+	   overflows it. The browse buttons share the class and ring the same
+	   way. On the chosen button, whose fill is the accent, the ring's
+	   colours swap so it still shows. */
 	.seg-btn:focus-visible {
 		box-shadow: var(--ring-inset);
+	}
+	.seg-btn.active:focus-visible {
+		box-shadow:
+			inset 0 0 0 2px var(--ink-000),
+			inset 0 0 0 4px var(--bone-100);
 	}
 	.seg-btn:hover:not(.active) {
 		color: var(--bone-100);

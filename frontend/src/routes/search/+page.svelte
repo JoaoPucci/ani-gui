@@ -849,8 +849,11 @@
 	.card-link:hover {
 		transform: translateY(-4px);
 	}
+	/* The poster carries the ring: the app's ring around the whole card
+	   (tokens.css) drew a second one around the poster and its title. */
 	.card-link:focus-visible {
 		outline: none;
+		box-shadow: none;
 	}
 	.card-link:focus-visible .poster {
 		box-shadow:

@@ -242,6 +242,12 @@ body {
 	-webkit-font-smoothing: antialiased;
 	text-rendering: optimizeLegibility;
 }
+/* Where the keyboard scrolls a control it moves to: clear of the sticky
+   topbar above (+layout.svelte, about 5.25rem tall) and off the window's
+   bottom edge, with room for the focus ring on both sides. */
+html {
+	scroll-padding-block: 6.5rem var(--space-3);
+}
 
 a {
 	color: inherit;

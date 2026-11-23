@@ -745,8 +745,10 @@
 		min-block-size: 100dvh;
 		/* Approximate topbar block size — exposed so route hero/banner
 		   blocks can pull up under it (margin-block-start: calc(-1 *
-		   var(--topbar-h))) for the bleed-through effect. Matches the
-		   computed height of .topbar (padding-block + control row). */
+		   var(--topbar-h))) for the bleed-through effect. Shorter than
+		   .topbar itself, which measures about 5.25rem (padding-block +
+		   control row); the page's scroll padding (tokens.css) clears
+		   the measured height. */
 		--topbar-h: 4.5rem;
 	}
 	@media (max-inline-size: 720px) {
@@ -816,8 +818,11 @@
 		display: grid;
 		justify-items: center;
 		gap: var(--space-2);
-		padding-block-end: var(--space-5);
-		margin-block-end: var(--space-5);
+		/* The same room around the mark and its name above and below, for
+		   the focus ring that is drawn inside this box; the margins keep
+		   the mark where it was and the gap under the name as it was. */
+		padding-block: var(--space-2);
+		margin-block: calc(-1 * var(--space-2)) calc(2 * var(--space-5) - var(--space-2));
 		/* No divider line — the gap below already separates the
 		   brand mark from the home icon, and a hard rule fought
 		   the hero/banner bleed-through. */
@@ -935,9 +940,14 @@
 			padding-block: var(--space-2);
 		}
 	}
-	/* Inside the link's box: the rail starts at the window's edge. */
+	/* Inside the link's box: the rail starts at the window's edge. The
+	   active link's rule steps inside the ring rather than over it. */
 	.nav-link:focus-visible {
 		box-shadow: var(--ring-inset);
+	}
+	.nav-link.active:focus-visible::before,
+	.rail-foot.active:focus-visible::before {
+		inset-inline-start: 4px;
 	}
 	.nav-link:hover {
 		color: var(--bone-100);
@@ -1146,6 +1156,11 @@
 			inset-inline: var(--space-2);
 			inline-size: auto;
 			block-size: 2px;
+		}
+		.nav-link.active:focus-visible::before,
+		.rail-foot.active:focus-visible::before {
+			inset-inline-start: var(--space-2);
+			inset-block-end: 4px;
 		}
 	}
 	.rail-foot-val {
