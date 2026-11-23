@@ -1495,9 +1495,14 @@ async fn the_rails_dead_end_may_rest_on_a_cached_anilist_negative() {
         .await;
     let state = state_with_kitsu(&kitsu.uri());
 
-    let single = crate::commands::anilist_ids::media_id_for_mal(&state, 21, Some(&anilist.uri()))
-        .await
-        .expect("single translation");
+    let single = crate::commands::anilist_ids::media_id_for_mal(
+        &state,
+        21,
+        Some(&anilist.uri()),
+        crate::meta::anilist_gate::Purpose::TrackerIds,
+    )
+    .await
+    .expect("single translation");
     assert_eq!(single, None);
     let refs = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
     assert!(refs.is_empty(), "nothing maps this id");
