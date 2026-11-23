@@ -2,7 +2,8 @@
  * The last watch-order answer per show, for the rest of the session,
  * so a show page visited again draws its strip in its first frame
  * instead of a few frames after its title. The page still reads the
- * answer again and draws what it says.
+ * answer again and draws what it says. Saving another order setting
+ * forgets every answer (`watchOrderSaved`).
  */
 import type { ShowView } from '$lib/api';
 import type { WatchOrderAnswer } from './loader';
@@ -63,10 +64,14 @@ export function forgetAnswers(): void {
 }
 
 /**
- * The order now in force once `saved` has been saved over `before`.
- * Not yet in place: it forgets nothing.
+ * The order in force once `saved` has been saved over `before`
+ * (null where the order before is not known). The backend reads the
+ * order with every answer, so a remembered answer is the answer in the
+ * order it was read in: a different order forgets them all, or a show
+ * visited again would draw its strip in the old order for a frame
+ * before its new answer lands.
  */
 export function watchOrderSaved(before: string | null, saved: string): string {
-	void before;
+	if (before !== saved) forgetAnswers();
 	return saved;
 }

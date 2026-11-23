@@ -27,12 +27,16 @@
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
 	import type { WatchOrder } from '$lib/api';
+	import { watchOrderSaved } from '$lib/watch-order/session-memo';
 	const WATCH_ORDERS: Array<{ key: WatchOrder; label: () => string }> = [
 		{ key: 'linked', label: m.watchorder_setting_linked },
 		{ key: 'released', label: m.watchorder_setting_released }
 	];
 
 	let cfg = $state<Config | null>(null);
+	// The order setting as last read or saved: what the remembered
+	// watch-order answers were read in.
+	let savedOrder: string | null = null;
 	// The order the choice shows: the backend reads any stored value but
 	// `released` as linked and answers it so; a value it never sends
 	// shows as linked too rather than as no choice at all.
@@ -72,7 +76,10 @@
 	onMount(() => {
 		void reads
 			.keep(settingsGet({ signal: reads.signal }))
-			.then((c) => (cfg = c))
+			.then((c) => {
+				cfg = c;
+				savedOrder = c.watch_order;
+			})
 			.catch((e) => (loadError = describeSettingsFailure(e)));
 		void reads
 			.keep(appInfo({ signal: reads.signal }))
@@ -97,6 +104,9 @@
 		cfg = next;
 		try {
 			await settingsPut(next);
+			// The shows remembered this session were read in the order
+			// saved before ($lib/watch-order/session-memo).
+			savedOrder = watchOrderSaved(savedOrder, next.watch_order);
 			savedAt = Date.now();
 			errorBlock = landed(errorBlock, 'save');
 		} catch (e) {
