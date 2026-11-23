@@ -63,6 +63,12 @@ where
     Ok(pages)
 }
 
+/// Stub.
+#[must_use]
+pub fn by_key<T>(_media: Vec<(u32, T)>) -> (std::collections::HashMap<u32, T>, Vec<u32>) {
+    (std::collections::HashMap::new(), Vec::new())
+}
+
 #[cfg(test)]
 #[path = "anilist_pages_prop_test.rs"]
 mod prop_tests;
