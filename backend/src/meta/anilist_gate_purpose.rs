@@ -17,7 +17,8 @@ pub(crate) enum Purpose {
     /// The home page's Trending Now feed.
     Trending,
     /// A show's banner: a Continue strip's warm asks it for every warmed
-    /// show, a detail read for a show whose Kitsu entry has no cover.
+    /// show Kitsu has no cover for, a detail read for a show whose Kitsu
+    /// entry has none.
     Banner,
     /// A show's streaming episodes: episode stills and the listing.
     Stills,
