@@ -16,6 +16,7 @@ pub use crate::commands::franchise_walk::{Chain, Franchise};
 pub use crate::meta::kitsu::FranchiseEntry as WatchEntry;
 
 pub mod by_start;
+pub mod chain_end;
 pub mod chain_view;
 mod components;
 pub mod entry;
@@ -32,6 +33,7 @@ pub mod sections;
 pub mod segments;
 pub mod sequence;
 pub mod strip_view;
+pub mod up_next;
 
 /// A prequel → sequel pair between two run members.
 pub type RunLink = (String, String);
@@ -165,6 +167,10 @@ mod page_tests;
 #[cfg(test)]
 #[path = "chain_test.rs"]
 mod chain_tests;
+
+#[cfg(test)]
+#[path = "up_next_test.rs"]
+mod up_next_tests;
 
 #[cfg(test)]
 #[path = "progress_test.rs"]
