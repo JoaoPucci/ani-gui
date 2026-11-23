@@ -68,6 +68,11 @@ struct Gate {
     /// Requests other than retries waiting for their turn now. While
     /// any waits, no retry takes a turn.
     fresh_waiting: AtomicUsize,
+    /// The class of each request let go, in the order it was let go:
+    /// what a test reads the order of sending from, which a mock
+    /// server's record of what it received does not keep.
+    #[cfg(test)]
+    let_go: Mutex<Vec<Class>>,
 }
 
 impl Gate {
@@ -76,6 +81,8 @@ impl Gate {
             pace,
             ledger: Mutex::new(Ledger::default()),
             fresh_waiting: AtomicUsize::new(0),
+            #[cfg(test)]
+            let_go: Mutex::new(Vec::new()),
         }
     }
 
@@ -113,6 +120,11 @@ impl Gate {
                     if class == Class::Retry {
                         ledger.record_retry(&self.pace, now);
                     }
+                    #[cfg(test)]
+                    self.let_go
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .push(class);
                     sent(&self.pace, class, &ledger, now, now - began, behind_retry);
                     return Ok(now);
                 }
@@ -226,13 +238,39 @@ pub(crate) fn retry_wait(url: &str) -> std::time::Duration {
 #[cfg(test)]
 pub(crate) fn share_for_tests(url: &str, pace: Pace) -> SharedForTests {
     let key = authority(url);
-    shared().insert(key.clone(), Arc::new(Gate::new(pace)));
-    SharedForTests(key)
+    let gate = Arc::new(Gate::new(pace));
+    shared().insert(key.clone(), Arc::clone(&gate));
+    SharedForTests(key, gate)
 }
 
-/// Removes a test's shared gate when dropped.
+/// Removes a test's shared gate when dropped. While it lives, the test
+/// reads what the gate let go and who waits on it.
 #[cfg(test)]
-pub(crate) struct SharedForTests(String);
+pub(crate) struct SharedForTests(String, Arc<Gate>);
+
+#[cfg(test)]
+impl SharedForTests {
+    /// The class of every request the gate let go, in the order it let
+    /// them go. A mock server records requests in the order its own
+    /// thread reads them, and two requests out at the same time can
+    /// reach that thread in either order.
+    pub(crate) fn let_go(&self) -> Vec<Class> {
+        self.1
+            .let_go
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// How many requests other than retries wait for their turn now:
+    /// a request counts from its first wait to its turn, or until its
+    /// caller drops it.
+    pub(crate) fn waiting(&self) -> usize {
+        self.1
+            .fresh_waiting
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
 
 #[cfg(test)]
 impl Drop for SharedForTests {
