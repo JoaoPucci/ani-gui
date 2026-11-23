@@ -18,6 +18,7 @@ import { setupServer } from 'msw/node';
 import { installElementAnimateStub } from './stubs/element-animate';
 import { isSession } from './session-contract';
 import { forgetAnswers } from '../../src/lib/watch-order/session-memo';
+import { accountStore } from '../../src/lib/account/store.svelte';
 import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
 import { candidates, cardLines, verdict } from '../../src/test/link-rules-fake';
 import type {
@@ -529,6 +530,14 @@ beforeAll(() => {
 	// silently-empty response would show up later as an unexplained
 	// assertion failure somewhere else entirely.
 	server.listen({ onUnhandledRequest: 'error' });
+});
+
+// A page mounts after the layout's hydrate has read the saved sign-ins,
+// which no page-level mount runs: scenarios seed the store the way the
+// hydrate would, and this is the part of that every scenario shares. A
+// scenario about the launch's own reads clears it.
+beforeEach(() => {
+	accountStore.readsSettled = true;
 });
 
 // The guessed plays the app notes for its run ($lib/history/guess-plays)
