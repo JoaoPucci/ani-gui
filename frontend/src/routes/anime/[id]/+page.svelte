@@ -25,7 +25,7 @@
 	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import StripTrio from '$lib/watch-order/StripTrio.svelte';
-	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { loadWatchOrder, rereadRows, type WatchOrderData } from '$lib/watch-order/loader';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { localDay } from '$lib/watch-order/entry';
 	import { numeral } from '$lib/watch-order/meta';
@@ -1791,6 +1791,14 @@
 	const stopHearing = onHistoryLinked(() => {
 		const reads = showReads;
 		readShowResume(id, reads, kitsuAnimeDetail(id, { signal: reads.signal }));
+		// The strip counts the rows the link wrote too; its franchise
+		// is the same ($lib/watch-order/loader).
+		const shown = watchOrderData;
+		if (shown) {
+			void reads.keep(rereadRows(shown, watchOrderSources, reads.signal)).then((w) => {
+				if (watchOrderData === shown) watchOrderData = w;
+			});
+		}
 	});
 	// The page going cancels the show question's reads still out; a link
 	// still out is saved all the same.
