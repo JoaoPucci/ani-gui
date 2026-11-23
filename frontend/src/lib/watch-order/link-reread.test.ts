@@ -48,4 +48,16 @@ describe('followLink', () => {
 		expect(read).not.toHaveBeenCalled();
 		expect(shown).toEqual([]);
 	});
+
+	it('keeps what is shown when the read again could not read the history', async () => {
+		// Its answer has the franchise but no progress for that reason:
+		// drawing it would take away the progress the page drew.
+		type Read = WatchOrderAnswer<{ rows: string; history: boolean }>;
+		const shown: (Read | null)[] = [];
+		const reads = latestRead<Read | null>((d) => shown.push(d));
+		const before: Read = { view: { rows: 'before', history: true } };
+		followLink(reads, before, async () => ({ view: { rows: 'none', history: false } }));
+		await settle();
+		expect(shown).toEqual([before]);
+	});
 });
