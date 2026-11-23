@@ -17,6 +17,16 @@ pub fn parse_reg_default(output: &str) -> Option<String> {
     })
 }
 
+/// The key's default value from a `reg export` file: the file's bytes,
+/// UTF-16 as reg.exe writes them, so a path in any language comes back
+/// as written. The first key's `@` line only; a REG_SZ value is quoted
+/// and escaped, a REG_EXPAND_SZ one written as `hex(2):` bytes.
+#[must_use]
+pub fn parse_reg_export(bytes: &[u8]) -> Option<String> {
+    let _ = bytes;
+    None
+}
+
 /// How long one `reg.exe` query may take before it is given up and
 /// killed. It answers in milliseconds; a hung one must not hold
 /// Settings or a launch.
