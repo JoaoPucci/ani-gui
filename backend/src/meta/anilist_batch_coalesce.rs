@@ -29,9 +29,11 @@
 //! in the gate's queue while it waits
 //! ([`crate::meta::anilist_gate::Place`]), so no retry takes the turn
 //! ahead of it, and hands that place to the request it sends. Its wait
-//! counts against the lookups' own: past what is left of it the batch
-//! is handed over with that deadline, and the gate turns it away as it
-//! would have turned away a lookup waiting there alone.
+//! counts against the lookups' own, from when it began or its last
+//! lookup joined, whichever is later: past it the batch is handed over
+//! with that deadline, and the gate turns it away, as it would have
+//! turned that last lookup away waiting there alone. An earlier lookup
+//! may so wait past its own wait, never stop short of it.
 //!
 //! A show Kitsu maps to AniList alone is never held this way, and never
 //! joins a held lane: a page of AniList ids goes only once the MAL page
@@ -85,11 +87,23 @@ struct Gathering<T> {
     /// Kitsu maps to AniList alone does not join it: its page goes only
     /// once the MAL page has answered, later than it would have alone.
     held: bool,
+    /// When the last lookup joined: a held batch waits no longer than
+    /// that lookup's own wait would have let it.
+    last_join: Instant,
 }
 
 impl<T> Gathering<T> {
     fn new(pending: Vec<(Want, Reply<T>)>, held: bool) -> Self {
-        Self { pending, held }
+        Self {
+            pending,
+            held,
+            last_join: Instant::now(),
+        }
+    }
+
+    fn join(&mut self, want: Want, reply: Reply<T>) {
+        self.pending.push((want, reply));
+        self.last_join = Instant::now();
     }
 }
 
@@ -189,7 +203,7 @@ pub(crate) async fn coalesced<K: Kind>(
         let mut lanes = K::lanes().open();
         match lanes.get_mut(&lane) {
             Some(open) if by_mal || !open.held => {
-                open.pending.push((want, reply));
+                open.join(want, reply);
                 (false, None)
             }
             // Beside a lane held for the gate's turn: alone, at once.
@@ -255,10 +269,11 @@ pub(crate) fn next_look(class: Class, turn: Option<Duration>, left: Duration) ->
     Some((turn - CLOSED_POLL).min(CLOSED_POLL))
 }
 
-/// When a held batch's wait for a turn runs out. A stub: `budget` after
-/// its wait began, whenever its last lookup joined.
-pub(crate) fn batch_deadline(started: Instant, _last_join: Instant, budget: Duration) -> Instant {
-    started + budget
+/// When a held batch's wait for a turn runs out: `budget` after its wait
+/// began, or after its last lookup joined, whichever is later — so no
+/// lookup in it is turned away sooner than it would have been alone.
+pub(crate) fn batch_deadline(started: Instant, last_join: Instant, budget: Duration) -> Instant {
+    started.max(last_join) + budget
 }
 
 /// What a lane hands the gate with its batch: the place it held, and
@@ -329,21 +344,24 @@ impl<K: Kind> Driver<K> {
     /// [`CLOSED_POLL`] is waited in the gate's own queue, where the batch
     /// takes its turn with no step left before it.
     async fn until_turn(&self) -> Option<Handoff> {
-        let deadline = Instant::now() + wait_for(&self.url, self.class);
+        let started = Instant::now();
+        let budget = wait_for(&self.url, self.class);
         let mut held = None;
         loop {
             if !self.still_wanted() {
                 return None;
             }
-            // A show Kitsu maps to AniList alone, gathered in the window,
-            // goes now, as it went before: held, its page would wait for
-            // the MAL page of lookups that joined after it.
-            if held.is_none() && self.gathered_by_anilist_alone() {
+            // Marked held in the step that checks it, so no lookup Kitsu
+            // maps to AniList alone joins it from here. One gathered in
+            // the window goes now, as it went before: held, its page
+            // would wait for the MAL page of lookups that joined after it.
+            let Some(last_join) = self.hold() else {
                 return Some(Handoff {
                     place: None,
-                    deadline,
+                    deadline: started + budget,
                 });
-            }
+            };
+            let deadline = batch_deadline(started, last_join, budget);
             let left = deadline.saturating_duration_since(Instant::now());
             let Some(nap) = next_look(self.class, turn_in(&self.url, self.class), left) else {
                 return Some(Handoff {
@@ -353,25 +371,22 @@ impl<K: Kind> Driver<K> {
             };
             if held.is_none() {
                 held = Some(place(&self.url));
-                self.hold();
             }
             tokio::time::sleep(nap).await;
         }
     }
 
-    /// Whether the lane gathered a lookup Kitsu maps to AniList alone.
-    fn gathered_by_anilist_alone(&self) -> bool {
-        K::lanes()
-            .open()
-            .get(&self.lane)
-            .is_some_and(|open| open.pending.iter().any(|(want, _)| want.mal.is_none()))
-    }
-
-    /// Mark the lane held for the gate's turn.
-    fn hold(&self) {
-        if let Some(open) = K::lanes().open().get_mut(&self.lane) {
-            open.held = true;
+    /// Mark the lane held for the gate's turn, unless it gathered a
+    /// lookup Kitsu maps to AniList alone; when its last lookup joined,
+    /// if it is held.
+    fn hold(&self) -> Option<Instant> {
+        let mut lanes = K::lanes().open();
+        let open = lanes.get_mut(&self.lane)?;
+        if open.pending.iter().any(|(want, _)| want.mal.is_none()) {
+            return None;
         }
+        open.held = true;
+        Some(open.last_join)
     }
 
     /// Drop the gathered lookups whose callers stopped waiting; whether

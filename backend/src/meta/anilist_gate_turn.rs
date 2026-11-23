@@ -83,8 +83,9 @@ impl Drop for Waiting<'_> {
 /// many shows it carries when it asks about shows — never which — its
 /// class, how full the window it left in is — this send included —
 /// against the capacity and the background share, how many of the
-/// window's requests were retries, how long it waited for its turn, and
-/// whether a retry sent before it made it wait. What the split between
+/// window's requests were retries, how long it waited for its turn in
+/// the gate — not what a lane's lookups waited for it there before —
+/// and whether a retry sent before it made it wait. What the split between
 /// the classes is measured from. A refusal's retry is a send of its own
 /// and logs its own line.
 pub(super) fn sent(
