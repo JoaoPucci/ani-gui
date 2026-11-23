@@ -1,11 +1,11 @@
-//! A stand-in for AniList that answers the streaming-listing queries —
-//! the single `Media(idMal:)` / `Media(id:)` lookups and the batched
-//! `Page { media(idMal_in:) }` / `Page { media(id_in:) }` ones — from a
-//! fixed set of media, the way AniList answers them: a page holds at
-//! most fifty media and says when it was cut, a single lookup by MAL id
-//! answers the first media recording it, and one it does not index is
-//! the 404 `Media: null` answer. Shared by the batch's own tests and the
-//! thumbnail command's.
+//! A stand-in for AniList that answers the streaming-listing and banner
+//! queries — the single `Media(idMal:)` / `Media(id:)` lookups and the
+//! batched `Page { media(idMal_in:) }` / `Page { media(id_in:) }` ones —
+//! from a fixed set of media, the way AniList answers them: a page
+//! holds at most fifty media and says when it was cut, a single lookup
+//! by MAL id answers the first media recording it, and one it does not
+//! index is the 404 `Media: null` answer. Shared by the batch's own
+//! tests and the thumbnail and banner commands'.
 
 use crate::meta::anilist_streaming_eps::{StreamingEntry, StreamingListing};
 
@@ -40,6 +40,12 @@ impl FakeMedia {
         }
     }
 
+    /// The banner AniList records for this media: every media with an
+    /// odd id has one.
+    pub(crate) fn banner(&self) -> Option<String> {
+        (self.id % 2 == 1).then(|| format!("https://al.cdn/banner/{}.jpg", self.id))
+    }
+
     fn node(&self) -> serde_json::Value {
         let eps: Vec<serde_json::Value> = (1..=self.listed)
             .map(|n| {
@@ -55,6 +61,7 @@ impl FakeMedia {
             "episodes": self.listed,
             "status": "FINISHED",
             "streamingEpisodes": eps,
+            "bannerImage": self.banner(),
         })
     }
 }
@@ -153,6 +160,17 @@ impl FakeAniList {
             .or_else(by_id)
             .map(FakeMedia::listing)
             .unwrap_or_default()
+    }
+}
+
+impl FakeAniList {
+    /// The banner the single-show path reads for a show Kitsu maps to
+    /// `mal` and `anilist`, found the way [`Self::single_path`] finds
+    /// its media.
+    pub(crate) fn single_banner(&self, mal: Option<u32>, anilist: Option<u32>) -> Option<String> {
+        let by_mal = mal.and_then(|x| self.media.iter().find(|m| m.mal == Some(x)));
+        let by_id = || anilist.and_then(|x| self.media.iter().find(|m| m.id == x));
+        by_mal.or_else(by_id).and_then(FakeMedia::banner)
     }
 }
 

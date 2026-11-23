@@ -1240,11 +1240,22 @@ async fn anilist_banner_for(
     anilist_base: Option<&str>,
 ) -> Result<Option<String>> {
     let ids = super::external_ids::external_ids_for(state, kitsu_id).await?;
+    // Details of a strip's shows read at once share AniList's requests,
+    // per app state and endpoint, as the thumbnail fills do.
+    let lane = format!(
+        "{:p}\u{0}{}",
+        std::ptr::from_ref(state),
+        anilist_base.unwrap_or("")
+    );
+    let want = crate::meta::anilist_batch::Want {
+        mal: ids.mal,
+        anilist: ids.anilist,
+    };
     // The detail renders without it: a background fill.
-    crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_for_ids(
+    crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_coalesced(
         &state.meta_http,
-        ids.mal,
-        ids.anilist,
+        &lane,
+        want,
         anilist_base,
     ))
     .await
@@ -1273,6 +1284,10 @@ mod anilist_banner_tests;
 #[cfg(test)]
 #[path = "kitsu_banner_test.rs"]
 mod banner_tests;
+
+#[cfg(test)]
+#[path = "kitsu_banner_batch_test.rs"]
+mod banner_batch_tests;
 
 #[cfg(test)]
 mod tests {
