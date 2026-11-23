@@ -67,15 +67,18 @@ export function warmContinueStrip(
 /** The warms Home has sent this visit, for a card to ask whether one
  *  is still out for its show. */
 export function createWarmWatch() {
+	const out = new Set<WarmInFlight>();
 	return {
 		/** Note a warm Home just sent. */
 		track(warm: WarmInFlight | null): void {
-			void warm;
+			if (!warm) return;
+			out.add(warm);
+			void warm.settled.then(() => out.delete(warm));
 		},
 		/** How the warm still out for `kitsuId` ends, or null when none
 		 *  is: the show was in no warm, or its warm has ended. */
 		pendingFor(kitsuId: string): Promise<WarmOutcome> | null {
-			void kitsuId;
+			for (const warm of out) if (warm.ids.has(kitsuId)) return warm.settled;
 			return null;
 		}
 	};

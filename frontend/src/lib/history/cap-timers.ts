@@ -22,18 +22,48 @@ export interface CapTimerDeps {
  * `arm` answers whether a wait is running or has run for the key, so
  * the page can arm as it reads; after `dispose` it arms nothing and
  * answers false.
+ *
+ * A card armed with its `show` waits past the cap while Home's strip
+ * warm for that show is still out (`pendingWarm`): its own episode read
+ * shares the warm's lookup, so its details come back with the warm. It
+ * then waits on, to `ceilingMs` from its first arm, for those details;
+ * a warm that fails or is dropped ends the wait at once. A card no warm
+ * is out for at the cap runs the plain cap.
  */
 export function createCapTimers(deps: CapTimerDeps) {
 	const handles = new Map<string, unknown>();
 	let disposed = false;
+	const elapse = (key: string) => {
+		if (!disposed) deps.onElapsed(key);
+	};
+	// The cap ran out with a warm still out for the show.
+	const holdFor = (key: string, warm: Promise<'answered' | 'failed'>) => {
+		const rest = Math.max(0, (deps.ceilingMs ?? deps.capMs) - deps.capMs);
+		let done = false;
+		const end = () => {
+			if (done) return;
+			done = true;
+			elapse(key);
+		};
+		handles.set(key, deps.schedule(end, rest));
+		void warm.then((outcome) => {
+			if (outcome === 'failed' && !disposed) {
+				deps.cancel(handles.get(key));
+				end();
+			}
+		});
+	};
 	return {
 		arm(key: string, show?: string): boolean {
-			void show;
 			if (disposed) return false;
 			if (!handles.has(key)) {
 				handles.set(
 					key,
-					deps.schedule(() => deps.onElapsed(key), deps.capMs)
+					deps.schedule(() => {
+						const warm = show === undefined ? null : (deps.pendingWarm?.(show) ?? null);
+						if (warm) holdFor(key, warm);
+						else elapse(key);
+					}, deps.capMs)
 				);
 			}
 			return true;
