@@ -31,6 +31,9 @@
 //   and styles set from script or an inline style.
 // - A shadow that sets the app's ring again through another custom
 //   property, or by writing its value out.
+// - The outline longhands other than `outline-style`: a rule that sets
+//   only `outline-width`, `outline-color` or `outline-offset`, on a
+//   control whose resting rule sets the style.
 //
 // Whether a control shows its ring once and whole on screen is the
 // Electron e2e's (`electron/e2e/focus-rings.spec.ts`).
