@@ -55,6 +55,9 @@ pub(crate) fn sent_lines_of<F: Future>(f: impl FnOnce() -> F) -> Vec<String> {
             crate::DEFAULT_LOG_FILTER,
         ))
         .with_ansi(false)
+        // No timestamp: the lines are searched for ids, and a clock's
+        // digits would match one.
+        .without_time()
         .with_writer(captured.clone())
         .finish();
     let runtime = tokio::runtime::Builder::new_current_thread()
