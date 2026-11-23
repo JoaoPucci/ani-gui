@@ -22,8 +22,8 @@
  * well. Nothing else changes between the two pictures: the mouse rests
  * in the window's corner and nothing has focus, but in the topbar's
  * results (whose field keeps focus) and the player (whose controls stay
- * up under the mouse, and whose volume shows while its field has
- * focus).
+ * up while the timeline or the volume field has focus, the volume
+ * showing only then).
  *
  * What it covers: Home's hero pager (and a hovered track's colour),
  * the diagnostics switches for the hero's framing and the rows' style,
@@ -704,6 +704,12 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 					.soft(await pixelsApart(page, before, after), `${what} shows in a forced-colours theme`)
 					.toBeGreaterThanOrEqual(SEEN);
 			};
+			// The controls show while the pointer is over the player or
+			// focus is in them: the timeline's focus holds them up where a
+			// pointer over the window does not count as hovering (CI's
+			// virtual display).
+			await scrubber.focus();
+			await expect(page.locator('.player-controls')).toHaveCSS('opacity', '1');
 			const fill = page.locator('.pc-scrubber-fill');
 			await expect(fill).toBeVisible();
 			await apart(scrubber, fill, "the timeline's fill");
@@ -716,6 +722,7 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 			// The volume, revealed by its field's focus.
 			const volume = page.locator('.pc-volume');
 			await page.locator('.pc-volume-slider input').focus();
+			await expect(page.locator('.player-controls')).toHaveCSS('opacity', '1');
 			const vFill = page.locator('.pc-volume-fill');
 			await expect(vFill).toBeVisible();
 			await apart(volume, vFill, "the volume's fill");
