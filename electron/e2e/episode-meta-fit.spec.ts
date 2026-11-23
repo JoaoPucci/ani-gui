@@ -312,22 +312,34 @@ for (const locale of LOCALES) {
 						`${locale}, the player's episode ${n}'s words`,
 						2
 					);
-					// The separator goes with the words: no line ends on it.
+					// The separator goes with the words: no line ends on it. It
+					// is either an element of its own, which must sit on the
+					// words' first line, or drawn before the words, which puts
+					// it there.
 					const dot = await card(n).evaluate((el) => {
-						const d = el.querySelector('.ep-card-foot-dot');
 						const w = el.querySelector('.ep-card-foot-len');
-						if (!d || !w) return null;
+						if (!w) return { shown: false, apart: 0 };
+						const d = el.querySelector('.ep-card-foot-dot');
+						if (!d) {
+							const before = getComputedStyle(w, '::before').content;
+							return { shown: before.includes('·'), apart: 0 };
+						}
 						const range = document.createRange();
 						range.selectNodeContents(w);
 						const first = Array.from(range.getClientRects()).find((r) => r.width > 0);
 						const dr = d.getBoundingClientRect();
-						return first ? Math.abs(dr.top + dr.height / 2 - (first.top + first.height / 2)) : null;
+						return {
+							shown: true,
+							apart: first ? Math.abs(dr.top + dr.height / 2 - (first.top + first.height / 2)) : 0
+						};
 					});
-					if (dot !== null) {
-						expect
-							.soft(dot, `${locale}, the player's episode ${n}: its dot sits on its words' line`)
-							.toBeLessThanOrEqual(4);
-					}
+					expect.soft(dot.shown, `${locale}, the player's episode ${n}: shows its dot`).toBe(true);
+					expect
+						.soft(
+							dot.apart,
+							`${locale}, the player's episode ${n}: its dot sits on its words' line`
+						)
+						.toBeLessThanOrEqual(4);
 				}
 			} finally {
 				await stopApp(app);
