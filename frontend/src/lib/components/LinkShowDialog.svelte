@@ -478,6 +478,11 @@
 		background: color-mix(in oklab, var(--accent, var(--ink-200)) 12%, transparent);
 		outline: none;
 	}
+	/* Inside the row's box: the list clips what overflows it, and a row
+	   spans it edge to edge. */
+	.ls-row:focus-visible {
+		box-shadow: var(--ring-inset);
+	}
 	.ls-thumb {
 		inline-size: 2.5rem;
 		aspect-ratio: 2 / 3;

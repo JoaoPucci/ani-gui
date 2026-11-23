@@ -2400,6 +2400,8 @@
 	.resume-link:focus-visible {
 		outline: 2px solid var(--accent-persimmon);
 		outline-offset: 2px;
+		/* The outline is the ring: the app's (tokens.css) drew a second. */
+		box-shadow: none;
 	}
 	.resume-link :global(.guess-mark) {
 		flex: none;
@@ -2465,8 +2467,12 @@
 		background: var(--accent-oxblood);
 	}
 	.resume-delete:focus-visible {
+		/* Hugging the chip: it sits up against the row's top edge, which
+		   cut a ring drawn further out. The outline is the ring: the
+		   app's (tokens.css) drew a second. */
 		outline: 2px solid var(--accent-oxblood);
-		outline-offset: 2px;
+		outline-offset: 0;
+		box-shadow: none;
 	}
 
 	/* The row style switch's place: the head of the rows, flush with
