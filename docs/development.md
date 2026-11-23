@@ -38,7 +38,7 @@ sudo apt install -y build-essential libssl-dev pkg-config
 # Renderer + Electron shell (Node + pnpm via nvm)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 # (open a new shell, or `source ~/.bashrc`)
-nvm install 22
+nvm install 22   # packaging needs 22.12 or later, the e2e suite 22.13
 # pnpm needs no separate install or version choice: package.json's
 # packageManager field pins it, and corepack fetches that version.
 corepack enable
@@ -188,12 +188,23 @@ sudo apt install musl-tools   # musl-gcc, for the C the backend compiles in (SQL
 that backend themselves (`pnpm run build:backend:linux`). The dev loop
 keeps using the ordinary debug build.
 
-Artifacts land in `electron/dist/`. There is no release-packaging CI —
-no workflow triggers on a tag and nothing publishes installers. (The
-e2e workflow does run `pnpm run dist` on Linux to produce the
-`linux-unpacked/` build it tests against, so electron-builder itself is
-exercised in CI; publishing is not.) Release artifacts are built on a
-matching host and uploaded to the GitHub release by hand:
+Artifacts land in `electron/dist/`. No workflow triggers on a tag and
+nothing publishes installers: release files are uploaded to the GitHub
+release by hand. They can come from either of two places.
+
+- **The Packages workflow.** `.github/workflows/packages.yml`, started
+  by hand on the release commit, builds all three packages on GitHub's
+  runners with the same commands as below and keeps them as run
+  artifacts for thirty days, with a `SHA256SUMS` naming them. "Packages
+  built in CI" in `docs/testing.md` has the steps.
+- **A matching host**, with the commands below.
+
+(The e2e workflow also runs `pnpm run dist` on Linux to produce the
+`linux-unpacked/` build it tests against, and the Packages workflow
+builds every package on a pull request that changes how one is built,
+publishing none of them; on that pull request and on a run started by
+hand it also starts the AppImage the way the AppImageHub catalog's
+test does, as "Packages built in CI" in `docs/testing.md` describes.)
 
 | Target | Host | Command |
 |---|---|---|
@@ -238,7 +249,7 @@ set RUST_LOG=ani_gui=debug,axum=info
 pnpm --dir electron dev
 ```
 
-There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines, tagged with the level Electron reports for each: `verbose` for `console.debug`, `info` for `console.log` and `console.info`, then `warning` and `error`). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file.
+There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines, tagged with the level Electron reports for each: `verbose` for `console.debug`, `info` for `console.log` and `console.info`, then `warning` and `error`). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file. If that terminal closes, or the reader of a pipe the output goes to exits, the app stops writing its log (`electron/lib/stdio-guard.cjs`). Closing the terminal also asks an app running in its foreground to quit, and it does; one started in the background (`& disown`), or one whose pipe reader exited, carries on until it is quit. On Linux the packaged launcher (`ani-gui`, `electron/lib/linux-launcher.cjs`) keeps the app off the terminal it was started from: the app reads `/dev/null`, its output reaches the terminal through the launcher, and closing the terminal, Ctrl-C or a `kill` of the launcher reaches the app as one SIGTERM. Only that one. A second Ctrl-C, or a second `kill` of the launcher, that comes more than half a second after the first ends the app by force, as a second Ctrl-C does for `docker compose up`: the launcher sends SIGKILL to the app's process group, which holds the app and the helpers it started, prints `[launcher] a second stop: ani-gui ended by force (SIGKILL); what it changed in its last moments may not be saved`, and exits with 137. The backend, in a group of its own, stops itself when the app's end of its stdin closes. The app treats a signal sent to it alone, however many times it comes, as the same quit (`electron/lib/termination-signals.cjs`, until the session's end has been announced), so short of a SIGKILL to the app's pid, or a signal to its whole process group while the app can still answer it, this is how a stuck quit is cut short from the terminal. It is the person's explicit override, and what the quit had not yet written is lost, settings changed in the last moments included, and the profile's lock is left for the next launch to take over. The signals one event delivers arrive well inside that half second (a closed terminal's SIGHUPs and SIGCONT, a session's SIGTERM and SIGHUP to every process, under a millisecond apart), and a SIGHUP never forces: closing the terminal after a Ctrl-C leaves the quit running. A logout or shutdown is a SIGTERM to the launcher too, so one that comes more than half a second into a quit started from the terminal also ends it by force. Ctrl-Z suspends the launcher alone, and the app runs on. A launcher killed outright (`kill -9`) leaves the app a SIGTERM where `setpriv` supports `--pdeathsig`. An app restarted from the splash's Restart on the `.deb` is no longer the launcher's child: it keeps relaying its output through the launcher's pipes while the terminal is open, but a closed terminal or Ctrl-C never reaches it, so it runs until it is quit. A process that holds the terminal itself, as the binary run directly (`ani-gui.bin`) or `pnpm dev`'s Electron does, ends with an abort (SIGABRT) when it exits after its terminal has closed, once it has shut down: Node puts the terminal's settings back on the way out, and on a closed terminal that step aborts. Started with all three of its stdin, stdout and stderr off the terminal (`</dev/null >log 2>&1`), it exits cleanly.
 
 The renderer runs under a content security policy ([architecture](./architecture.md#the-renderers-content-security-policy)). A refusal shows up on the terminal as a `[renderer:error] Refused to …` line, usually naming the directive. A dev window that stays blank, or a poster, stream or animation that quietly never loads, is worth checking against those lines first.
 

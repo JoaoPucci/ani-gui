@@ -59,6 +59,7 @@
 	import {
 		allmangaKitsuMapGet,
 		checkAvailability,
+		continueWarm,
 		historyClear,
 		historyCardLines,
 		historyDelete,
@@ -118,6 +119,7 @@
 	import { createCapAuthority } from '$lib/history/cap-authority';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
+	import { warmContinueStrip } from '$lib/history/strip-warm';
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
@@ -662,6 +664,10 @@
 				// Part 1's episode 1.
 				historyById.clear();
 				for (const h of history) historyById.set(h.id, h);
+				// The whole strip's stills and banners, asked of the backend
+				// at once, before any card's row is ready
+				// ($lib/history/strip-warm).
+				warmContinueStrip(history, { warm: continueWarm, signal: pageReads.signal });
 				// The load's answers are about the shows the rows are now: a
 				// row linked before one lands has moved on, and the answer is
 				// dropped ($lib/history/card-relink.ts).

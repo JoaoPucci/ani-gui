@@ -130,6 +130,12 @@ async fn resolve_episode<P: Provider + ?Sized>(
 /// as the play path, since every request here rides the same gated
 /// transport.
 ///
+/// Each episode goes where a single download of it would
+/// ([`super::download_place::episode_place`]). Returns the show's
+/// folder when any episode went there, and the chosen folder when every
+/// one went in it instead ([`super::download_place::RevealFolder`]):
+/// the folder the dock's "open folder" opens.
+///
 /// # Errors
 /// The walk's or the failing episode's typed error; the tool's own
 /// failures as in [`super::download::spawn_download_tool`].
@@ -143,7 +149,7 @@ pub(crate) async fn download_range<F>(
     dest: &std::path::Path,
     path_env: &str,
     on_progress: &mut F,
-) -> Result<()>
+) -> Result<std::path::PathBuf>
 where
     F: FnMut(DownloadProgress) + Send,
 {
@@ -231,6 +237,10 @@ where
         line: format!("Matched {}", picked.hit.title),
     });
     let mut first_resolved = Some((first_served, first_resolved));
+    let mut reveal = super::download_place::RevealFolder::new(dest);
+    super::download::sweep_lock_leftovers(dest).await;
+    let mut visits = super::download::OldScratchVisits::default();
+    drop(visits.visit(dest));
     for ep in first..=last {
         // The shape the dock's progress parser consumes — the script's
         // own per-iteration announcement, which drives the
@@ -268,11 +278,12 @@ where
                 });
             }
         };
-        let file_stem = format!("{} Episode {ep}", serving.hit.title);
+        let place = super::download_place::episode_place(dest, &serving.hit.title, &ep_no, None);
+        drop(visits.visit(&place.dir));
         tracing::info!(
             slug = %serving.hit.slug,
             episode = %ep_no,
-            dest = %dest.display(),
+            dest = %place.dir.display(),
             "download: spawning tool on natively resolved stream",
         );
         let source = crate::scraper::provider::StreamSource {
@@ -304,8 +315,8 @@ where
             &state.proxy_http,
             &state.host_budget,
             &source,
-            dest,
-            &file_stem,
+            &place.dir,
+            &place.stem,
             Some(quality),
             path_env,
             std::time::Duration::from_secs(60 * 60),
@@ -318,8 +329,9 @@ where
             &pacing,
         )
         .await?;
+        reveal.note(&place.dir);
     }
-    Ok(())
+    Ok(reveal.folder())
 }
 
 #[cfg(test)]

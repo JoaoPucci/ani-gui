@@ -285,7 +285,34 @@ starting it, and delete it when you find it done.
 
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
-  only, since nothing builds or launches the Windows app in CI.
+  only, since nothing launches the Windows app in CI: a workflow
+  builds the Windows installer, and nothing installs or runs it.
+- **Nothing runs the Windows installer's script.** A workflow builds
+  the Windows installer (`packages.yml`), but nothing installs or runs
+  it, so a change to `electron/build-resources/installer.nsh` cannot
+  start from a failing test, as `AGENTS.md` §2 asks. The maintainer
+  accepted the fix for a restored ffmpeg whose version stamp could not
+  be put back (it is now downloaded again instead of taken for 7.1.1)
+  on that basis, checked by reading, and chose to make the script
+  testable later rather than hold that fix for it. NSIS and Wine on the Linux runners is the
+  cheaper route, but Wine is not Windows, and file renames and locks
+  are where the two can differ; a Windows runner that installs the
+  installer it built and runs an update is the faithful one, at more
+  CI time. Either is new to the stack and the maintainer's decision.
+- **Test builds and release builds from the Packages workflow.** A
+  run started by hand builds whatever version the committed manifests
+  carry, so a test build and a release build of the same version look
+  alike. It could offer two kinds instead: a test build whose version
+  is generated (for example `<next patch>-test.<run number>`, marked
+  as a test in its file names, and below the real release in semver so
+  the update notifier still offers that release), and a release build
+  on the committed version, run on the release commit. The point is
+  telling test builds apart and ordering them, not installing one over
+  another: the Windows installer already replaces an existing install
+  whatever its version, since electron-builder's NSIS template runs the
+  old install's uninstaller without comparing versions
+  (`uninstallOldVersion` in `templates/nsis/include/installUtil.nsh`).
+  The maintainer chose to revisit it with the planned quality work.
 
 ## Correctness in the app (continued)
 
@@ -459,6 +486,24 @@ starting it, and delete it when you find it done.
   key names and the episode it reached — the year it aired, its
   format, or its episode count — or when another wrong pick on a
   user's card is reported.
+
+- **Kitsu hides every entry it marks adult, and some are not hentai.**
+  Read without a login, Kitsu leaves out every entry it flags `nsfw`
+  (all of them rated R18): search and browse never return one,
+  `filter[ageRating]=R18` answers an empty list, and `/anime/<id>`
+  answers 404. So the app cannot search for, browse to or open these
+  shows. The flag is meant for hentai, but of 152 hidden shows
+  checked, 13 were not hentai, among them Redo of Healer, Kanashimi no
+  Belladonna, Cleopatra (1970), Senya Ichiya Monogatari, the Nukitashi
+  OVAs, Maou Evelogia ni Mi wo Sasageyo and Ikenai BOY. It waits
+  because the maintainer chose to leave it for now. Two things worth
+  knowing: nor does the flag follow erotic content, since Kitsu rates
+  some erotic short series that aired censored R and shows them
+  (Yubisaki kara Honki no Netsujou), so the line it draws is its own;
+  and the mappings lookup by MAL or AniList id does serve a hidden
+  entry inline (MAL 40750 gives Redo of Healer, Kitsu 42732, R18); the
+  trending row and the Watch Later rail are built on that lookup and
+  leave such entries out, so they show only what search and browse can.
 
 ## Interface
 
@@ -913,16 +958,40 @@ starting it, and delete it when you find it done.
   redirect off it is not followed, and an answer from elsewhere is a
   failure (`docs/architecture.md`, "Providers and failover"). That
   stops a redirect to an unrelated site from being read as the
-  provider's answer, as anidb.app's was; the price is that when
-  hianime moves its front by redirect — its canonical domain is
-  filtered per ISP, and the app already reads it at another front —
-  the app treats the move as an outage until a release changes the
-  client's base URL.
+  provider's answer, as anidb.app's was; the price is that a
+  provider's legitimate move by redirect looks like an outage until a
+  release changes the client's base URL. That happened when, by
+  2026-11-17, hianime.at was redirecting every request to hianime.fm:
+  nothing played in any release that reads hianime until pull request
+  #473 changed the base and 0.18.0 shipped, which every user then had
+  to install by hand.
 
-  Why it waits: telling a provider's own move from a hijack needs a
-  source of truth other than the redirect itself, such as a list of
-  fronts the app trusts or one it can update outside a release, and
-  none exists yet.
+  Why it waits: the maintainer chose (2026-11-18) to keep fixing a
+  move with a release, and to revisit it later. Whatever names the
+  address decides where every user's searches and plays go, and from
+  that host's answers which embed pages and video servers the app
+  contacts and what plays; moving it outside a release means trusting
+  a signing key with all of that, and that trade was declined for now.
+
+  What a revisit needs: the address signed, not merely fetched. A
+  flag's file can only choose among the values its declaration
+  allows, while an address can name any host, so a signature is the
+  only limit on where it sends every user. A signature alone is not
+  enough either: an old signed file still verifies, and one naming a
+  domain the site later abandoned and someone else registered is a
+  hijack. So the file also needs a sequence number that only rises,
+  with each release's own number as the floor so a fresh install
+  cannot be handed an older file; an expiry; and strict checks on the
+  value. It builds on the signed flags work, whose signature check it
+  would reuse, and on refusing a signed file older than the one
+  already held, which that check does not do by itself.
+
+  Less of it is new than it sounds: the client already takes its base
+  as a value (`HianimeClient::with_base`), the provider set carries a
+  per-provider override that every client the app builds reads, fixed
+  when the app starts (`ProviderSet::set_origin`, set only by tests
+  today), and nothing on disk — show keys, availability rows,
+  history — names the host, so a new address invalidates no cache.
 
 ## Decoding hianime's other embed hosts
 
@@ -975,31 +1044,40 @@ starting it, and delete it when you find it done.
 
 ## Reading hianime.ms and vidnest.fun as providers
 
-- **Read hianime.ms, and the vidnest.fun embed it lists**, so an
-  episode has somewhere left to play from when the hianime the app
-  reads runs out of working embed hosts. hianime.ms is a second
-  front under the hianime name and a different application from
-  hianime.at: its watch page takes its own shape
+- **Read hianime.ms, and the embeds it lists beside its megaplay
+  server**, so an episode has somewhere left to play from when the
+  hianime the app reads runs out of working embed hosts. hianime.ms
+  is a second front under the hianime name and a different
+  application from hianime.fm (formerly hianime.at): its watch page
+  takes its own shape
   (`https://hianime.ms/watch-<slug>-episode-1-f3808`) and is served
-  from its own templates, it exposes a `/api/player/check` endpoint
-  rather than hianime.at's `/api/theme/...` listing endpoints, and
-  its server list is drawn as buttons — "Ryu", which is its own
-  built-in backup player (`data-server="backup"`), and an embed on
-  vidnest.fun (`https://vidnest.fun/anime/<id>/...`).
+  from its own templates, and it exposes a `/api/player/check`
+  endpoint rather than hianime.fm's `/api/theme/...` listing
+  endpoints. Its first server is not a host of its own, though:
+  "Ryu" (`data-server="backup"`) redirects to megaplay.buzz's
+  `/stream/s-2/<id>/<mode>`, the host and address the app already
+  decodes from hianime.fm's listings, so the two sites are fronts over
+  the same library there. What hianime.ms adds is the servers beside
+  Ryu, embeds keyed by AniList id on hosts the app does not read: two
+  on vidnest.fun (`https://vidnest.fun/anime/<id>/...` and
+  `/animepahe/...`) and one on tryembed.us.cc.
 
   Why it matters: on 2026-09-17 both embed hosts hianime.at lists
   for an episode failed for the app at once — zokoanime's CDN origin
   timed out with a 522, and megaplay changed its sources answer to
   an encrypted field with a CDN selector on the embed URL — while
   the provider the app then asked first was under maintenance, and
-  hianime.ms kept playing the
-  same episodes through Ryu. A third catalogue front, or a third
-  embed host, is what a fallback of one site cannot give.
+  hianime.ms kept playing the same episodes through Ryu. Ryu
+  redirects to megaplay today; if it did then too, that was most
+  likely megaplay's own player reading the answer the client could
+  not yet read (it reads it now), not a host the app lacked. Whatever
+  hianime.ms offers against megaplay itself failing lies in its other
+  servers.
 
-  Why it waited: reading either site is its own reverse-engineering
-  — hianime.ms's player and catalogue API, vidnest's embed page —
-  each a maintenance cost of its own, like every host the client
-  reads.
+  Why it waited: reading it is its own reverse-engineering —
+  hianime.ms's player and catalogue API, the vidnest and tryembed
+  embed pages — each a maintenance cost of its own, like every host
+  the client reads.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
@@ -1110,6 +1188,23 @@ starting it, and delete it when you find it done.
   would be its own migration, through the cross-catalogue id mappings
   first, and is no reason to keep the guess.
 
+## Retiring the old-scratch sweep — the v1.0 marker
+
+- **Remove the sweep that clears the scratch files versions up to
+  0.18.0 left in a download folder**
+  (`backend/src/commands/download_old_scratch.rs`, its name parser and
+  their tests). Those versions wrote a transfer's unfinished files
+  beside the episode, and a quit that ended the backend outright —
+  every quit on Windows — left them there, in view on Windows. A
+  download now removes the ones more than a day old from each folder
+  it runs into. It is migration code: the maintainer has tied its removal
+  to around v1.0, once installs from before 0.18.1 are no longer
+  expected.
+
+  Why it waits: nothing else removes those files. Taking the sweep out
+  leaves them, often most of an episode each, in the folders of anyone
+  who upgrades straight from 0.18.0 or earlier.
+
 ## Recovering a download's abandoned claim automatically
 
 - **Take back the empty file an interrupted download left at an
@@ -1139,8 +1234,9 @@ starting it, and delete it when you find it done.
 
 ## A scratch name that overflows where the target does not
 
-- **Publication's scratch file adds ~55 characters to the destination
-  path, so a folder deep enough can accept the episode's own name and
+- **Publication's scratch file adds about 60 characters to the
+  destination path — the hidden working folder and the scratch's own
+  name — so a folder deep enough can accept the episode's own name and
   reject the scratch's** — the transfer then fails on a target the
   user was allowed to choose.
 
@@ -1153,28 +1249,18 @@ starting it, and delete it when you find it done.
   directory-handle-relative filesystem work (a `cap-std`-shaped
   dependency) on Linux and a separate answer for Windows path limits.
 
-## The window does not keep its document from navigating away
+## The AppImage runs without Chromium's sandbox where the namespace sandbox cannot start
 
-- **The window refuses new windows through its open handler but
-  installs no `will-navigate` guard**, so nothing stops the renderer's
-  own document from navigating away from the app's origin, and a page
-  it navigates to gets the preload bridge (not the launch's secret:
-  the main process answers it to the app's own document alone). The
-  content security policy does not govern navigation.
-  The app's own links open external pages with `target="_blank"`, so
-  no path in the app does this today. Pull request #346 adds the
-  guard, along with checks on IPC callers and permissions; this entry
-  goes when it lands.
-
-## The AppImage runs without Chromium's sandbox
-
-- **The AppImage is repacked to start Electron with `--no-sandbox`.**
-  The unprivileged FUSE mount an AppImage runs from does not honour
-  setuid execution, so Chromium's setuid sandbox helper cannot be used
-  from inside it. The `.deb` sets the helper's SUID bit in its postinst
-  and keeps the sandbox. It is a packaging question of its own; the
+- **The AppImage starts Electron with `--no-sandbox` wherever
+  Chromium's namespace sandbox cannot start for it** — Ubuntu 23.10
+  and later, by default. The unprivileged FUSE mount an AppImage runs
+  from does not honour setuid execution, so Chromium's setuid sandbox
+  helper cannot be used from inside it. The `.deb` sets the helper's
+  SUID bit in its postinst and keeps the sandbox. It is a packaging
+  question of its own, described in `docs/architecture.md`; the
   renderer's content security policy is enforced either way, but
-  script that got past it in the AppImage would run unsandboxed.
+  script that got past it in an AppImage that fell back would run
+  unsandboxed.
 
 ## Which program the app runs is the page's choice
 
@@ -1458,8 +1544,9 @@ the AppImage and the Windows installer. It leaves out, on purpose:
   The cheap services want either an individual developer in the
   United States or Canada (Azure Artifact Signing) or binaries built
   "from source code in a verifiable way" (SignPath Foundation), which
-  in practice means CI, so it waits for release CI or a change in
-  those terms.
+  in practice means CI, so it waits for releases to take their files
+  from the Packages workflow (which builds them in CI and signs
+  nothing) or a change in those terms.
 
 ## Studying a frontend written in Rust
 
@@ -1495,7 +1582,18 @@ not keep up drawing the interface.
   backend's `tracing_subscriber::fmt()` writes to the default stream
   only. Either wire a file appender to the helper or remove it; a
   file sink would also give packaged desktop launches, which have no
-  terminal, somewhere to leave a trace.
+  terminal, somewhere to leave a trace, and it is what detaching a
+  terminal launch waits for (the next entry).
+- **Detaching a terminal launch instead of relaying its output.**
+  Started from a terminal, the Linux launcher keeps the app as its
+  child and relays its output to the terminal through pipes
+  (`electron/lib/linux-launcher.cjs`), so the app never holds the
+  terminal and a closed one cannot abort it as it exits. The
+  alternative is to detach the app from the terminal by default, as
+  VS Code's `code` command does, with an opt-in to stay attached (a
+  flag, or `ANI_GUI_DEV=1`). It waits for the log file in the entry
+  above: detached, a launch's output has nowhere to go until there is
+  one.
 - **Three pieces of the change-show flow's logic stay in the renderer
   for now.** `AGENTS.md` §14 puts the app's decisions about its data in
   the Rust backend, and the flow's rules moved there, but three pieces
@@ -1511,3 +1609,22 @@ not keep up drawing the interface.
   sending, the per-show Sub or Dub storage, notes that last one run
   of the app — so moving one means moving that too, a refactor larger
   than the change that found them.
+- **Runs on the dev profile have no icon of their own.** `pnpm dev`
+  (in `electron/`) and a packaged build started with `ANI_GUI_DEV=1`
+  both run as `ani-gui-dev` (`APP_NAME` in `electron/main.js`), and
+  where a dev run shows an icon it is the installed app's, so the two
+  are not told apart at a glance. The wanted icon is the app's own
+  with its two colours swapped, cream for near-black and near-black
+  for cream. The maintainer chose to leave it.
+
+  GNOME on Wayland ignores the icon a window sets and takes the icon
+  of the desktop entry matching the window's app ID (`APP_NAME`), so
+  there the dev icon shows only if an `ani-gui-dev` desktop entry
+  exists (without one a dev run there shows GNOME's generic icon).
+  Making one, for instance a hidden (`NoDisplay=true`) entry written
+  by `pnpm dev`, writes outside the repository, under
+  `~/.local/share/applications/` (`AGENTS.md` §11). Recent KDE Plasma
+  on Wayland, and X11, use the icon the window sets. A packaged build
+  sets a window icon only from a file electron-builder's `build.files`
+  allowlist packages, so a dev icon for packaged test builds has to be
+  added there too.

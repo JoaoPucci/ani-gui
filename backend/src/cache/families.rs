@@ -139,6 +139,9 @@ pub(crate) const ANISKIP: &str = "aniskip:v2:";
 pub(crate) const APPENDED: &str = "appended:v2:";
 /// AniList's banner for a Kitsu entry.
 pub(crate) const ANILIST_BANNER: &str = "anilist:banner:v1:k";
+/// AniList's banner for a Kitsu entry, as a Continue strip's warm found
+/// it: read only where the entry's detail has no cover of its own.
+pub(crate) const ANILIST_STRIP_BANNER: &str = "anilist:strip-banner:v1:k";
 /// AniList's episode thumbnails for a Kitsu entry.
 pub(crate) const ANILIST_EPS_THUMBS: &str = "anilist:eps-thumbs:v2:k";
 /// A MyAnimeList id's AniList media id.
@@ -212,6 +215,7 @@ pub fn live() -> Vec<Family> {
         ANISKIP,
         APPENDED,
         ANILIST_BANNER,
+        ANILIST_STRIP_BANNER,
         ANILIST_EPS_THUMBS,
         ANILIST_MEDIA_FOR_MAL,
         ANILIST_MAL_FOR_MEDIA,

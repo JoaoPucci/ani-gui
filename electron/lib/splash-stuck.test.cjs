@@ -15,6 +15,17 @@ const fc = require("fast-check");
 const { SPLASH_PAGE, SPLASH_SHOW_WAIT_MS, lastSplashState, splashController, splashPageQuery } = require("./splash.cjs");
 const { SPLASH_FLASH_MS, SPLASH_RELOADS, SPLASH_STUCK_MS, STUCK_CALL } = require("./splash-stuck.cjs");
 const { APP_READY_CHANNEL, appReadyBound, appReadyWaiter, revealGate } = require("./app-window.cjs");
+const { guardedIpc } = require("./ipc-guard.cjs");
+const { appDocumentFrom } = require("./app-document.cjs");
+
+/** The guarded IPC main.js hands the app-ready wait (lib/ipc-guard.cjs);
+ *  `emit` sends as the app's main frame unless the event names another. */
+function appIpc() {
+  const raw = new EventEmitter();
+  const ipc = guardedIpc(raw, { app: appDocumentFrom({ isDev: false }), logError: () => {} });
+  ipc.emit = (channel, event) => raw.emit(channel, { senderFrame: { url: "app://localhost/", parent: null }, ...event });
+  return ipc;
+}
 const { splashWords } = require("./splash-progress.cjs");
 const { messagesFor } = require("./main-messages.cjs");
 
@@ -751,7 +762,7 @@ test("a page that never says it rendered is never revealed: the splash stays, st
   const { splash, win, later, dismissed } = await stuckSplash(t);
   await splash.progress("backend");
   await splash.progress("flags");
-  const ipc = new EventEmitter();
+  const ipc = appIpc();
   const contents = { id: 7 };
   assert.equal(appReadyBound(splash), null);
   const waiter = appReadyWaiter(contents, ipc, { timeoutMs: appReadyBound(splash) });

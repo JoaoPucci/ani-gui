@@ -719,6 +719,17 @@ FLAP
     [ "$status" -eq 0 ]
 }
 
+@test "the bats job runs when the packages filter changes" {
+    # packages_filter.bats executes tools/packages-filter.sh, which
+    # makes the script a subject under test: a change touching only it
+    # must select the bats job, or a filter that stops building the
+    # packages lands with the cases that run it skipped as irrelevant.
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'tools/packages-filter.sh'
+    [ "$status" -eq 0 ]
+}
+
 @test "the bats job runs when the hostile temporary-directory tool changes" {
     # hostile_tmpdir.bats executes tools/hostile-tmpdir.sh, which makes
     # the script a subject under test: a change touching only it must

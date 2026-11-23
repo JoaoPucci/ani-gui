@@ -16,7 +16,8 @@
 // NsisTarget "exe" — the same in electron-builder 25 and 26) and the
 // arch a target listed without one is built for. electron-builder
 // builds such a target for the build host's arch; the release
-// packages are built by hand on x64 hosts (docs/development.md), and
+// packages are built on x64, on a host or on the Packages workflow's
+// runners (docs/development.md), and
 // x64 is the only arch the update check recognises. The release
 // scripts name only the platform on electron-builder's command line,
 // so these config targets, not a list typed there, are what a release

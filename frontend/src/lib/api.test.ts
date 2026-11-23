@@ -14,6 +14,7 @@ import {
 	appInfo,
 	availabilityBatch,
 	availabilityWarm,
+	continueWarm,
 	checkAvailability,
 	downloadDefaultDir,
 	downloadStream,
@@ -1903,6 +1904,21 @@ describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
 		expect(url).toBe(`${BASE}/api/availability/warm`);
 		expect(init?.method).toBe('POST');
 		expect(JSON.parse(init?.body as string)).toEqual({ items });
+		expect(got).toBeUndefined();
+	});
+});
+
+describe('continueWarm', () => {
+	it("POSTs the strip's Kitsu ids to /api/continue/warm with the page's signal", async () => {
+		const fetchMock = mockFetchEmpty(204);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const signal = new AbortController().signal;
+		const got = await continueWarm(['12', '21'], { signal });
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/continue/warm`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(init?.body as string)).toEqual({ kitsu_ids: ['12', '21'] });
+		expect(init?.signal).toBe(signal);
 		expect(got).toBeUndefined();
 	});
 });

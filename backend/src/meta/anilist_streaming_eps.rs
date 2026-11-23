@@ -20,6 +20,13 @@ use crate::meta::anilist_media::{media_is_absent, with_missing_retry, MediaRef};
 #[path = "anilist_streaming_eps_parse.rs"]
 mod parse;
 pub use parse::parse_streaming_episodes_response;
+#[path = "anilist_streaming_eps_batch.rs"]
+mod batch;
+pub use crate::meta::anilist_batch::Want;
+pub use batch::streaming_listings_batch;
+#[path = "anilist_streaming_eps_coalesce.rs"]
+mod coalesce;
+pub(crate) use coalesce::streaming_listing_coalesced;
 
 /// By-MAL-id query for AniList's `streamingEpisodes` — the
 /// Crunchyroll-style per-episode listing — with the media's own

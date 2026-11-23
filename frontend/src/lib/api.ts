@@ -62,6 +62,10 @@ declare global {
 			 *  `defaults` or `test`; null when the window opened
 			 *  without them. */
 			flagsOrigin?: string | null;
+			/** Tell the main process the app's first page has mounted,
+			 *  before it has drawn a frame (`$lib/app-ready`). Absent in
+			 *  browser-only dev. */
+			appMounted?: () => void;
 			/** Tell the main process the app's first page has rendered,
 			 *  which the window's reveal waits for (`$lib/app-ready`).
 			 *  Absent in browser-only dev. */
@@ -1449,6 +1453,19 @@ export function availabilityBatch(
 	return postJson<AvailabilityBatchResponse>('/api/availability/batch', body, {
 		signal: opts.signal
 	});
+}
+
+/** Hands the backend a Continue strip's recorded Kitsu ids, in strip
+ *  order, so it fills every card's stills and banner from AniList at
+ *  once instead of card by card as each row becomes ready. Answers
+ *  once the warm is done; aborting `signal` (Home left) drops it. */
+export function continueWarm(
+	kitsuIds: string[],
+	opts: { signal?: AbortSignal } = {}
+): Promise<void> {
+	return postJson<unknown>('/api/continue/warm', { kitsu_ids: kitsuIds }, opts).then(
+		() => undefined
+	);
 }
 
 /** Body of `/api/availability/warm`. */
