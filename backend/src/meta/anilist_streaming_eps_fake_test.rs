@@ -196,3 +196,25 @@ pub(crate) async fn asked_of(server: &wiremock::MockServer) -> Vec<Asked> {
         .filter_map(|r| Asked::of(&r.body))
         .collect()
 }
+
+/// What each request for the stills (`streamingEpisodes`) the server
+/// received asked for, in order.
+pub(crate) async fn asked_for_stills(server: &wiremock::MockServer) -> Vec<Asked> {
+    asked_where(server, "streamingEpisodes").await
+}
+
+/// What each request for banners the server received asked for.
+pub(crate) async fn asked_for_banners(server: &wiremock::MockServer) -> Vec<Asked> {
+    asked_where(server, "bannerImage").await
+}
+
+async fn asked_where(server: &wiremock::MockServer, field: &str) -> Vec<Asked> {
+    server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .iter()
+        .filter(|r| String::from_utf8_lossy(&r.body).contains(field))
+        .filter_map(|r| Asked::of(&r.body))
+        .collect()
+}

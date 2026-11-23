@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use super::*;
 use crate::cache::meta_cache_get;
-use crate::meta::anilist_streaming_eps_fake_test::{asked_of, FakeAniList, FakeMedia};
+use crate::meta::anilist_streaming_eps_fake_test::{
+    asked_for_banners, asked_for_stills, asked_of, FakeAniList, FakeMedia,
+};
 
 const NULL_COVER_DETAIL: &[u8] =
     include_bytes!("../../../tests/fixtures/kitsu/anime_null_cover_detail.json");
@@ -134,7 +136,7 @@ async fn a_cold_strip_warmed_at_once_fills_its_stills_in_two_requests_however_la
     for (listing, m) in got.iter().zip(&fake.media) {
         assert_eq!(*listing, m.listing());
     }
-    let asked = asked_of(&anilist).await;
+    let asked = asked_for_stills(&anilist).await;
     assert!(asked.len() <= 2, "{} requests: {asked:?}", asked.len());
 }
 
@@ -155,9 +157,8 @@ async fn a_cold_strip_warmed_at_once_reads_its_banners_in_two_requests_however_l
         let cover = detail.cover_image.and_then(|c| c.original);
         assert_eq!(cover, m.banner(), "kitsu {}", detail.id);
     }
-    // The warm asks for the strip's stills too: two requests each.
-    let asked = asked_of(&anilist).await;
-    assert!(asked.len() <= 4, "{} requests: {asked:?}", asked.len());
+    let asked = asked_for_banners(&anilist).await;
+    assert!(asked.len() <= 2, "{} requests: {asked:?}", asked.len());
 }
 
 #[tokio::test]
