@@ -26,7 +26,7 @@
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import WatchOrderArrival from '$lib/watch-order/WatchOrderArrival.svelte';
 	import { withFirstHop, type FirstHop } from '$lib/watch-order/arrival';
-	import { rememberedAnswer, visitAnswer } from '$lib/watch-order/session-memo';
+	import { rememberedAnswer, settledAnswer, visitAnswer } from '$lib/watch-order/session-memo';
 	import { loadWatchOrder, rereadRows, type WatchOrderData } from '$lib/watch-order/loader';
 	import { stripReads } from '$lib/watch-order/strip-reads';
 	import { watchOrderSources } from '$lib/watch-order/sources';
@@ -522,7 +522,10 @@
 	const strip = stripReads<WatchOrderData>({
 		current: () => watchOrderData,
 		reread: (shown) => showReads.keep(rereadRows(shown, watchOrderSources, showReads.signal)),
-		show: (d) => (watchOrderData = d)
+		// Whatever the strip draws is what the session remembers for the
+		// show, a link's re-read included, so a later visit's first frame
+		// draws the rows the link wrote ($lib/watch-order/session-memo).
+		show: (d) => (watchOrderData = settledAnswer(id, d))
 	});
 	// Only the latest resume lookup started answers ($lib/detail/resume-lookup).
 	const resumeLookups = latestLookup();
