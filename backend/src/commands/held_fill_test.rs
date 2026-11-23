@@ -355,6 +355,25 @@ fn listing_page(ids: &[u32]) -> String {
         .to_string()
 }
 
+/// AniList answering a batched lookup with [`listing_page`] of the ids
+/// it asked for.
+struct PageOfIds;
+
+impl wiremock::Respond for PageOfIds {
+    fn respond(&self, request: &wiremock::Request) -> ResponseTemplate {
+        let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap_or_default();
+        let ids: Vec<u32> = body["variables"]["ids"]
+            .as_array()
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|v| v.as_u64().and_then(|v| u32::try_from(v).ok()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        ResponseTemplate::new(200).set_body_string(listing_page(&ids))
+    }
+}
+
 #[tokio::test]
 async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_are_cached() {
     // The user's page asks for shows 40 and 41 while AniList refuses
@@ -362,14 +381,13 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
     // and opens another page, which asks for 42, 43 and 44 inside the
     // pause. Every fresh fill of the page on screen goes before either
     // leftover retry, and the leftovers still land in the cache. The
-    // three fresh fills miss together, so they share one request.
+    // three fresh fills miss together: the first goes alone, the other
+    // two share one request.
     let kitsu = kitsu(&[("40", 40), ("41", 41), ("42", 42), ("43", 43), ("44", 44)]).await;
     let anilist = anilist(Some(1), 2, LISTING).await;
     Mock::given(method("POST"))
-        .and(wiremock::matchers::body_partial_json(
-            serde_json::json!({ "variables": { "ids": [42, 43, 44] } }),
-        ))
-        .respond_with(ResponseTemplate::new(200).set_body_string(listing_page(&[42, 43, 44])))
+        .and(wiremock::matchers::body_string_contains("\"ids\""))
+        .respond_with(PageOfIds)
         .with_priority(2)
         .mount(&anilist)
         .await;
@@ -424,11 +442,15 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
         .map(|(i, _)| i)
         .expect("a retry");
     assert!(last_fresh < first_retry, "fresh fills go first: {ids:?}");
-    assert_eq!(
-        ids,
-        vec![vec![40], vec![42, 43, 44], vec![40], vec![41]],
-        "the refusal, the three fresh fills in one request, two retries"
-    );
+    // The refusal, the first fresh fill alone, the other two in one
+    // request, two retries.
+    assert_eq!(ids.len(), 5, "{ids:?}");
+    assert_eq!(ids[0], vec![40]);
+    let mut fresh: Vec<u64> = ids[1].iter().chain(&ids[2]).copied().collect();
+    fresh.sort_unstable();
+    assert_eq!(fresh, vec![42, 43, 44], "{ids:?}");
+    assert_eq!((ids[1].len(), ids[2].len()), (1, 2), "{ids:?}");
+    assert_eq!(&ids[3..], &[vec![40], vec![41]], "{ids:?}");
 }
 
 /// A page that takes a copy of another read's held-back lookup is served

@@ -1,11 +1,13 @@
-//! A lane's life: lookups that arrive while a batch is out do not wait
-//! for it, a batch every caller left is not sent, lanes of different
-//! gate classes never share a request, and a lane whose driver went
-//! away opens again.
+//! A lane's life: the lookup that opens it goes out at once, the ones
+//! arriving while it is out go together a window later, lookups that
+//! arrive while a batch is out do not wait for it, a batch every caller
+//! left is not sent, lanes of different gate classes never share a
+//! request, and a lane whose driver went away opens again.
 
 use std::time::Duration;
 
 use super::*;
+use crate::meta::anilist_batch::WINDOW;
 use crate::meta::anilist_gate::{as_retry, in_background, share_for_tests, Pace, ANILIST};
 use crate::meta::anilist_streaming_eps_fake_test::{asked_of, Asked, FakeAniList, FakeMedia};
 
@@ -44,6 +46,54 @@ async fn serve(respond: impl wiremock::Respond + 'static) -> wiremock::MockServe
         .mount(&server)
         .await;
     server
+}
+
+#[tokio::test]
+async fn the_lookup_that_opens_a_lane_goes_out_at_once() {
+    // A card's thumbnail is on the path out of its skeleton: the first
+    // lookup waits for no window.
+    let server = serve(fake(1)).await;
+    let base = server.uri();
+    let started = tokio::time::Instant::now();
+    let got = in_background(streaming_listing_coalesced(
+        &reqwest::Client::new(),
+        "at-once",
+        by_mal(1),
+        Some(&base),
+    ))
+    .await;
+    let took = started.elapsed();
+    assert_eq!(got.expect("answered"), fake(1).media[0].listing());
+    assert!(took < WINDOW * 7 / 10, "the first lookup waited: {took:?}");
+}
+
+#[tokio::test]
+async fn lookups_arriving_while_the_first_is_out_go_together() {
+    let server = serve(Slow(fake(5), Duration::from_millis(300))).await;
+    let client = reqwest::Client::new();
+    let base = server.uri();
+    let lane = "behind-the-first";
+    let ask = |mal| {
+        in_background(streaming_listing_coalesced(
+            &client,
+            lane,
+            by_mal(mal),
+            Some(&base),
+        ))
+    };
+    let rest = async {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        futures_util::future::join_all((2..=5).map(ask)).await
+    };
+    let (first, rest) = tokio::join!(ask(1), rest);
+    assert_eq!(first.expect("answered"), fake(5).media[0].listing());
+    for (got, m) in rest.into_iter().zip(&fake(5).media[1..]) {
+        assert_eq!(got.expect("answered"), m.listing());
+    }
+    assert_eq!(
+        asked_of(&server).await,
+        vec![Asked::ByMal(1), Asked::PageByMal(vec![2, 3, 4, 5])]
+    );
 }
 
 #[tokio::test]
@@ -166,8 +216,10 @@ fn a_lane_whose_runtime_went_away_opens_again() {
             .expect("a runtime")
     };
     let server_rt = runtime();
+    // Slow enough that the first lookup is still out when its runtime
+    // goes.
     let (server, base) = server_rt.block_on(async {
-        let server = serve(fake(2)).await;
+        let server = serve(Slow(fake(2), Duration::from_millis(300))).await;
         let base = server.uri();
         (server, base)
     });
@@ -188,12 +240,22 @@ fn a_lane_whose_runtime_went_away_opens_again() {
     });
     assert!(gone.is_err());
     drop(first);
-    let answered = runtime().block_on(in_background(streaming_listing_coalesced(
-        &reqwest::Client::new(),
-        lane,
-        by_mal(2),
-        Some(&base),
-    )));
-    assert_eq!(answered.expect("answered"), fake(2).media[1].listing());
+    // Bounded, so a lane left open fails the test instead of hanging it.
+    let answered = runtime().block_on(async {
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            in_background(streaming_listing_coalesced(
+                &reqwest::Client::new(),
+                lane,
+                by_mal(2),
+                Some(&base),
+            )),
+        )
+        .await
+    });
+    assert_eq!(
+        answered.expect("answered in time").expect("answered"),
+        fake(2).media[1].listing()
+    );
     server_rt.block_on(async move { drop(server) });
 }

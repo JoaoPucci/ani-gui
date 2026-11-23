@@ -9,7 +9,9 @@ use super::{streaming_listing_for_ids, StreamingListing};
 #[cfg(test)]
 use crate::error::AniError;
 use crate::error::Result;
-use crate::meta::anilist_batch::{batch, parse_page, Kind, Lanes, Want};
+#[cfg(test)]
+use crate::meta::anilist_batch::parse_page;
+use crate::meta::anilist_batch::{batch, Kind, Lanes, Want};
 #[cfg(test)]
 use crate::meta::anilist_batch::{resolve, Space};
 #[cfg(test)]

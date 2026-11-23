@@ -1,6 +1,7 @@
 //! A Continue Watching strip filling its shows' thumbnails at once: the
-//! lookups that miss the cache together share AniList requests — one per
-//! id space — instead of one request per show, and each show still keeps
+//! first card's lookup goes out at once as it always did, and the ones
+//! that miss the cache while it is out share AniList requests — one per
+//! id space — instead of one request per show. Each show still keeps
 //! its own cached answer.
 
 use super::*;
@@ -40,8 +41,13 @@ async fn anilist_serving(fake: FakeAniList) -> wiremock::MockServer {
     anilist
 }
 
-/// Fill every show in `kitsu_ids` at once, as the strip's cards do.
+/// Fill every show in `kitsu_ids` at once, as the strip's cards do. The
+/// shows' mappings are read first, so the lookups reach AniList in the
+/// order given and the first card's is the one that goes out alone.
 async fn fill_all(state: &AppState, kitsu_ids: &[String], base: &str) -> Vec<StreamingListing> {
+    for id in kitsu_ids {
+        let _ = crate::commands::external_ids::external_ids_for(state, id).await;
+    }
     futures_util::future::join_all(
         kitsu_ids
             .iter()
@@ -57,7 +63,7 @@ fn cached(state: &AppState, kitsu_id: &str) -> Option<StreamingListing> {
 }
 
 #[tokio::test]
-async fn a_strip_of_ten_shows_fills_with_one_anilist_request() {
+async fn a_strip_of_ten_shows_fills_with_the_first_card_alone_and_one_request_for_the_rest() {
     let media: Vec<FakeMedia> = (1..=10)
         .map(|i| FakeMedia {
             id: 100 + i,
@@ -93,12 +99,12 @@ async fn a_strip_of_ten_shows_fills_with_one_anilist_request() {
     }
     assert_eq!(
         asked_of(&anilist).await,
-        vec![Asked::PageByMal((1..=10).collect())]
+        vec![Asked::ByMal(1), Asked::PageByMal((2..=10).collect())]
     );
 }
 
 #[tokio::test]
-async fn a_strip_of_mixed_mappings_fills_with_one_request_per_id_space() {
+async fn a_strip_of_mixed_mappings_fills_with_the_first_card_alone_and_one_request_per_id_space() {
     // Shows by MAL id, shows Kitsu maps to AniList alone, and one whose
     // MAL id AniList does not record — read by its AniList id, as the
     // single lookup reads it — plus one AniList has nothing for, cached
@@ -163,17 +169,11 @@ async fn a_strip_of_mixed_mappings_fills_with_one_request_per_id_space() {
     for (id, listing) in ids.iter().zip(&want) {
         assert_eq!(cached(&state, id).as_ref(), Some(listing), "kitsu {id}");
     }
-    let mut asked = asked_of(&anilist).await;
-    assert_eq!(asked.len(), 2, "{asked:?}");
-    for a in &mut asked {
-        if let Asked::PageByMal(v) | Asked::PageById(v) = a {
-            v.sort_unstable();
-        }
-    }
     assert_eq!(
-        asked,
+        asked_of(&anilist).await,
         vec![
-            Asked::PageByMal(vec![1, 2, 5, 6]),
+            Asked::ByMal(1),
+            Asked::PageByMal(vec![2, 5, 6]),
             Asked::PageById(vec![13, 14, 15])
         ]
     );
@@ -202,18 +202,24 @@ async fn a_strip_refused_by_anilist_caches_none_of_its_shows() {
     }
     let asked = asked_of(&anilist).await;
     assert!(
-        asked.iter().all(|a| matches!(a, Asked::PageByMal(_))),
+        matches!(asked.first(), Some(Asked::ByMal(1))),
+        "the first card goes alone: {asked:?}"
+    );
+    assert!(
+        asked[1..].iter().all(|a| matches!(a, Asked::PageByMal(_))),
         "{asked:?}"
     );
-    assert!(!asked.is_empty() && asked.len() <= 2, "{asked:?}");
+    assert!(asked.len() <= 3, "{asked:?}");
 }
 
 #[tokio::test]
-async fn a_strip_whose_page_fails_keeps_the_other_space_s_answers() {
+async fn a_strip_whose_page_fails_keeps_the_other_answers() {
+    // The first card, mapped to AniList alone, goes out alone and is
+    // answered; the MAL page of the two after it fails.
     let shows: Vec<(String, Vec<(&'static str, u32)>)> = vec![
+        ("3".into(), vec![("anilist/anime", 13)]),
         ("1".into(), vec![("myanimelist/anime", 1)]),
         ("2".into(), vec![("myanimelist/anime", 2)]),
-        ("3".into(), vec![("anilist/anime", 13)]),
     ];
     let ids: Vec<String> = shows.iter().map(|(k, _)| k.clone()).collect();
     let kitsu = kitsu_for(shows).await;
@@ -236,9 +242,9 @@ async fn a_strip_whose_page_fails_keeps_the_other_space_s_answers() {
         .await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = fill_all(&state, &ids, &anilist.uri()).await;
-    assert_eq!(got[0], StreamingListing::default());
+    assert_eq!(got[0], media.listing());
     assert_eq!(got[1], StreamingListing::default());
-    assert_eq!(got[2], media.listing());
+    assert_eq!(got[2], StreamingListing::default());
     assert_eq!(cached(&state, "1"), None);
     assert_eq!(cached(&state, "2"), None);
     assert_eq!(cached(&state, "3"), Some(media.listing()));
@@ -266,15 +272,18 @@ async fn a_lone_show_keeps_its_single_lookup() {
 #[tokio::test]
 async fn a_card_that_stopped_waiting_is_left_out_of_the_page() {
     // The episode route gives the fill a budget and drops it past that.
-    // A lookup dropped before its page went out is not asked for.
+    // Show 9's lookup goes out alone; show 3's, queued behind it, is
+    // dropped before the next batch is gathered, and is not asked for.
     let kitsu = kitsu_for(vec![
+        ("9".into(), vec![("myanimelist/anime", 9)]),
         ("1".into(), vec![("myanimelist/anime", 1)]),
         ("2".into(), vec![("myanimelist/anime", 2)]),
         ("3".into(), vec![("myanimelist/anime", 3)]),
     ])
     .await;
     let fake = FakeAniList {
-        media: (1..=3)
+        media: [9, 1, 2, 3]
+            .into_iter()
             .map(|i| FakeMedia {
                 id: 10 + i,
                 mal: Some(i),
@@ -285,19 +294,24 @@ async fn a_card_that_stopped_waiting_is_left_out_of_the_page() {
     let anilist = anilist_serving(fake.clone()).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
-    // Show 3's mappings are read first, so its lookup is queued when it
-    // is dropped.
-    let _ = crate::commands::external_ids::external_ids_for(&state, "3").await;
+    for id in ["9", "3"] {
+        let _ = crate::commands::external_ids::external_ids_for(&state, id).await;
+    }
     let dropped = tokio::time::timeout(
         std::time::Duration::from_millis(1),
         thumbs_for_show_with_anilist_base(&state, "3", Some(&base)),
     );
-    let (_, a, b) = tokio::join!(
+    let (first, _, a, b) = tokio::join!(
+        thumbs_for_show_with_anilist_base(&state, "9", Some(&base)),
         dropped,
         thumbs_for_show_with_anilist_base(&state, "1", Some(&base)),
         thumbs_for_show_with_anilist_base(&state, "2", Some(&base)),
     );
-    assert_eq!(a, fake.media[0].listing());
-    assert_eq!(b, fake.media[1].listing());
-    assert_eq!(asked_of(&anilist).await, vec![Asked::PageByMal(vec![1, 2])]);
+    assert_eq!(first, fake.media[0].listing());
+    assert_eq!(a, fake.media[1].listing());
+    assert_eq!(b, fake.media[2].listing());
+    assert_eq!(
+        asked_of(&anilist).await,
+        vec![Asked::ByMal(9), Asked::PageByMal(vec![1, 2])]
+    );
 }
