@@ -253,8 +253,11 @@ async fn a_page_that_cannot_be_read_hands_its_shows_to_their_single_lookups() {
     );
     assert_eq!(got[0], media(11, Some(1)).listing());
     assert_eq!(got[1], media(12, Some(2)).listing());
+    // The two single lookups go together, so in either order.
+    let mut asked = asked_of(&server).await;
+    asked[1..].sort_by_key(|a| format!("{a:?}"));
     assert_eq!(
-        asked_of(&server).await,
+        asked,
         vec![
             Asked::PageByMal(vec![1, 2]),
             Asked::ByMal(1),
