@@ -241,8 +241,17 @@ async function startDownload(
 	await download.click();
 	const dialog = page.getByRole('dialog');
 	await expect(dialog).toBeVisible();
-	if (all)
-		await dialog.getByRole('button', { name: message(locale, 'download', 'mode_all') }).click();
+	// The show page's dialog opens on All when the show's count is known;
+	// one episode is a range of one.
+	if (!all) {
+		await dialog.getByRole('button', { name: message(locale, 'download', 'mode_range') }).click();
+		await dialog
+			.getByRole('spinbutton', { name: message(locale, 'download', 'range_to_aria_label') })
+			.fill('1');
+		await dialog
+			.getByRole('spinbutton', { name: message(locale, 'download', 'range_from_aria_label') })
+			.fill('1');
+	}
 	await dialog.getByRole('button', { name: message(locale, 'download', 'button_confirm') }).click();
 	await expect(dialog).toHaveCount(0);
 }
@@ -289,6 +298,9 @@ interface Box {
 interface RowGeometry {
 	status: string;
 	row: Box;
+	/** Inside the row's border: the rows after the first carry a rule
+	 *  above them that the first does not. */
+	rowHeight: number;
 	text: Box;
 	title: Box;
 	ep: Box;
@@ -325,6 +337,7 @@ function geometry(page: Page) {
 							? 'failed'
 							: 'done',
 				row: box(li)!,
+				rowHeight: li.clientHeight,
 				text: box(li.querySelector('.dl-row-text'))!,
 				title: box(li.querySelector('.dl-row-title'))!,
 				ep: box(ep)!,
@@ -398,7 +411,7 @@ function assertRows(g: Geometry, at: string) {
 			.toBeLessThan(1);
 	}
 	// Rows with nothing under their line are all one height.
-	const heights = g.rows.filter((r) => !r.report).map((r) => r.row.bottom - r.row.top);
+	const heights = g.rows.filter((r) => !r.report).map((r) => r.rowHeight);
 	expect
 		.soft(Math.max(...heights) - Math.min(...heights), `${at}: one-line rows match`)
 		.toBeLessThan(1);
@@ -422,6 +435,12 @@ async function checkViews(page: Page, name: string) {
 		const at = `${name}, ${view.label}`;
 		testInfo.annotations.push({ type: 'geometry', description: `${at}: ${JSON.stringify(g)}` });
 		await pop.screenshot({ path: testInfo.outputPath(`${name}-${view.label}.png`) });
+		// The popover scrolls once the rows outgrow it: its end, too.
+		if (await pop.evaluate((el) => el.scrollHeight > el.clientHeight)) {
+			await pop.evaluate((el) => (el.scrollTop = el.scrollHeight));
+			await pop.screenshot({ path: testInfo.outputPath(`${name}-${view.label}-end.png`) });
+			await pop.evaluate((el) => (el.scrollTop = 0));
+		}
 		assertRows(g, at);
 	}
 	await widerLetters(page, false);
