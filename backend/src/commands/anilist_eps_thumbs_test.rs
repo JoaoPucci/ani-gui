@@ -839,3 +839,68 @@ async fn two_app_states_filling_the_same_show_at_once_each_look_it_up() {
 
 #[path = "anilist_eps_batch_test.rs"]
 mod batch;
+
+// — How long a listing is kept ——————————————————————————————————————
+
+const DAY: u64 = 24 * 60 * 60;
+
+fn stored_ttl(pool: &crate::cache::SqlitePool, kitsu_id: &str) -> u64 {
+    let conn = pool.get().expect("conn");
+    let ttl: i64 = conn
+        .query_row(
+            "SELECT ttl_seconds FROM meta_cache WHERE key = ?1",
+            [anilist_eps_thumbs_key(kitsu_id)],
+            |r| r.get(0),
+        )
+        .expect("row written");
+    u64::try_from(ttl).expect("non-negative")
+}
+
+#[test]
+fn a_finished_show_s_listing_keeps_the_week_and_an_airing_one_a_day() {
+    let pool = crate::cache::open_in_memory().expect("in-mem pool");
+    let finished = StreamingListing {
+        finished: true,
+        ..listing(&[(1, "https://cr.cdn/1.jpg")])
+    };
+    cache_anilist_eps_thumbs(&pool, "1", &Ok(finished));
+    cache_anilist_eps_thumbs(&pool, "2", &Ok(listing(&[(1, "https://cr.cdn/1.jpg")])));
+    // AniList answered a finished show with no stills: that answer is as
+    // settled as the show.
+    let bare = StreamingListing {
+        finished: true,
+        ..StreamingListing::default()
+    };
+    cache_anilist_eps_thumbs(&pool, "3", &Ok(bare));
+    cache_anilist_eps_thumbs(&pool, "4", &Err(()));
+    assert_eq!(stored_ttl(&pool, "1"), 7 * DAY);
+    assert_eq!(stored_ttl(&pool, "2"), DAY);
+    assert_eq!(stored_ttl(&pool, "3"), 7 * DAY);
+    assert_eq!(stored_ttl(&pool, "4"), 5 * 60);
+}
+
+proptest::proptest! {
+    /// A listing's lifetime follows AniList's status alone: whatever its
+    /// count and entries, a finished show's keeps the week and any other
+    /// a day; a show with no ids to ask with, five minutes.
+    #[test]
+    fn a_listing_s_lifetime_follows_its_status(
+        finished in proptest::bool::ANY,
+        episodes in proptest::option::of(0u32..2000),
+        numbers in proptest::collection::btree_set(1u32..200, 0..8),
+        no_ids in proptest::bool::ANY,
+    ) {
+        let pairs: Vec<(u32, &str)> = numbers.iter().map(|n| (*n, "https://cr.cdn/x.jpg")).collect();
+        let outcome = if no_ids {
+            Err(())
+        } else {
+            Ok(StreamingListing { finished, episodes, ..listing(&pairs) })
+        };
+        let want = match (&outcome, finished) {
+            (Err(()), _) => 5 * 60,
+            (Ok(_), true) => 7 * DAY,
+            (Ok(_), false) => DAY,
+        };
+        proptest::prop_assert_eq!(listing_ttl(&outcome), want);
+    }
+}

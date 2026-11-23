@@ -409,3 +409,27 @@ impl wiremock::Respond for SlowBanners {
         }
     }
 }
+
+#[tokio::test]
+async fn a_warmed_strip_keeps_its_finished_shows_stills_for_the_week() {
+    // The stand-in AniList answers every show as FINISHED.
+    let (ids, fake) = strip();
+    let kitsu = serve(Kitsu, "GET").await;
+    let anilist = serve(fake, "POST").await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let base = anilist.uri();
+    warm_strip(&state, &ids, Some(&base)).await;
+    let conn = state.cache_pool.get().expect("conn");
+    for id in &ids {
+        let ttl: i64 = conn
+            .query_row(
+                "SELECT ttl_seconds FROM meta_cache WHERE key = ?1",
+                [crate::commands::anilist_eps_thumbs::anilist_eps_thumbs_key(
+                    id,
+                )],
+                |r| r.get(0),
+            )
+            .expect("row written");
+        assert_eq!(ttl, 7 * 24 * 60 * 60, "kitsu {id}");
+    }
+}
