@@ -100,8 +100,9 @@ impl Hold {
     /// running go first.
     ///
     /// # Errors
-    /// What creating the folder or the hold reports, or an error of
-    /// its own when the folder kept disappearing.
+    /// What creating the folder or the hold reports — the last open's
+    /// own error when the folder kept disappearing under it, or an
+    /// error of this one's when the attempts ended another way.
     pub(crate) fn take(dest: &Path, sweep: bool) -> std::io::Result<Self> {
         Self::take_with(dest, sweep, &mut |_, _| {})
     }
@@ -115,7 +116,11 @@ impl Hold {
         between: &mut dyn FnMut(Step, &Path),
     ) -> std::io::Result<Self> {
         let dir = parts_dir(dest);
+        // The open's own error, if the last attempt ended on one: what
+        // the caller reports, rather than a cause this guessed at.
+        let mut lost = None;
         for _ in 0..ATTEMPTS {
+            lost = None;
             // The folder, never the destination: a destination that is
             // gone is the caller's failure to report, not one to paper
             // over by recreating it.
@@ -135,7 +140,10 @@ impl Hold {
                 Ok(file) => file,
                 // The folder went between creating it and the open:
                 // another download removed it as it emptied.
-                Err(e) if os::lost_to_removal(&e) => continue,
+                Err(e) if os::lost_to_removal(&e) => {
+                    lost = Some(e);
+                    continue;
+                }
                 Err(e) => return Err(e),
             };
             between(Step::BeforeLock, &path);
@@ -163,9 +171,9 @@ impl Hold {
             }
             return Ok(hold);
         }
-        Err(std::io::Error::other(
-            "the download working folder kept disappearing",
-        ))
+        Err(lost.unwrap_or_else(|| {
+            std::io::Error::other("the download working folder kept disappearing")
+        }))
     }
 
     /// The working folder.

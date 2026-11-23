@@ -387,6 +387,22 @@ fn a_folder_that_keeps_disappearing_is_an_error_not_a_loop() {
     assert!(attempts > 1, "after starting over: {attempts}");
 }
 
+#[test]
+fn a_folder_that_keeps_disappearing_reports_what_the_open_said() {
+    // The error a caller logs is the system's own, code included, not
+    // a message of ours that hides which refusal it was: one counted as
+    // a removal in flight that keeps recurring may have another cause.
+    let dest = tempfile::tempdir().expect("dest");
+    let got = Hold::take_with(dest.path(), false, &mut |step, dir| {
+        if step == Step::BeforeCreate {
+            std::fs::remove_dir(dir).expect("removed again");
+        }
+    });
+    let err = got.expect_err("taking a hold gives up");
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err:?}");
+    assert!(err.raw_os_error().is_some(), "the system's code: {err:?}");
+}
+
 #[cfg(unix)]
 #[test]
 fn a_hold_that_cannot_be_created_is_reported() {

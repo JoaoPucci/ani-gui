@@ -26,8 +26,28 @@ mod imp {
 
     /// The directory went between creating it and opening the file in
     /// it: another instance removed it as it emptied.
+    ///
+    /// Linux answers that with "not found". macOS also answered an open
+    /// with "invalid argument": its CI caught a contender's open of the
+    /// lock file failing so while three others took and released the
+    /// lock — releases that remove the file and then the directory —
+    /// and on no other occasion. Which of the two removals the open met
+    /// the log does not say, so it is counted as a loss to either. An
+    /// open that keeps failing that way for some other reason meets the
+    /// cap on losses in a row (the working folder's on attempts, which
+    /// then reports the open's own error), and is refused there.
     pub(crate) fn lost_to_removal(e: &std::io::Error) -> bool {
+        lost_to_removal_on(e, cfg!(target_os = "macos"))
+    }
+
+    /// EINVAL, the same code on macOS and Linux.
+    const INVALID_ARGUMENT: i32 = 22;
+
+    /// [`lost_to_removal`], for macOS or not as `macos` says — so both
+    /// answers can be checked wherever the tests run.
+    pub(crate) fn lost_to_removal_on(e: &std::io::Error, macos: bool) -> bool {
         e.kind() == std::io::ErrorKind::NotFound
+            || (macos && e.raw_os_error() == Some(INVALID_ARGUMENT))
     }
 
     /// Whether the locked `file` is still the file named `path`: the
