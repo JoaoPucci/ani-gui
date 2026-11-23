@@ -860,6 +860,8 @@
 	}
 	.brand:focus-visible {
 		box-shadow: var(--ring-inset);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
+		--ring-forced-offset: -4px;
 		border-radius: var(--radius-control);
 	}
 	.brand-word {
@@ -944,6 +946,8 @@
 	   active link's rule steps inside the ring rather than over it. */
 	.nav-link:focus-visible {
 		box-shadow: var(--ring-inset);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
+		--ring-forced-offset: -4px;
 	}
 	.nav-link.active:focus-visible::before,
 	.rail-foot.active:focus-visible::before {
@@ -1085,6 +1089,7 @@
 		box-shadow:
 			inset 0 0 0 2px var(--brand),
 			inset 0 0 0 4px var(--ink-000);
+		--ring-forced-offset: -4px;
 	}
 	.rail-foot.active {
 		color: var(--bone-100);

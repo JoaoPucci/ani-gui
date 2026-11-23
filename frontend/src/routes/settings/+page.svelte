@@ -922,6 +922,8 @@
 	   colours swap so it still shows. */
 	.seg-btn:focus-visible {
 		box-shadow: var(--ring-inset);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
+		--ring-forced-offset: -4px;
 	}
 	.seg-btn.active:focus-visible {
 		box-shadow:

@@ -482,6 +482,8 @@
 	   spans it edge to edge. */
 	.ls-row:focus-visible {
 		box-shadow: var(--ring-inset);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
+		--ring-forced-offset: -4px;
 	}
 	.ls-thumb {
 		inline-size: 2.5rem;

@@ -264,6 +264,18 @@ a {
 	box-shadow: var(--ring);
 	border-radius: 2px;
 }
+/* A forced-colours theme (a Windows contrast theme) drops every box
+   shadow, the ring with them, so there the ring is an outline, over
+   whatever a control sets. A control whose ring is drawn inside its box
+   draws this one inside too (`--ring-forced-offset`); one whose chip
+   carries the ring turns its own off (`--ring-forced: none`). */
+@media (forced-colors: active) {
+	:focus-visible {
+		outline: var(--ring-forced, 2px solid CanvasText) !important;
+		outline-offset: var(--ring-forced-offset, 2px) !important;
+		box-shadow: none;
+	}
+}
 
 button {
 	font: inherit;

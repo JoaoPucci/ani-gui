@@ -150,6 +150,17 @@
 	.winctl-btn:focus-visible::before {
 		box-shadow: var(--ring);
 	}
+	/* A forced-colours theme drops the shadow: the chip's ring is an
+	   outline there, and the button keeps none of its own. */
+	@media (forced-colors: active) {
+		.winctl-btn {
+			--ring-forced: none;
+		}
+		.winctl-btn:focus-visible::before {
+			outline: 2px solid CanvasText;
+			box-shadow: none;
+		}
+	}
 	.winctl-btn--close:hover {
 		color: #fff;
 	}
