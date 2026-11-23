@@ -42,7 +42,6 @@ import {
 	kitsuTitleMatchGet,
 	kitsuTitleMatchPut,
 	kitsuTopRated,
-	kitsuTrending,
 	kitsuByMalIds,
 	kitsuTrendingAnilist,
 	markWatched,
@@ -1224,15 +1223,6 @@ describe('kitsuAnimeBySlug', () => {
 		globalThis.fetch = mockFetchOnce<KitsuAnimeRef | null>(null) as unknown as typeof fetch;
 		await kitsuAnimeBySlug('jojo-stone-ocean-part-2');
 		// no further assertion needed — the URL alone proves shape
-	});
-});
-
-describe('kitsuTrending', () => {
-	it('GETs /api/kitsu/trending', async () => {
-		const fetchMock = mockFetchOnce<KitsuAnimeRef[]>([]);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		await kitsuTrending();
-		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/trending`);
 	});
 });
 
@@ -2472,7 +2462,6 @@ describe('reads a page can cancel', () => {
 		['kitsuSearchPage', (signal) => kitsuSearchPage('frieren', 0, 'relevance', { signal })],
 		['kitsuAnimeDetail', (signal) => kitsuAnimeDetail('7', { signal })],
 		['kitsuAnimeBySlug', (signal) => kitsuAnimeBySlug('frieren', { signal })],
-		['kitsuTrending', (signal) => kitsuTrending({ signal })],
 		['kitsuTrendingAnilist', (signal) => kitsuTrendingAnilist({ signal })],
 		['kitsuTopRated', (signal) => kitsuTopRated({ signal })],
 		['kitsuByMalIds', (signal) => kitsuByMalIds([1], { signal })],
@@ -2555,7 +2544,7 @@ describe('the launch secret reaches every request to the API', () => {
 
 	const calls: Array<[string, () => Promise<unknown>]> = [
 		['a GET', () => settingsGet()],
-		['a GET with a signal', () => kitsuTrending({ signal: new AbortController().signal })],
+		['a GET with a signal', () => kitsuTrendingAnilist({ signal: new AbortController().signal })],
 		['a GET that waits on refills', () => kitsuAnimeDetail('7')],
 		['a POST', () => kitsuSearch('Frieren')],
 		['a PUT', () => settingsPut(configAnswer({}))],
