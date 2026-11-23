@@ -375,15 +375,10 @@ function renditionResponses(page: Page): { url: string; status: number }[] {
 	return seen;
 }
 
-// The two kinds of subtitles are played apart. On a stream carrying
-// both, the app turns off whatever shows as its sidecar tracks attach,
-// and hls.js drops the cues of a fragment it finishes parsing while
-// its track is off and does not fetch that fragment again — so whether
-// the rendition kept its cues would depend on whether the listing or
-// the rendition's fragment arrived first (docs/deferred-work.md, "Sidecar
-// subtitles on a stream that also carries its own"). What the policy
-// has to allow is each one's path, and each is proved on a stream of
-// its own.
+// The two kinds of subtitles are played apart: what the policy has to
+// allow is each one's path, and each is proved on a stream of its own.
+// How the two behave together on one stream is
+// captions-playlist-sidecar.spec.ts's.
 
 test('a play through the stream proxy plays, with its sidecar subtitles, under the policy', async () => {
 	test.setTimeout(90_000);
