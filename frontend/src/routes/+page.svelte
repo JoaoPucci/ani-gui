@@ -119,7 +119,7 @@
 	import { createCapAuthority } from '$lib/history/cap-authority';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
-	import { warmContinueStrip } from '$lib/history/strip-warm';
+	import { createWarmWatch, warmContinueStrip } from '$lib/history/strip-warm';
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
@@ -178,6 +178,7 @@
 	import { latestReads } from '$lib/history/latest-call';
 	import {
 		EPISODE_WAIT_CAP_MS,
+		EPISODE_WAIT_CEILING_MS,
 		cardText,
 		offeredEpisode,
 		visibleImage
@@ -273,8 +274,13 @@
 	const lookBook = createLookBook(imageProxyUrl, sessionLooks);
 	let capReached = $state<Record<string, true>>({});
 	let failedImages = $state<Record<string, true>>({});
+	// The strip warms Home has sent, so a card whose show's warm is
+	// still out waits for it rather than the plain cap.
+	const warmWatch = createWarmWatch();
 	const capTimers = createCapTimers({
 		capMs: EPISODE_WAIT_CAP_MS,
+		ceilingMs: EPISODE_WAIT_CEILING_MS,
+		pendingWarm: (show) => warmWatch.pendingFor(show),
 		schedule: (fn, ms) => setTimeout(fn, ms),
 		cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
 		onElapsed: (key) => {
@@ -667,7 +673,9 @@
 				// The whole strip's stills and banners, asked of the backend
 				// at once, before any card's row is ready
 				// ($lib/history/strip-warm).
-				warmContinueStrip(history, { warm: continueWarm, signal: pageReads.signal });
+				warmWatch.track(
+					warmContinueStrip(history, { warm: continueWarm, signal: pageReads.signal })
+				);
 				// The load's answers are about the shows the rows are now: a
 				// row linked before one lands has moved on, and the answer is
 				// dropped ($lib/history/card-relink.ts).
@@ -1527,7 +1535,8 @@
 				episode: ep,
 				episodeFor: historyEpisodeFor[entry.id],
 				offered,
-				capReached: offered !== null && capTimers.arm(capKey) && capReached[capKey] === true,
+				capReached:
+					offered !== null && capTimers.arm(capKey, match?.id) && capReached[capKey] === true,
 				text:
 					match === undefined
 						? null

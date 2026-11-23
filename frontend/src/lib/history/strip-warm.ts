@@ -35,11 +35,48 @@ export interface StripWarmDeps {
 	signal?: AbortSignal;
 }
 
-/** Ask the backend once for the whole strip. Fire and forget: a warm
- *  that fails or is dropped leaves each card to fill on its own, as
- *  before. */
-export function warmContinueStrip(history: HistoryEntry[], deps: StripWarmDeps): void {
+/** How a warm ended for the cards waiting on it: `answered` once the
+ *  backend has filled what it could (a show AniList held back included),
+ *  `failed` when the request failed or Home left. */
+export type WarmOutcome = 'answered' | 'failed';
+
+/** A warm on its way: the shows it carries and how it ends. */
+export interface WarmInFlight {
+	ids: ReadonlySet<string>;
+	settled: Promise<WarmOutcome>;
+}
+
+/** Ask the backend once for the whole strip. A warm that fails or is
+ *  dropped leaves each card to fill on its own, as before; the answer
+ *  says which shows it carried and how it ended, for the cards'
+ *  episode wait ({@link createWarmWatch}). Null when no row recorded a
+ *  Kitsu id. */
+export function warmContinueStrip(
+	history: HistoryEntry[],
+	deps: StripWarmDeps
+): WarmInFlight | null {
 	const ids = stripWarmIds(history);
-	if (ids.length === 0) return;
-	deps.warm(ids, { signal: deps.signal }).catch(() => undefined);
+	if (ids.length === 0) return null;
+	const settled = deps.warm(ids, { signal: deps.signal }).then(
+		(): WarmOutcome => 'answered',
+		(): WarmOutcome => 'failed'
+	);
+	return { ids: new Set(ids), settled };
+}
+
+/** The warms Home has sent this visit, for a card to ask whether one
+ *  is still out for its show. */
+export function createWarmWatch() {
+	return {
+		/** Note a warm Home just sent. */
+		track(warm: WarmInFlight | null): void {
+			void warm;
+		},
+		/** How the warm still out for `kitsuId` ends, or null when none
+		 *  is: the show was in no warm, or its warm has ended. */
+		pendingFor(kitsuId: string): Promise<WarmOutcome> | null {
+			void kitsuId;
+			return null;
+		}
+	};
 }

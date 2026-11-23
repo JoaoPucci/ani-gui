@@ -7,6 +7,12 @@ export interface CapTimerDeps {
 	schedule: (fn: () => void, ms: number) => unknown;
 	cancel: (handle: unknown) => void;
 	onElapsed: (key: string) => void;
+	/** How the warm still out for a show ends, or null when none is
+	 *  ($lib/history/strip-warm `createWarmWatch`). */
+	pendingWarm?: (show: string) => Promise<'answered' | 'failed'> | null;
+	/** The longest a card waits, from its first arm, while a warm for
+	 *  its show is out. */
+	ceilingMs?: number;
 }
 
 /**
@@ -21,7 +27,8 @@ export function createCapTimers(deps: CapTimerDeps) {
 	const handles = new Map<string, unknown>();
 	let disposed = false;
 	return {
-		arm(key: string): boolean {
+		arm(key: string, show?: string): boolean {
+			void show;
 			if (disposed) return false;
 			if (!handles.has(key)) {
 				handles.set(

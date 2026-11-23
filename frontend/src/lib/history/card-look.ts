@@ -37,6 +37,12 @@ import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
  */
 export const EPISODE_WAIT_CAP_MS = 1000;
 
+/**
+ * The longest a matched card waits for its episode details while
+ * Home's strip warm is still out for its show ($lib/history/cap-timers).
+ */
+export const EPISODE_WAIT_CEILING_MS = 3000;
+
 /** The artwork a card shows, and what to show if that one fails. */
 export interface CardImage {
 	src: string;
