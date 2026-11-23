@@ -30,15 +30,17 @@ const HANDSHAKE = Object.freeze({
     probe: "http://127.0.0.1:41004",
     resolve: "http://127.0.0.1:41005",
     download: "http://127.0.0.1:41006",
+    franchise: "http://127.0.0.1:41007",
   }),
 });
-const SIX = [
+const SEVEN = [
   "http://127.0.0.1:41001",
   "http://127.0.0.1:41002",
   "http://127.0.0.1:41003",
   "http://127.0.0.1:41004",
   "http://127.0.0.1:41005",
   "http://127.0.0.1:41006",
+  "http://127.0.0.1:41007",
 ];
 
 /** `{ directive: [sources] }` from a policy string. */
@@ -54,7 +56,7 @@ function parse(policy) {
 }
 
 test("the packaged policy, directive by directive", () => {
-  const lanes = SIX.join(" ");
+  const lanes = SEVEN.join(" ");
   assert.equal(
     rendererPolicy({ backend: HANDSHAKE, devOrigin: null }),
     [
@@ -125,7 +127,7 @@ test("development adds Vite's injected styles and its HMR socket, and nothing el
   const packaged = parse(rendererPolicy({ backend: HANDSHAKE, devOrigin: null }));
   const dev = parse(rendererPolicy({ backend: HANDSHAKE, devOrigin: "http://localhost:5173" }));
   assert.deepEqual(dev["style-src"], ["'self'", "'unsafe-inline'"]);
-  assert.deepEqual(dev["connect-src"], ["'self'", "ws://localhost:5173", ...SIX]);
+  assert.deepEqual(dev["connect-src"], ["'self'", "ws://localhost:5173", ...SEVEN]);
   for (const name of Object.keys(packaged)) {
     if (name === "style-src" || name === "connect-src") continue;
     assert.deepEqual(dev[name], packaged[name], name);
@@ -147,13 +149,13 @@ test("before the handshake the policy names no loopback origin at all", () => {
   }
 });
 
-test("the API and the five known lanes, in a fixed order, each once", () => {
-  assert.deepEqual(loopbackOrigins(HANDSHAKE), SIX);
+test("the API and the six known lanes, in a fixed order, each once", () => {
+  assert.deepEqual(loopbackOrigins(HANDSHAKE), SEVEN);
   // The renderer falls back to the API's origin for a lane that was not
   // announced; the policy names what was.
   assert.deepEqual(
-    loopbackOrigins({ apiBase: SIX[0], lanes: { image: SIX[2], stream: SIX[0] } }),
-    [SIX[0], SIX[2]],
+    loopbackOrigins({ apiBase: SEVEN[0], lanes: { image: SEVEN[2], stream: SEVEN[0] } }),
+    [SEVEN[0], SEVEN[2]],
   );
 });
 
@@ -165,7 +167,7 @@ test("a lane name the app does not know adds no source", () => {
     ...HANDSHAKE,
     lanes: { ...HANDSHAKE.lanes, evil: "http://127.0.0.1:9", api: "http://127.0.0.1:8" },
   });
-  assert.deepEqual(origins, SIX);
+  assert.deepEqual(origins, SEVEN);
 });
 
 test("anything but http://127.0.0.1:<port> is dropped, never widened", () => {
