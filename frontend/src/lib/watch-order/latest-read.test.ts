@@ -152,3 +152,47 @@ describe('latestRead', () => {
 		);
 	});
 });
+
+describe('latestRead, refresh', () => {
+	it('keeps what is shown until the refresh answers', async () => {
+		const { reads, now, shown } = harness();
+		const a = deferred<string>();
+		reads.start(() => a.promise);
+		a.answer('rows before');
+		await settle();
+		const b = deferred<string>();
+		reads.refresh(() => b.promise);
+		expect(shown).toEqual([null, 'rows before']);
+		b.answer('rows after');
+		await settle();
+		expect(now()).toBe('rows after');
+	});
+
+	it('supersedes and cancels a read still out, and is superseded in turn', async () => {
+		const { reads, now } = harness();
+		const signals: AbortSignal[] = [];
+		const a = deferred<string>();
+		reads.start((signal) => (signals.push(signal), a.promise));
+		const b = deferred<string>();
+		reads.refresh((signal) => (signals.push(signal), b.promise));
+		expect(signals[0].aborted).toBe(true);
+		const c = deferred<string>();
+		reads.start((signal) => (signals.push(signal), c.promise));
+		expect(signals[1].aborted).toBe(true);
+		b.answer('refresh, late');
+		a.answer('first, late');
+		c.answer('latest');
+		await settle();
+		expect(now()).toBe('latest');
+	});
+
+	it('drops a refresh still out once stopped', async () => {
+		const { reads, now } = harness();
+		const b = deferred<string>();
+		reads.refresh(() => b.promise);
+		reads.stop();
+		b.answer('late');
+		await settle();
+		expect(now()).toBeNull();
+	});
+});
