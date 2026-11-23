@@ -27,6 +27,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { recordedPlays } from './owned-plays';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -45,6 +46,13 @@ vi.mock('$app/navigation', () => ({
 	beforeNavigate: vi.fn(),
 	afterNavigate: vi.fn()
 }));
+// The page records a played episode through `recordPlayed`, whose
+// promise settles once the watch stamp and any tracker write have: a
+// case that says no tracker was written waits for it
+// (./owned-plays).
+vi.mock('$lib/play/owned-play', async (importOriginal) =>
+	(await import('./owned-plays')).trackOwnedPlays(await importOriginal())
+);
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
@@ -104,6 +112,7 @@ let marked: string[];
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	recordedPlays.length = 0;
 	__resetPlayCacheForTests();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
@@ -270,6 +279,18 @@ async function watch(show: Show, from: number, ...episodes: number[]) {
 	}
 }
 
+/** The page has recorded episode `episode` as played, and every write
+ *  that record made, the trackers' among them, has been answered. */
+async function playRecorded(episode: number) {
+	await until(
+		() => recordedPlays.some((p) => p.episode === episode),
+		`episode ${episode} recorded`
+	);
+	await Promise.allSettled(
+		recordedPlays.filter((p) => p.episode === episode).map((p) => p.written)
+	);
+}
+
 /** The body each tracker received for its `n`th write. */
 function nth(n: number): Record<string, Record<string, unknown>> {
 	const out: Record<string, Record<string, unknown>> = {};
@@ -308,9 +329,7 @@ describe('play route — what the trackers receive for a watched episode', () =>
 			if (es) land(es, 13, true);
 			return marked.includes('13');
 		}, 'episode 13 marked watched');
-		// The write-back fires beside the watch stamp; give it the turn
-		// it would take.
-		await new Promise((r) => setTimeout(r, 50));
+		await playRecorded(13);
 		expect(writes).toEqual([]);
 	});
 
@@ -333,7 +352,7 @@ describe('play route — what the trackers receive for a watched episode', () =>
 			if (es) land(es, 162, true);
 			return marked.includes('162');
 		}, 'row 162 marked watched');
-		await new Promise((r) => setTimeout(r, 50));
+		await playRecorded(162);
 		expect(writes).toEqual([]);
 	});
 

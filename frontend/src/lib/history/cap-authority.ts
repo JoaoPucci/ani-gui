@@ -33,6 +33,9 @@ export interface Cap {
 export function createCapAuthority(): {
 	recordClickCap: (entryId: string, count: number, approximate: boolean) => void;
 	resolveLoaderCap: (entryId: string, cap: Cap) => Cap;
+	/** Drops the row's pin: the row is matched to another show, and a
+	 *  cap learned for the former one says nothing about it. */
+	forget: (entryId: string) => void;
 } {
 	const pinned = new Map<string, Cap>();
 	return {
@@ -47,6 +50,9 @@ export function createCapAuthority(): {
 			// all. Between two of equal confidence the click is fresher.
 			if (pin.approximate && !cap.approximate && cap.count != null) return cap;
 			return pin;
+		},
+		forget: (entryId) => {
+			pinned.delete(entryId);
 		}
 	};
 }

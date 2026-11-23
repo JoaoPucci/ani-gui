@@ -10,6 +10,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -52,6 +53,7 @@ class SilentEventSource {
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
+let fetches: ReturnType<typeof watchPageFetches>;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
@@ -60,6 +62,7 @@ beforeEach(() => {
 	localStorage.clear();
 	failedHeroImages.clear();
 	setParams({ id: KITSU_ID });
+	fetches = watchPageFetches();
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -201,12 +204,27 @@ describe('a banner held back by AniList’s pacing', () => {
 		const seen = useHeldBanner(new Promise<void>((r) => (land = r)));
 		app = mount(DetailPage, { target });
 		await vi.waitFor(() => expect(seen.detailReads).toBe(1));
+		// The page has read the detail, so it waits on the refill before
+		// it is closed.
+		await vi.waitFor(() =>
+			expect(fetches.read.some((f) => f.path === `/api/kitsu/anime/${KITSU_ID}`)).toBe(true)
+		);
 		unmount(app);
 		app = null;
 		await vi.waitFor(() => expect(seen.released).toEqual([[TICKET]]));
 
 		land();
-		await new Promise((r) => setTimeout(r, 100));
-		expect(seen.detailReads).toBe(1);
+		// The wait the page opened has ended on the page's side: read, or
+		// failed as the closed page let it go. The release above is sent
+		// once the wait is open, and none opens after it. Whatever an
+		// answer set off has asked what it asks.
+		const waits = () => fetches.sent.filter((f) => f.path === '/api/refills/wait');
+		await vi.waitFor(() => {
+			expect(waits().length).toBeGreaterThan(0);
+			for (const w of waits())
+				expect(fetches.read.includes(w) || fetches.failed.includes(w)).toBe(true);
+		});
+		await afterRead();
+		expect(fetches.sent.filter((f) => f.path === `/api/kitsu/anime/${KITSU_ID}`)).toHaveLength(1);
 	});
 });

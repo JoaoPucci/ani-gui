@@ -18,6 +18,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { recordedPlays } from './owned-plays';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -36,6 +37,13 @@ vi.mock('$app/navigation', () => ({
 	beforeNavigate: vi.fn(),
 	afterNavigate: vi.fn()
 }));
+// The page records a played episode through `recordPlayed`, whose
+// promise settles once the watch stamp and any tracker write have: a
+// case that says no tracker was written waits for it
+// (./owned-plays).
+vi.mock('$lib/play/owned-play', async (importOriginal) =>
+	(await import('./owned-plays')).trackOwnedPlays(await importOriginal())
+);
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
@@ -96,6 +104,7 @@ let stamped: { episode?: string; kitsu_id?: string }[];
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	recordedPlays.length = 0;
 	__resetPlayCacheForTests();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
@@ -138,10 +147,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-/** Long enough for a tracker write the stamp set off to arrive: the
- *  write goes out after a few awaited steps, which the positive cases
- *  here see land well inside this. */
-const noTrackerWriteWindow = () => new Promise((r) => setTimeout(r, 300));
+/** The page has recorded episode `episode` as played, and every write
+ *  that record made, the trackers' among them, has been answered. */
+async function playRecorded(episode: number) {
+	await until(
+		() => recordedPlays.some((p) => p.episode === episode),
+		`episode ${episode} recorded`
+	);
+	await Promise.allSettled(
+		recordedPlays.filter((p) => p.episode === episode).map((p) => p.written)
+	);
+}
 
 const card = (n: number) =>
 	(target.querySelector(`li[data-ep-num="${n}"] button`) as HTMLButtonElement | null) ?? null;
@@ -231,7 +247,13 @@ function openStreamFor(episode: number): FakeEventSource | undefined {
 		.at(-1);
 }
 
-function land(es: FakeEventSource, episode: number, unverified = false, ownListing = false) {
+function land(
+	es: FakeEventSource,
+	episode: number,
+	unverified = false,
+	ownListing = false,
+	lineKept = false
+) {
 	es.landed = true;
 	es.dispatch(
 		'done',
@@ -242,7 +264,8 @@ function land(es: FakeEventSource, episode: number, unverified = false, ownListi
 				media_kind: 'hls',
 				episode: `${episode}`,
 				...(unverified ? { episode_unverified: true } : {}),
-				...(ownListing ? { own_listing: true } : {})
+				...(ownListing ? { own_listing: true } : {}),
+				...(lineKept ? { line_kept: true } : {})
 			})
 		)
 	);
@@ -297,7 +320,7 @@ describe("play route — a guessed card's session", () => {
 		const asked = await switchInGuessedSession(3, 4, false);
 		expect(asked.searchParams.get('guess_row')).toBe(ROW);
 		expect(stamped.at(-1)).not.toHaveProperty('kitsu_id');
-		await noTrackerWriteWindow();
+		await playRecorded(4);
 		expect(writes).toEqual([]);
 	});
 
@@ -305,7 +328,49 @@ describe("play route — a guessed card's session", () => {
 		const asked = await switchInGuessedSession(3, 4, true, true);
 		expect(asked.searchParams.get('guess_row')).toBe(ROW);
 		expect(stamped.at(-1)).toMatchObject({ episode: '4', kitsu_id: KITSU_ID });
-		await noTrackerWriteWindow();
+		await playRecorded(4);
+		expect(writes).toEqual([]);
+	});
+});
+
+// A session a card opened with no guess (a line the user named, played
+// from Home) names the card's row on its plays (`card_row`). The
+// backend answers whether it kept the play off the line, which records
+// another show (`line_kept`): a player mounted again after "Keep
+// watching this", before it read the pick back. Such a play is stamped
+// with no id and written to no tracker.
+describe("play route — a card's session no guess opened", () => {
+	async function switchInCardSession(lineKept: boolean) {
+		const show = { kitsuCount: 12, status: 'finished', providerCount: 12 };
+		setUrl(`/play/${KITSU_ID}`, { episode: '3', row: ROW });
+		serve(show);
+		app = mount(PlayPage, { target });
+		await until(() => card(4) !== null, 'the card for episode 4');
+		card(4)!.click();
+		let asked: URL | null = null;
+		await until(() => {
+			const es = openStreamFor(4);
+			if (es) {
+				asked = new URL(es.url);
+				land(es, 4, false, false, lineKept);
+			}
+			return marked.includes('4');
+		}, 'episode 4 marked watched');
+		return asked as unknown as URL;
+	}
+
+	it("names the card's row, and writes the trackers for a play the line records", async () => {
+		const asked = await switchInCardSession(false);
+		expect(asked.searchParams.get('card_row')).toBe(ROW);
+		expect(asked.searchParams.get('kitsu_id')).toBe(KITSU_ID);
+		expect(stamped.at(-1)).toMatchObject({ episode: '4', kitsu_id: KITSU_ID });
+		await until(() => writes.length >= TRACKERS.length, 'both trackers written');
+	});
+
+	it('records no id and writes no tracker for a play kept off the line', async () => {
+		await switchInCardSession(true);
+		expect(stamped.at(-1)).not.toHaveProperty('kitsu_id');
+		await playRecorded(4);
 		expect(writes).toEqual([]);
 	});
 });

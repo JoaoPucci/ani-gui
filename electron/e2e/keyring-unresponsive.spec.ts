@@ -18,7 +18,7 @@
  * the main process must answer, the keyring notice must go up, and the
  * saved sign-in must be left as it was.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./policy-guard";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
@@ -27,6 +27,7 @@ import { groupEmpty, statFields } from "../lib/own-group.cjs";
 import { appInfo, defaultSettings, emptyHistory, topRated, trending } from "./fixtures/kitsu";
 import {
   appWindow,
+  cardLinesAnswer,
   launchPackagedApp,
   packagedBinary,
   refuseUnstubbed,
@@ -176,6 +177,9 @@ test("a secret service that never answers keeps neither the window nor the first
     let topRatedAsked: (() => void) | null = null;
     await routeContext(context, "**/api/app-info", (r) => answer(r, json(appInfo)));
     await routeContext(context, "**/api/history", (r) => answer(r, json(emptyHistory)));
+    await routeContext(context, "**/api/history/card-lines", (r) =>
+      answer(r, json(cardLinesAnswer(r.request().postDataJSON()))),
+    );
     await routeContext(context, "**/api/kitsu/trending-anilist", (r) =>
       answer(r, json(trending)),
     );
