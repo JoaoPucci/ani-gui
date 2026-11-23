@@ -848,3 +848,139 @@ async fn a_redirect_without_a_target_is_one_transfer_held_or_not() {
         assert_eq!(asked, 1, "held={held}: one transfer");
     }
 }
+
+// ── trust anchors ───────────────────────────────────────────────────
+
+/// A fresh Windows install ships a minimal root store and fetches the
+/// rest on demand, only when Windows' own crypto stack builds a chain.
+/// The BoringSSL child never asks, so the native store alone leaves
+/// every host whose root nobody on the machine has used yet failing
+/// with curl exit 60. The bundled Mozilla set closes that; the native
+/// store stays on beside it for the roots only the machine has — an
+/// enterprise's inspection proxy, a root policy installed.
+#[test]
+fn the_trust_flags_carry_the_native_store_and_the_bundle_together() {
+    assert_eq!(
+        trust_args(true, true),
+        vec!["--ca-native", "--cacert", CA_BUNDLE_FILE]
+    );
+    assert_eq!(trust_args(true, false), vec!["--ca-native"]);
+    assert_eq!(trust_args(false, true), vec!["--cacert", CA_BUNDLE_FILE]);
+    assert!(trust_args(false, false).is_empty());
+}
+
+/// The argv without a bundle is the one every build sent before the
+/// bundle existed: the platform's native-store flag where it has one,
+/// and nothing else.
+#[test]
+fn without_a_bundle_the_argv_is_the_platforms_existing_one() {
+    let req = FetchRequest::get("https://provider.example/anime/x");
+    assert_eq!(
+        fetch_args_trusting(&req, Some("chrome136"), &trust_args(cfg!(windows), false)),
+        fetch_args(&req, Some("chrome136"))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_bundle_beside_the_bundled_transport_is_read_where_the_platform_reads_one() {
+    let bundled = tempfile::tempdir().expect("tmp");
+    stage_exe(bundled.path(), "curl-impersonate");
+    std::fs::write(
+        bundled.path().join(CA_BUNDLE_FILE),
+        "-----BEGIN CERTIFICATE-----\n",
+    )
+    .expect("write bundle");
+    let fetch = CurlImpersonateFetch::resolve_with(Some(bundled.path()), "", &[""], true)
+        .expect("resolved");
+    assert_eq!(fetch.ca_bundle_dir(), Some(bundled.path()));
+
+    // A platform whose transport finds its own store never reads one,
+    // even when a file of that name happens to sit there.
+    let fetch = CurlImpersonateFetch::resolve_with(Some(bundled.path()), "", &[""], false)
+        .expect("resolved");
+    assert_eq!(fetch.ca_bundle_dir(), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn no_bundle_is_read_when_none_was_staged() {
+    let bundled = tempfile::tempdir().expect("tmp");
+    stage_exe(bundled.path(), "curl-impersonate");
+    let fetch = CurlImpersonateFetch::resolve_with(Some(bundled.path()), "", &[""], true)
+        .expect("resolved");
+    assert_eq!(fetch.ca_bundle_dir(), None);
+}
+
+/// The bundle belongs to the transport the package staged. A curl
+/// found on PATH is the system's, with its own trust configuration —
+/// a Schannel curl.exe given `--cacert` would verify against that file
+/// alone — so it is spawned as it always was.
+#[cfg(unix)]
+#[test]
+fn a_transport_found_on_path_reads_no_bundle() {
+    let bundled = tempfile::tempdir().expect("tmp");
+    let on_path = tempfile::tempdir().expect("tmp");
+    std::fs::write(bundled.path().join(CA_BUNDLE_FILE), "pem").expect("write bundle");
+    stage_exe(on_path.path(), "curl");
+    let path_env = on_path.path().display().to_string();
+    let fetch = CurlImpersonateFetch::resolve_with(Some(bundled.path()), &path_env, &[""], true)
+        .expect("resolved");
+    assert!(fetch.exe().starts_with(on_path.path()));
+    assert_eq!(fetch.ca_bundle_dir(), None);
+}
+
+/// The bundle is named relative to the child's working directory, and
+/// the child runs in the bundled directory. BoringSSL opens the file
+/// through the C runtime's narrow `fopen`, which on Windows reads the
+/// path in the ANSI code page — an install under a user profile whose
+/// name falls outside it would never open an absolute path. The
+/// process's working directory is set through the wide API instead,
+/// and the relative name is plain ASCII.
+#[cfg(unix)]
+#[tokio::test]
+async fn the_child_finds_the_bundle_it_is_handed() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().expect("tmp");
+    let p = dir.path().join("curl-impersonate");
+    // Reports the --cacert operand and whether it opens from where the
+    // child stands, then answers like curl.
+    std::fs::write(
+        &p,
+        "#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = --cacert ]; then ca=$2; fi\n  shift\ndone\nif [ -f \"$ca\" ]; then printf 'found %s\\n200' \"$ca\"; else printf 'missing %s\\n200' \"$ca\"; fi\n",
+    )
+    .expect("write stub");
+    let mut perms = std::fs::metadata(&p).expect("meta").permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&p, perms).expect("chmod");
+    std::fs::write(dir.path().join(CA_BUNDLE_FILE), "pem").expect("write bundle");
+    let fetch = CurlImpersonateFetch::resolve_with(Some(dir.path()), "", &[""], true)
+        .expect("resolve stub");
+    let resp = fetch.get("https://example.test/x").await.expect("get");
+    assert_eq!(resp.body, format!("found {CA_BUNDLE_FILE}"));
+}
+
+/// The platform default the production resolver uses: the Windows
+/// package's transport reads the bundle staged beside it.
+#[cfg(windows)]
+#[test]
+fn the_windows_resolver_reads_the_bundle_beside_the_bundled_transport() {
+    let bundled = tempfile::tempdir().expect("tmp");
+    std::fs::write(bundled.path().join("curl-impersonate.exe"), "MZ").expect("write stub");
+    std::fs::write(bundled.path().join(CA_BUNDLE_FILE), "pem").expect("write bundle");
+    let fetch = CurlImpersonateFetch::resolve(Some(bundled.path()), "").expect("resolved");
+    assert_eq!(fetch.ca_bundle_dir(), Some(bundled.path()));
+}
+
+/// Elsewhere the transport reads the distribution's store, and a file
+/// of that name in the bundled directory changes nothing: on Linux a
+/// `--cacert` would replace the distribution's bundle, not add to it.
+#[cfg(unix)]
+#[test]
+fn other_platforms_resolve_no_bundle_whatever_sits_beside_the_transport() {
+    let bundled = tempfile::tempdir().expect("tmp");
+    stage_exe(bundled.path(), "curl-impersonate");
+    std::fs::write(bundled.path().join(CA_BUNDLE_FILE), "pem").expect("write bundle");
+    let fetch = CurlImpersonateFetch::resolve(Some(bundled.path()), "").expect("resolved");
+    assert_eq!(fetch.ca_bundle_dir(), None);
+}

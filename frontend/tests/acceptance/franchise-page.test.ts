@@ -41,8 +41,10 @@ import {
 	type Config,
 	type Franchise,
 	type HistoryEntry,
-	type FranchiseEntry
+	type FranchiseEntry,
+	type LinkOutcome
 } from '../../src/lib/api';
+import { appLinkDeps } from '../../src/lib/history/link-deps';
 import { breadcrumb } from '../../src/lib/breadcrumb';
 
 const KITSU_ID = '42';
@@ -264,6 +266,35 @@ describe('franchise page', () => {
 		expect(resumeLink()!.parentElement!.textContent).toContain(
 			m.watchorder_meta_progress_open({ episode: 3 })
 		);
+	});
+
+	it("follows a link's rows once it answers, without blanking the page or walking again", async () => {
+		// A link answered while the page is on screen (made on the show
+		// page or the player just before coming here) rewrites which show
+		// a history row belongs to: the page reads the rows again.
+		const history: HistoryRowFixture[] = [];
+		const calls = useFranchise({ history });
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, () =>
+				HttpResponse.json<LinkOutcome>({ kitsu_id: '50', linked: [] })
+			)
+		);
+		app = mount(FranchisePage, { target });
+		await until(() => resumeLink() !== null && rows().length === 4, 'the masthead and list');
+		expect(resumeLink()!.textContent?.trim()).toBe(m.watchorder_franchise_start());
+		history.push({ id: 'hianime:saga-final', title: 'Saga Final', ep_no: '3', kitsu_id: '50' });
+		const linked = appLinkDeps().link('hianime:saga-final', ['hianime:saga-final'], '50');
+		let blanked = false;
+		const watch = setInterval(() => (blanked ||= rows().length === 0), 1);
+		await linked;
+		await until(
+			() => resumeLink()?.textContent?.trim() === m.watchorder_franchise_resume(),
+			'the resume from the linked row'
+		);
+		clearInterval(watch);
+		expect(resumeLink()!.getAttribute('href')).toBe('/anime/50');
+		expect(blanked).toBe(false);
+		expect(calls.franchise).toBe(1);
 	});
 
 	it('offers to start from the first title when nothing is part-way', async () => {

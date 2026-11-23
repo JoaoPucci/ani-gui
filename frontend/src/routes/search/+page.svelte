@@ -50,6 +50,7 @@
 	import { followAddress } from '$lib/search/follow-address';
 	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
 	import { subtypeLabel } from '$lib/search/subtype-label';
+	import { SEARCH_TYPE_FILTERS } from '$lib/search/type-filters';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
@@ -99,7 +100,6 @@
 		year: m.search_sort_year,
 		rating: m.search_sort_rating
 	};
-	const SUBTYPES = ['TV', 'movie', 'special', 'OVA', 'ONA', 'music'];
 	let sortKey = $state<SortKey>('relevance');
 	const activeSubtypes = new SvelteSet<string>();
 
@@ -454,7 +454,7 @@
 			<div class="control-group">
 				<span class="control-label">{m.search_control_type_label()}</span>
 				<div class="chips" role="group" aria-label={m.search_chips_type_aria_label()}>
-					{#each SUBTYPES as s (s)}
+					{#each SEARCH_TYPE_FILTERS as s (s)}
 						<button
 							type="button"
 							class="chip"
@@ -493,8 +493,8 @@
 			{#each Array.from({ length: 12 }, (_, k) => k) as i (i)}
 				<li class="card card-skeleton" style="--i: {i}">
 					<div class="poster poster-skeleton"></div>
-					<div class="line line-skeleton" style="inline-size: 70%"></div>
-					<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+					<div class="line line-skeleton w-70"></div>
+					<div class="line line-skeleton line-thin w-40"></div>
 				</li>
 			{/each}
 		</ul>
@@ -601,8 +601,8 @@
 				{#each Array.from({ length: 12 }, (_, k) => k) as k (k)}
 					<li class="card card-skeleton" style="--i: {k}">
 						<div class="poster poster-skeleton"></div>
-						<div class="line line-skeleton" style="inline-size: 70%"></div>
-						<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+						<div class="line line-skeleton w-70"></div>
+						<div class="line line-skeleton line-thin w-40"></div>
 					</li>
 				{/each}
 			</ul>
@@ -1178,5 +1178,15 @@
 	}
 	.chip-clear {
 		border-style: dashed;
+	}
+
+	/* Skeleton line sizes. Classes, not static style attributes: the
+	   renderer's content security policy refuses inline style attributes,
+	   and Svelte parses a static one as markup. */
+	.line.w-40 {
+		inline-size: 40%;
+	}
+	.line.w-70 {
+		inline-size: 70%;
 	}
 </style>

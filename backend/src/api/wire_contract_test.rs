@@ -39,13 +39,14 @@
 //! a route may answer `null`); which route answers which type; query
 //! strings (the renderer builds them as text, with no type to compare);
 //! the search-page body (read through structs local to
-//! `commands::kitsu_search`'s readers); a body nested in another (the
-//! guess's `hits`); the value types of a map (`titles`, `cached`); the
-//! launch flags, and the copy of the secret header's name the Electron
-//! main process keeps (`electron/lib/secret-handoff.cjs`, held to this
-//! source by its own test; both the main process's, not the
-//! renderer's); and the value types of request fields — a request's
-//! fields are held by name and by whether they are required.
+//! `commands::kitsu_search`'s readers); a body nested in another that
+//! has no entry of its own (the guess's `hits`: `RowMatch` and `CardRow`
+//! are held by their own entries); the value types of a map (`titles`,
+//! `cached`); the launch flags, and the copy of the secret header's
+//! name the Electron main process keeps (`electron/lib/secret-handoff.cjs`,
+//! held to this source by its own test; both the main process's, not
+//! the renderer's); and the value types of request fields — a
+//! request's fields are held by name and by whether they are required.
 //! Only the `full` samples are probed: a `min` sample is taken as
 //! written, so a field set in one would publish as always sent.
 
@@ -57,6 +58,7 @@ use super::account::account_wire::{
     AuthUrlRequest, AuthUrlResponse, EntryView, ExchangeCodeRequest, PkceWire, RefreshRequest,
     SetEntryRequest, TokensResponse, UpdateProgressRequest,
 };
+use super::link_rules::CardLinesArgs;
 use super::refill::{Ended, WaitBody, REFILL_HEADER};
 use super::wire_probe::{accepted_fields, skipped_fields};
 use super::{ani_error_payload, HistoryRow, KitsuByMalIdsBody, SearchBody, TitleMatchBody};
@@ -71,16 +73,22 @@ use crate::commands::availability::{
     AvailabilityArgs, AvailabilityBatchArgs, AvailabilityBatchResponse, AvailabilityResponse,
     AvailabilityWarmArgs, UnsettledReason,
 };
+use crate::commands::card_line::{CardLine, CardRow};
 use crate::commands::continue_guess::RuledOutRequest;
 use crate::commands::download::{DownloadArgs, DownloadProgress, DownloadResponse};
 use crate::commands::external_player::ExternalPlayerKind;
 use crate::commands::franchise_walk::{Chain, Franchise};
 use crate::commands::history::ByKitsuEachArgs;
+use crate::commands::history_link::{LinkArgs, LinkGroupArgs, LinkOutcome, LinkedRow};
 use crate::commands::history_number::HistoryNumber;
+use crate::commands::link_candidates::CandidatesArgs;
+use crate::commands::link_rules::{LinkCandidate, LinkWarning};
+use crate::commands::link_verdict::{OfferKind, RowMatch, Verdict, VerdictArgs};
 use crate::commands::play::PlayArgs;
 use crate::commands::play_native_versions::{VersionInfo, VersionKind};
 use crate::commands::progress::ProgressLine;
 use crate::commands::session::{media_url, CreateSessionResponse};
+use crate::commands::switch_episode::{SwitchArgs, SwitchEpisode};
 use crate::config::Config;
 use crate::error::AniError;
 use crate::history::HistoryEntry;
@@ -259,6 +267,24 @@ fn responses() -> Value {
     put("EntryView", response(&entry_view(), &entry_view()));
     put("AuthUrlResponse", response(&auth_url(), &auth_url()));
     put("ReleaseInfo", response(&release(), &release()));
+    put(
+        "LinkOutcome",
+        response(&link_outcome(true), &link_outcome(false)),
+    );
+    put("LinkedRow", response(&linked_row(true), &linked_row(false)));
+    put(
+        "LinkCandidate",
+        response(&candidate(true), &candidate(false)),
+    );
+    put("CardLine", response(&card_line(), &card_line()));
+    put("Verdict", response(&verdict(true), &verdict(false)));
+    put(
+        "SwitchEpisode",
+        response(
+            &SwitchEpisode { episode: Some(7.0) },
+            &SwitchEpisode { episode: None },
+        ),
+    );
     Value::Object(out)
 }
 
@@ -316,6 +342,8 @@ fn history_row(full: bool) -> HistoryRow {
     HistoryRow {
         entry: history_entry(full),
         key_year: some(full, 2023),
+        guessed_from: some(full, "hianime:jojos-bizarre-adventure-2000-5182".into()),
+        named: full,
     }
 }
 
@@ -343,6 +371,7 @@ fn session(full: bool) -> CreateSessionResponse {
         former_episode: some(full, "24.5".into()),
         episode_unverified: full,
         own_listing: full,
+        line_kept: full,
     }
 }
 
@@ -662,6 +691,49 @@ fn release() -> ReleaseInfo {
     }
 }
 
+fn linked_row(full: bool) -> LinkedRow {
+    LinkedRow {
+        row: "hianime:jojos-bizarre-adventure-2000-5182".into(),
+        previous: some(full, "7730".into()),
+        ep_no: "2".into(),
+        watched_at: some(full, 1_700_000_000_000),
+    }
+}
+
+fn link_outcome(full: bool) -> LinkOutcome {
+    LinkOutcome {
+        kitsu_id: "4013".into(),
+        linked: if full {
+            vec![linked_row(true)]
+        } else {
+            Vec::new()
+        },
+        overtaken: full,
+    }
+}
+
+fn candidate(full: bool) -> LinkCandidate {
+    LinkCandidate {
+        show: anime(full),
+        current: full,
+        warnings: if full { link_warnings() } else { Vec::new() },
+    }
+}
+
+fn card_line() -> CardLine {
+    CardLine {
+        line: "hianime:jojos-bizarre-adventure-2000-5182".into(),
+        correctable: true,
+    }
+}
+
+fn verdict(full: bool) -> Verdict {
+    Verdict {
+        offer: some(full, OfferKind::Guess),
+        kept: full,
+    }
+}
+
 // — Requests —————————————————————————————————————————————————————————
 
 /// A request body's fields. `min` must be exactly its required fields:
@@ -721,6 +793,22 @@ fn requests() -> Value {
         "RefreshRequest": request::<RefreshRequest>(&json!({ "refresh_token": "rt" })),
         "UpdateProgressRequest": request::<UpdateProgressRequest>(&json!({ "kitsu_id": "46474" })),
         "SetEntryRequest": request::<SetEntryRequest>(&json!({ "kitsu_id": "46474" })),
+        "LinkArgs": request::<LinkArgs>(&json!({
+            "card": "hianime:frieren-18542", "rows": [], "kitsu_id": "46474"
+        })),
+        "LinkGroupArgs": request::<LinkGroupArgs>(&json!({
+            "card": "hianime:frieren-18542", "show": "46474", "rows": []
+        })),
+        "RowMatch": request::<RowMatch>(&json!({ "id": "hianime:frieren-18542" })),
+        "CandidatesArgs": request::<CandidatesArgs>(&json!({
+            "row": "hianime:frieren-18542", "title": "Frieren", "episode": 8
+        })),
+        "CardLinesArgs": request::<CardLinesArgs>(&json!({ "rows": [] })),
+        "CardRow": request::<CardRow>(&json!({ "id": "hianime:frieren-18542" })),
+        "VerdictArgs": request::<VerdictArgs>(&json!({ "page": "46474" })),
+        "SwitchArgs": request::<SwitchArgs>(&json!({
+            "pick": "8063", "card": "hianime:frieren-18542", "episode": 2
+        })),
     })
 }
 
@@ -747,6 +835,8 @@ fn enums() -> Value {
         "ProviderKind": names(&provider_kinds()),
         "PkceMethod": pkce_methods().into_iter().map(PkceMethod::as_param).collect::<Vec<_>>(),
         "Lane": lanes().into_iter().map(Lane::name).collect::<Vec<_>>(),
+        "LinkWarning": names(&link_warnings()),
+        "OfferKind": names(&offer_kinds()),
     })
 }
 
@@ -791,6 +881,14 @@ fn provider_kinds() -> Vec<ProviderKind> {
 
 fn pkce_methods() -> Vec<PkceMethod> {
     units!(PkceMethod: Plain, S256)
+}
+
+fn link_warnings() -> Vec<LinkWarning> {
+    units!(LinkWarning: Season, Episode)
+}
+
+fn offer_kinds() -> Vec<OfferKind> {
+    units!(OfferKind: Guess, Again)
 }
 
 // — Errors, constants, URLs ——————————————————————————————————————————

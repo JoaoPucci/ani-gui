@@ -16,6 +16,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -83,6 +84,13 @@ let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 let writes: string[];
 let marked: string[];
+let fetches: ReturnType<typeof watchPageFetches>;
+/** The tracker writes the page has sent, counted as it sends them: a
+ *  handler sees a request only once MSW has carried it there. */
+const trackerWritesSent = () =>
+	fetches.sent
+		.filter((f) => f.method === 'POST' && f.path.startsWith('/api/account/update/'))
+		.map((f) => f.path.slice('/api/account/update/'.length));
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
@@ -92,6 +100,7 @@ beforeEach(() => {
 	window.localStorage.clear();
 	writes = [];
 	marked = [];
+	fetches = watchPageFetches();
 	setParams({ id: KITSU_ID });
 	for (const provider of TRACKERS) {
 		accountStore.setConnected(provider, {
@@ -249,9 +258,10 @@ describe('detail route — rows past the count no reading reached', () => {
 			)
 		);
 		await until(() => marked.includes('13'), 'row 13 marked watched');
-		// The write-back fires beside the watch stamp; give it the turn
-		// it would take.
-		await new Promise((r) => setTimeout(r, 50));
-		expect(writes).toEqual([]);
+		// The write-back would start beside the watch stamp and wait
+		// only on the sign-in's bearer before it is sent, so once nothing
+		// the page asked is still out, it has been sent.
+		await fetches.settled('the play to settle after its watch stamp');
+		expect(trackerWritesSent()).toEqual([]);
 	});
 });

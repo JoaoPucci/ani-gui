@@ -52,7 +52,7 @@ use crate::scraper::provider::{
 /// Provider origin. Overridable at the client level for tests, and
 /// worth keeping overridable for real: the site's domain churns and
 /// is filtered per ISP.
-pub const HIANIME_BASE: &str = "https://hianime.at";
+pub const HIANIME_BASE: &str = "https://hianime.fm";
 
 /// The base a server's window is carved from: one request's worth
 /// of patience is five twelfths of this, and every bounded server is

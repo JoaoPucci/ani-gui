@@ -61,10 +61,37 @@ export async function loadWatchOrder(
 	if (signal?.aborted) return NOTHING;
 	const franchise = await sources.franchise(id, signal).catch(() => null);
 	if (!franchise || signal?.aborted) return NOTHING;
-	const named = await sources.named(idsOf(franchise), signal).catch(() => ({}));
+	const rows = await readRows(franchise, sources, signal).catch(() => []);
 	if (signal?.aborted) return NOTHING;
-	const rows = Object.entries(named).flatMap(([kitsu_id, row]) =>
+	return { franchise, rows };
+}
+
+/** The rows `franchise`'s entries resume from. Rejects when they cannot be read. */
+async function readRows(
+	franchise: FranchiseData,
+	sources: WatchOrderSources,
+	signal?: AbortSignal
+): Promise<HistoryRow[]> {
+	const named = await sources.named(idsOf(franchise), signal);
+	return Object.entries(named).flatMap(([kitsu_id, row]) =>
 		row ? [{ kitsu_id, ep_no: row.ep_no }] : []
 	);
+}
+
+/**
+ * `data` with its rows read again, the franchise as it was: the history
+ * changed (a link rewrote which show a row belongs to), the franchise
+ * did not. Rows that cannot be read, or a visit that ended, leave `data`
+ * as it is. Never rejects.
+ */
+export async function rereadRows(
+	data: WatchOrderData,
+	sources: WatchOrderSources,
+	signal?: AbortSignal
+): Promise<WatchOrderData> {
+	const { franchise } = data;
+	if (!franchise || signal?.aborted) return data;
+	const rows = await readRows(franchise, sources, signal).catch(() => null);
+	if (rows === null || signal?.aborted) return data;
 	return { franchise, rows };
 }

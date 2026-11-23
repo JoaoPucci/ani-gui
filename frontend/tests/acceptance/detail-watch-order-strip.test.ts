@@ -45,8 +45,10 @@ import {
 	type HistoryRowByKitsu,
 	type KitsuAnimeRef,
 	type KitsuEpisode,
-	type FranchiseEntry
+	type FranchiseEntry,
+	type LinkOutcome
 } from '../../src/lib/api';
+import { appLinkDeps } from '../../src/lib/history/link-deps';
 
 const KITSU_ID = '42';
 
@@ -286,6 +288,33 @@ describe('detail route — the watch-order strip', () => {
 		await until(() => tile('5') !== null, 'the watching card');
 		expect(tile('5')!.textContent).toContain(m.watchorder_strip_watching_key());
 		expect(tile('5')!.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
+	});
+
+	it("follows a link's rows: the strip's progress is read again once a link answers", async () => {
+		// A link made anywhere (here, Home or the player) rewrites which
+		// show a history row belongs to. The page reads the show's resume
+		// again then, and the strip must count the rows the link wrote too,
+		// not the ones the visit began with.
+		const history: HistoryRowFixture[] = [];
+		const calls = useShow({ history });
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, () =>
+				HttpResponse.json<LinkOutcome>({ kitsu_id: '5', linked: [] })
+			)
+		);
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip');
+		// Origins is no neighbour of this entry: only a watching card draws it.
+		expect(tile('5')).toBeNull();
+		history.push({ id: 'hianime:saga-origins', title: 'Saga Origins', ep_no: '3', kitsu_id: '5' });
+		await appLinkDeps().link('hianime:saga-origins', ['hianime:saga-origins'], '5');
+		await until(
+			() => tile('5')?.textContent?.includes(m.watchorder_strip_watching_key()) ?? false,
+			'the watching card from the linked row'
+		);
+		expect(tile('5')!.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
+		// The franchise itself did not change: one walk, read once.
+		expect(calls.franchise).toBe(1);
 	});
 
 	it("gives a row's progress to the entry the backend names it for, when Kitsu deleted the recorded one", async () => {
