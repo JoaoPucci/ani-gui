@@ -1,8 +1,8 @@
 //! A cold Continue Watching strip warmed at once from the history's
 //! recorded Kitsu ids, while its cards' rows become ready one by one: the
-//! strip's stills and banners cost at most two AniList requests each,
-//! however far apart the cards ask, and every card reads what its own
-//! lookup would have.
+//! strip's stills and banners cost one AniList request each, however far
+//! apart the cards ask, and every card reads what its own lookup would
+//! have.
 
 use std::time::Duration;
 
@@ -118,7 +118,7 @@ where
 }
 
 #[tokio::test]
-async fn a_cold_strip_warmed_at_once_fills_its_stills_in_two_requests_however_late_its_cards() {
+async fn a_cold_strip_warmed_at_once_fills_its_stills_in_one_request_however_late_its_cards() {
     let (ids, fake) = strip();
     let kitsu = serve(Kitsu, "GET").await;
     let anilist = serve(fake.clone(), "POST").await;
@@ -136,12 +136,18 @@ async fn a_cold_strip_warmed_at_once_fills_its_stills_in_two_requests_however_la
     for (listing, m) in got.iter().zip(&fake.media) {
         assert_eq!(*listing, m.listing());
     }
+    // The warm's lookups go as one page, none sent ahead alone.
     let asked = asked_for_stills(&anilist).await;
-    assert!(asked.len() <= 2, "{} requests: {asked:?}", asked.len());
+    assert_eq!(
+        asked,
+        vec![crate::meta::anilist_streaming_eps_fake_test::Asked::PageByMal((1..=10).collect())],
+        "{} requests",
+        asked.len()
+    );
 }
 
 #[tokio::test]
-async fn a_cold_strip_warmed_at_once_reads_its_banners_in_two_requests_however_late_its_cards() {
+async fn a_cold_strip_warmed_at_once_reads_its_banners_in_one_request_however_late_its_cards() {
     let (ids, fake) = strip();
     let kitsu = serve(Kitsu, "GET").await;
     let anilist = serve(fake.clone(), "POST").await;
@@ -158,7 +164,12 @@ async fn a_cold_strip_warmed_at_once_reads_its_banners_in_two_requests_however_l
         assert_eq!(cover, m.banner(), "kitsu {}", detail.id);
     }
     let asked = asked_for_banners(&anilist).await;
-    assert!(asked.len() <= 2, "{} requests: {asked:?}", asked.len());
+    assert_eq!(
+        asked,
+        vec![crate::meta::anilist_streaming_eps_fake_test::Asked::PageByMal((1..=10).collect())],
+        "{} requests",
+        asked.len()
+    );
 }
 
 #[tokio::test]
