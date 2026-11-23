@@ -127,3 +127,7 @@ pub async fn handoff(state: &AppState, id: &str, today: &str) -> Result<Option<H
     };
     Ok(unclaimed_handoff(candidate, named))
 }
+
+#[cfg(test)]
+#[path = "watch_order_test.rs"]
+mod tests;

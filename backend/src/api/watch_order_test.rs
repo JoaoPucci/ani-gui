@@ -362,7 +362,7 @@ async fn the_up_next_route_names_what_follows_the_finale_and_nothing_before_it()
         json!({ "today": TODAY, "episode": 25 }),
     )
     .await;
-    assert_eq!(before, json!({ "card": null }));
+    assert_eq!(before, json!({ "card": null, "history": true }));
 }
 
 #[tokio::test]
@@ -412,4 +412,57 @@ async fn the_rail_route_is_the_rail_over_what_home_sends() {
     assert_eq!(got["asks"], json!({ "a": "7158", "b": null }));
     assert_eq!(got["handoffs"]["a"]["next"]["id"], "8063");
     assert!(got["handoffs"].get("b").is_none());
+}
+
+#[tokio::test]
+async fn every_answer_says_whether_the_history_was_read() {
+    let td = tempfile::tempdir().expect("td");
+    let state = jojo(&td);
+    let history = state.history_path.clone();
+    let router = router(state);
+    let reads = [
+        ("show", json!({ "today": TODAY })),
+        ("franchise", json!({ "today": TODAY })),
+        ("up-next", json!({ "today": TODAY, "episode": 26 })),
+    ];
+    for (route, body) in &reads {
+        let (_, got) = call(
+            &router,
+            "POST",
+            &format!("/api/watch-order/7158/{route}"),
+            body.clone(),
+        )
+        .await;
+        assert_eq!(got["history"], true, "{route}");
+    }
+    // A directory where the history file should be: every read fails.
+    std::fs::create_dir_all(&history).expect("a directory");
+    for (route, body) in &reads {
+        let (status, got) = call(
+            &router,
+            "POST",
+            &format!("/api/watch-order/7158/{route}"),
+            body.clone(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{route}");
+        assert_eq!(got["history"], false, "{route}");
+    }
+}
+
+#[tokio::test]
+async fn the_handoff_route_keeps_the_ordinary_card_when_the_history_cannot_be_read() {
+    let td = tempfile::tempdir().expect("td");
+    let state = jojo(&td);
+    std::fs::create_dir_all(&state.history_path).expect("a directory");
+    let router = router(state);
+    let (status, got) = call(
+        &router,
+        "POST",
+        "/api/watch-order/7158/handoff",
+        json!({ "today": TODAY }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(got, json!({ "handoff": null }));
 }
