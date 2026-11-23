@@ -233,3 +233,179 @@ async fn a_warm_whose_caller_left_sends_nothing_more() {
     let asked = asked_of(&anilist).await;
     assert!(asked.len() <= 1, "requests sent for nobody: {asked:?}");
 }
+
+/// A Kitsu answering one coverless show, `8001`, MAL id 1 — or, with
+/// `cover`, the same show with a cover of its own.
+struct OneShow {
+    cover: bool,
+}
+
+impl wiremock::Respond for OneShow {
+    fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+        let mut answer = Kitsu.respond(request);
+        if self.cover && !request.url.query().unwrap_or("").contains("mappings") {
+            let mut detail: serde_json::Value =
+                serde_json::from_slice(NULL_COVER_DETAIL).expect("fixture");
+            detail["data"]["id"] = serde_json::json!("801");
+            detail["data"]["attributes"]["coverImage"] =
+                serde_json::json!({ "original": "https://media.kitsu.app/c/801.jpg" });
+            answer = wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_json(detail);
+        }
+        answer
+    }
+}
+
+#[tokio::test]
+async fn a_warmed_banner_answer_is_read_once_then_asked_again_as_the_single_path_would() {
+    // The warm found no banner for the show. The detail read takes that
+    // answer and keeps it in its own row; once that row has gone, as an
+    // airing show's does after a day, the next read asks AniList again
+    // rather than read the warm's answer for a month.
+    let kitsu = serve(OneShow { cover: false }, "GET").await;
+    let anilist = serve(
+        FakeAniList {
+            media: vec![FakeMedia {
+                id: 101,
+                mal: Some(1),
+                listed: 0,
+            }],
+        },
+        "POST",
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let base = anilist.uri();
+    crate::commands::anilist_banner_memo::remember_warmed(&state.cache_pool, "801", None);
+    let first =
+        crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, "801", Some(&base))
+            .await
+            .expect("a detail");
+    assert!(first.cover_image.is_none());
+    assert!(
+        asked_for_banners(&anilist).await.is_empty(),
+        "the warm's answer was not read"
+    );
+    crate::cache::meta_cache_delete(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key("801"),
+    )
+    .expect("expire the detail");
+    let again =
+        crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, "801", Some(&base))
+            .await
+            .expect("a detail");
+    assert_eq!(
+        again.cover_image.and_then(|c| c.original).as_deref(),
+        Some("https://al.cdn/banner/101.jpg")
+    );
+    assert_eq!(asked_for_banners(&anilist).await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_show_with_a_kitsu_cover_never_takes_the_warmed_banner() {
+    let kitsu = serve(OneShow { cover: true }, "GET").await;
+    let anilist = serve(FakeAniList::default(), "POST").await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    crate::commands::anilist_banner_memo::remember_warmed(
+        &state.cache_pool,
+        "801",
+        Some("https://al.cdn/banner/warmed.jpg"),
+    );
+    let detail = crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(
+        &state,
+        "801",
+        Some(&anilist.uri()),
+    )
+    .await
+    .expect("a detail");
+    assert_eq!(
+        detail.cover_image.and_then(|c| c.original).as_deref(),
+        Some("https://media.kitsu.app/c/801.jpg")
+    );
+    assert_eq!(detail.anilist_banner, None);
+}
+
+#[tokio::test]
+async fn a_warmed_banner_since_found_gone_is_forgotten_and_asked_again() {
+    let kitsu = serve(OneShow { cover: false }, "GET").await;
+    let anilist = serve(
+        FakeAniList {
+            media: vec![FakeMedia {
+                id: 101,
+                mal: Some(1),
+                listed: 0,
+            }],
+        },
+        "POST",
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let gone = "https://al.cdn/banner/gone.jpg";
+    crate::commands::anilist_banner_memo::remember_warmed(&state.cache_pool, "801", Some(gone));
+    crate::meta::images::mark_dead(&state.cache_pool, gone);
+    assert_eq!(
+        crate::commands::anilist_banner_memo::warmed(&state.cache_pool, "801"),
+        None
+    );
+    let detail = crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(
+        &state,
+        "801",
+        Some(&anilist.uri()),
+    )
+    .await
+    .expect("a detail");
+    assert_eq!(
+        detail.cover_image.and_then(|c| c.original).as_deref(),
+        Some("https://al.cdn/banner/101.jpg")
+    );
+}
+
+#[tokio::test]
+async fn a_card_reading_its_detail_while_the_warm_asks_for_its_banner_shares_that_lookup() {
+    // The warm's banner page is slow to answer. A card whose detail is
+    // read while it is out takes the warm's answer instead of asking
+    // AniList for its banner on its own.
+    let (ids, fake) = strip();
+    let kitsu = serve(Kitsu, "GET").await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(SlowBanners(fake.clone(), Duration::from_millis(600)))
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let base = anilist.uri();
+    let warm = warm_strip(&state, &ids, Some(&base));
+    let card = async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, &ids[0], Some(&base))
+            .await
+            .expect("a detail")
+    };
+    let ((), detail) = tokio::join!(warm, card);
+    assert_eq!(
+        detail.cover_image.and_then(|c| c.original),
+        fake.media[0].banner()
+    );
+    assert_eq!(
+        asked_for_banners(&anilist).await.len(),
+        1,
+        "{:?}",
+        asked_for_banners(&anilist).await
+    );
+}
+
+/// The stand-in answering banner queries after `delay`.
+struct SlowBanners(FakeAniList, Duration);
+
+impl wiremock::Respond for SlowBanners {
+    fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+        let answer = self.0.respond(request);
+        if String::from_utf8_lossy(&request.body).contains("bannerImage") {
+            answer.set_delay(self.1)
+        } else {
+            answer
+        }
+    }
+}
