@@ -218,3 +218,7 @@ mod scenario_arrival_tests;
 #[cfg(test)]
 #[path = "text_test.rs"]
 mod text_tests;
+
+#[cfg(test)]
+#[path = "order_prop_test.rs"]
+mod order_prop_tests;
