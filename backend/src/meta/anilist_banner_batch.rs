@@ -7,6 +7,7 @@ use crate::error::Result;
 #[cfg(test)]
 use crate::meta::anilist_batch::batch;
 use crate::meta::anilist_batch::{coalesced, Kind, Lanes, Want};
+use crate::meta::anilist_gate::Purpose;
 
 /// The banner lookup, batched. A show's answer is its banner, `None`
 /// where AniList's media has none or AniList has no media for it — as
@@ -14,7 +15,7 @@ use crate::meta::anilist_batch::{coalesced, Kind, Lanes, Want};
 pub(crate) struct Banner;
 
 impl Kind for Banner {
-    const NAME: &'static str = "banner";
+    const PURPOSE: Purpose = Purpose::Banner;
     type Out = Option<String>;
     const BY_MAL_GQL: &'static str = "query BannerBatchByMal($malIds: [Int]) { \
         Page(page: 1, perPage: 50) { pageInfo { hasNextPage } \

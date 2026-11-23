@@ -57,6 +57,9 @@ mod answer;
 mod pace;
 use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
+#[path = "anilist_gate_purpose.rs"]
+mod purpose;
+pub(crate) use purpose::{Ask, Purpose};
 #[path = "anilist_gate_turn.rs"]
 mod turn;
 pub(crate) use turn::{as_retry, current_class, in_background, in_class};
@@ -100,10 +103,11 @@ impl Gate {
     }
 
     /// Wait for `class`'s turn and take it, or refuse when the turn
-    /// comes after `deadline`. Nothing is recorded until the turn is
+    /// comes after `deadline`; a turn taken logs its line, labelled
+    /// `ask`. Nothing is recorded until the turn is
     /// taken, so a caller dropped while it waits costs nothing.
     /// Returns the instant the turn was taken, for [`Ledger::settle`].
-    async fn admit(&self, class: Class, deadline: Instant) -> Result<Instant> {
+    async fn admit(&self, ask: Ask, class: Class, deadline: Instant) -> Result<Instant> {
         let mut waiting = None;
         let mut behind_retry = false;
         let began = Instant::now();
@@ -125,7 +129,8 @@ impl Gate {
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
                         .push(class);
-                    sent(&self.pace, class, &ledger, now, now - began, behind_retry);
+                    let waited = now - began;
+                    sent(&self.pace, ask, class, &ledger, now, waited, behind_retry);
                     return Ok(now);
                 }
                 if class != Class::Retry
@@ -170,16 +175,17 @@ fn gate_for(url: &str) -> Arc<Gate> {
         .unwrap_or_else(|| Arc::new(Gate::new(ANILIST)))
 }
 
-/// Send one AniList request through its host's gate. `send` builds and
-/// sends it; it is called once, or twice when a refusal's window ends
-/// inside the caller's budget. The response is returned as it came —
-/// a 429 included — for the transport's own status mapping.
+/// Send one AniList request through its host's gate, labelled `ask` in
+/// its sent line. `send` builds and sends it; it is called once, or
+/// twice when a refusal's window ends inside the caller's budget. The
+/// response is returned as it came — a 429 included — for the
+/// transport's own status mapping.
 ///
 /// # Errors
 /// [`AniError::RateLimited`] when the caller's turn would come past its
 /// budget (nothing was sent); [`AniError::Network`] when sending
 /// failed.
-pub(crate) async fn send<F, Fut>(url: &str, send: F) -> Result<reqwest::Response>
+pub(crate) async fn send<F, Fut>(url: &str, ask: Ask, send: F) -> Result<reqwest::Response>
 where
     F: Fn() -> Fut,
     Fut: Future<Output = reqwest::Result<reqwest::Response>>,
@@ -189,7 +195,7 @@ where
     let deadline = Instant::now() + gate.pace.wait_for(class);
     let mut retried = false;
     loop {
-        let sent = gate.admit(class, deadline).await?;
+        let sent = gate.admit(ask, class, deadline).await?;
         let resp = send().await;
         gate.ledger().settle(sent, Instant::now());
         let resp = resp.map_err(|_| AniError::Network)?;
@@ -283,3 +289,7 @@ impl Drop for SharedForTests {
 #[cfg(test)]
 #[path = "anilist_gate_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "anilist_gate_sent_test.rs"]
+pub(crate) mod sent_tests;

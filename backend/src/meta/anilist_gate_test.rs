@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
-use super::{in_background, share_for_tests, Pace, ANILIST};
+use super::{in_background, share_for_tests, Ask, Pace, Purpose, ANILIST};
 use crate::account::provider::{EntryUpdate, ProviderMediaId, Tokens, UserListProvider};
 use crate::error::AniError;
 use crate::meta::anilist::{mal_id_for_media_id, post_graphql_public, trending};
@@ -102,12 +102,15 @@ fn tokens() -> Tokens {
     }
 }
 
+/// The label the gate's tests send under.
+const TRENDING: Ask = Ask::unkeyed(Purpose::Trending);
+
 fn client() -> reqwest::Client {
     reqwest::Client::new()
 }
 
 async fn public(uri: &str) -> crate::error::Result<bytes::Bytes> {
-    post_graphql_public(&client(), uri, &serde_json::json!({})).await
+    post_graphql_public(&client(), uri, &serde_json::json!({}), TRENDING).await
 }
 
 fn assert_rate_limited<T: std::fmt::Debug>(got: &crate::error::Result<T>) {
@@ -494,7 +497,8 @@ fn every_request_sent_logs_its_class_and_how_full_the_window_is() {
         .filter(|l| l.contains("anilist request sent"))
         .collect();
     assert_eq!(lines.len(), 2, "{out}");
-    assert!(lines[0].contains("DEBUG"), "{}", lines[0]);
+    assert!(lines[0].contains(" INFO "), "{}", lines[0]);
+    assert!(lines[0].contains("purpose=trending"), "{}", lines[0]);
     assert!(lines[0].contains("class=Background"), "{}", lines[0]);
     assert!(lines[0].contains("in_window=1"), "{}", lines[0]);
     assert!(lines[0].contains("capacity=25"), "{}", lines[0]);

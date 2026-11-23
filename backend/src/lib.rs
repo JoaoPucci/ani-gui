@@ -19,6 +19,10 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, rust_2018_idioms)]
 
+/// The log filter the backend runs under when `RUST_LOG` is unset: what
+/// "the app's default log" keeps.
+pub const DEFAULT_LOG_FILTER: &str = "ani_gui=info";
+
 pub mod account;
 pub mod api;
 pub mod app;
