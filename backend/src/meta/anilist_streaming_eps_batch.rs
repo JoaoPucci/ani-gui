@@ -60,7 +60,7 @@ pub struct Want {
 }
 
 /// Which id space a page addresses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Space {
     /// `idMal_in`.
     Mal,
@@ -124,7 +124,7 @@ where
     SF: Future<Output = Result<StreamingListing>>,
 {
     let mut out: Vec<Option<Result<StreamingListing>>> = vec![None; wants.len()];
-    let mut singles: HashMap<Want, Result<StreamingListing>> = HashMap::new();
+    let mut singles: HashMap<(Space, u32), Result<StreamingListing>> = HashMap::new();
     let mal_keys: Vec<u32> = wants
         .iter()
         .filter_map(|w| w.mal)
@@ -143,7 +143,10 @@ where
         out[i] = match (got, w.anilist) {
             (Got::Listing(l), _) => Some(Ok(l)),
             (Got::Failed(e), _) => Some(Err(e)),
-            (Got::Single, _) => Some(single_once(&mut singles, &mut single, *w).await),
+            (Got::Single, _) => {
+                let key = (Space::Mal, w.mal.unwrap_or_default());
+                Some(single_once(&mut singles, &mut single, key, *w).await)
+            }
             (Got::Absent, Some(_)) => {
                 by_id_wanted.push(i);
                 None
@@ -168,7 +171,7 @@ where
                     mal: None,
                     anilist: Some(id),
                 };
-                single_once(&mut singles, &mut single, want).await
+                single_once(&mut singles, &mut single, (Space::AniList, id), want).await
             }
             Got::Absent => Ok(StreamingListing::default()),
         });

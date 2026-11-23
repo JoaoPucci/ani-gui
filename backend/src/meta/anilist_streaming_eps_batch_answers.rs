@@ -76,20 +76,26 @@ where
     out
 }
 
-/// `want`'s single lookup, asked once however many shows need it.
+/// The single lookup for the key `key` of `space` names, made with
+/// `want`, asked once however many shows need it. A key reaches here
+/// only when AniList records media for it (several, or more than a page
+/// holds), so the lookup by it finds one and never falls back to the
+/// AniList id beside it: every show naming the key reads the same
+/// answer.
 pub(super) async fn single_once<S, SF>(
-    singles: &mut HashMap<Want, Result<StreamingListing>>,
+    singles: &mut HashMap<(Space, u32), Result<StreamingListing>>,
     single: &mut S,
+    key: (Space, u32),
     want: Want,
 ) -> Result<StreamingListing>
 where
     S: FnMut(Want) -> SF,
     SF: Future<Output = Result<StreamingListing>>,
 {
-    if let Some(done) = singles.get(&want) {
+    if let Some(done) = singles.get(&key) {
         return done.clone();
     }
     let got = single(want).await;
-    singles.insert(want, got.clone());
+    singles.insert(key, got.clone());
     got
 }
