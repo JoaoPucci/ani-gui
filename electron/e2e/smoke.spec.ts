@@ -148,6 +148,11 @@ async function launchAppWithStubsOnce(
   await stub("**/api/kitsu/airing/*", (r) => answer(r, json(null)));
   await stub("**/api/history/by-kitsu/*", (r) => answer(r, json(null)));
   await stub("**/api/download/default-dir", (r) => answer(r, json(null)));
+  // Settings asks where each player flavour's program is installed:
+  // nowhere, here.
+  await stub("**/api/external-player/standard*", (r) =>
+    answer(r, json({ name: "mpv", path: null, supported: true })),
+  );
   await stub("**/api/availability", (r) =>
     answer(r, json({ available: true, episode_count: 12, extra_episodes: [] })),
   );
