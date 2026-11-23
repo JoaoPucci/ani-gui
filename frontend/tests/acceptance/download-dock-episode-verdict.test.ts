@@ -116,8 +116,7 @@ describe('the download dock words a provider failure as the play page does', () 
 		);
 
 		const pop = openDock();
-		// The failed row's own class is dl-row-error too; the marker is
-		// the span inside it.
+		// The marker is the span inside the failed row.
 		const marker = pop.querySelector<HTMLElement>('span.dl-row-error');
 		expect(marker, 'the failed row carries its error marker').not.toBeNull();
 		expect(marker?.getAttribute('title')).toBe(m.play_play_failure_episode_unavailable());
