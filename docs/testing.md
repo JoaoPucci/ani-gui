@@ -117,16 +117,24 @@ those variables are where a stray path would come from.
 
 ## End-to-end (Playwright + Electron)
 
-The suite under `electron/e2e/` drives the packaged app
-(`electron/dist/linux-unpacked/`). Every spec launches it through
+The suite under `electron/e2e/` drives the packaged app: the e2e
+package (`pnpm run package:e2e`, in `electron/dist-e2e/linux-unpacked/`),
+which is the release's Linux package with a backend built for test
+runs, so a flags file signed by the fixture test-run key can turn a
+flag on. Every declared flag has a spec under `electron/e2e/flags/`
+that runs it off and on ([Remote flags](./development.md#remote-flags)).
+The e2e workflow also builds the release-shaped package in a job of
+its own and checks its backend, but no spec drives that one. Every
+spec launches the e2e package through
 `electron/e2e/launch.ts`, which mutes it and refuses to open it on a
 display someone may be looking at (`electron/lib/e2e-display.cjs`).
 A spec that has to own what the app's stdout and stderr lead to — a
 pipe it closes, a terminal it hangs up (`terminal-closed.spec.ts`) —
 launches it with `spawnPackagedApp` from the same helper, as a plain
 child process rather than through Playwright's driver, with the same
-switches, display check, environment and policy guard (over the app's
-output alone, since Playwright is not attached to its pages).
+switches, display check, environment (a flags file the shell left set
+dropped, `electron/lib/e2e-launch-env.cjs`) and policy guard (over the
+app's output alone, since Playwright is not attached to its pages).
 
 The same helper keeps the backend off the network. A spec can set its
 stubs only once the app is up, by which time the first page has
@@ -225,7 +233,7 @@ Shell session that `tools/headless-wayland.sh` starts and tears down:
 
 ```sh
 cd electron
-pnpm run package      # when main, preload or the backend changed
+pnpm run package:e2e  # when main, preload or the backend changed
 ../tools/headless-wayland.sh pnpm run e2e:fast
 ```
 
@@ -335,7 +343,7 @@ temporary profile (the single-instance lock, a symlink to
 `<host>-<pid>`), and signals that one pid only after `/proc/<pid>/exe`
 shows it running the spec's own copy of the binary.
 `splash-stuck.spec.ts` runs a hard-linked copy of
-`dist/linux-unpacked/` whose `resources/frontend/build` holds a fixture
+`dist-e2e/linux-unpacked/` whose `resources/frontend/build` holds a fixture
 page (`electron/e2e/fixtures/first-page/`), so the late first page is
 real and nothing in the app reads a test switch.
 
@@ -613,6 +621,28 @@ for the recorder in `frontend/tests/acceptance/motion.ts` to report
 `settled()` (no animation still running; the stub's
 `animationsInFlight()` is the same count), or for the scroll to
 appear in `scrolls`, and asserts then.
+
+## Order and overlap against a mock server
+
+A wiremock server records requests in the order its own thread reads
+them. Two requests out at the same time, such as a lane's opener and
+the page gathered behind it, can be recorded in either order on a
+loaded runner, however far apart they were sent. Assert what such
+requests asked for in any order
+(`anilist_streaming_eps_fake_test::asked_in_any_order`). Where the
+order is the point, read it from the AniList gate a test shares
+(`share_for_tests`): `let_go()` lists the class of each request in the
+order the gate let it go, and `waiting()` counts the requests other
+than retries waiting for their turn.
+
+A test that needs one request still out while another arrives holds
+the first (`crate::held`) instead of delaying it and hoping the second
+lands inside the delay. A test that needs a lookup inside a time
+window, such as a pause's last second, takes it there on a paused
+clock, which moves only from timer to timer, and lets the clock run
+again once the requests are queued. Kitsu's mappings, cached first,
+keep the network out of what that stretch waits for: a paused clock
+jumps ahead while the runtime waits on a mock server's thread.
 
 ## Test-discipline expectations for AI agents
 

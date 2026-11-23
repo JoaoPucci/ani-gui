@@ -406,6 +406,31 @@ async fn a_429_without_a_wait_holds_anilist_back_for_its_documented_minute() {
     );
 }
 
+#[tokio::test]
+async fn a_shared_gate_tells_a_test_what_it_let_go_and_who_waits() {
+    // What a test reads the order of sending from: the class of each
+    // request let go, in order, and how many wait for their turn — a
+    // waiter dropped before its turn stops counting and is never let go.
+    let server = serve(Limited::new(100, Duration::from_secs(60), 60)).await;
+    let gate = share_for_tests(
+        &server.uri(),
+        Pace {
+            min_gap: Duration::from_secs(30),
+            background_wait: Duration::from_secs(60),
+            ..ANILIST
+        },
+    );
+    let uri = server.uri();
+    in_background(public(&uri)).await.expect("background");
+    let queued = crate::held::until("the next request waits", || gate.waiting() == 1);
+    tokio::select! {
+        _ = in_background(public(&uri)) => panic!("sent inside the gap"),
+        () = queued => {}
+    }
+    assert_eq!(gate.waiting(), 0, "the dropped request still counted");
+    assert_eq!(gate.let_go(), vec![super::Class::Background]);
+}
+
 /// Everything a scoped subscriber wrote, at debug and above.
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<u8>>>);

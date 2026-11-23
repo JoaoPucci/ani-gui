@@ -85,7 +85,7 @@ describe('search route — leaving while its reads are out', () => {
 	it('cancels every read still out when the page goes, so the next visit comes through', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
-			http.get(`${API_BASE}/api/kitsu/trending`, reads.hang),
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, reads.hang),
 			http.get(`${API_BASE}/api/kitsu/top-rated`, reads.hang),
 			http.post(`${API_BASE}/api/kitsu/search/page`, reads.hang)
 		);

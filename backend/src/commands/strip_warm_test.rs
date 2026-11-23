@@ -21,6 +21,14 @@ struct Kitsu;
 
 impl wiremock::Respond for Kitsu {
     fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+        kitsu_answer(request, &[])
+    }
+}
+
+/// Kitsu's answer to `request`, with a cover for the shows whose MAL id
+/// `covered` holds.
+fn kitsu_answer(request: &wiremock::Request, covered: &[u32]) -> wiremock::ResponseTemplate {
+    {
         let id = request.url.path().trim_start_matches("/anime/").to_owned();
         let Some(mal) = id.strip_prefix("80").and_then(|m| m.parse::<u32>().ok()) else {
             return wiremock::ResponseTemplate::new(404);
@@ -45,6 +53,11 @@ impl wiremock::Respond for Kitsu {
             detail["data"]["attributes"]["coverImage"] = serde_json::Value::Null;
             detail
         };
+        let mut body = body;
+        if covered.contains(&mal) {
+            body["data"]["attributes"]["coverImage"] =
+                serde_json::json!({ "original": format!("https://media.kitsu.app/{id}.jpg") });
+        }
         wiremock::ResponseTemplate::new(200)
             .insert_header("content-type", "application/vnd.api+json")
             .set_body_json(body)
@@ -102,21 +115,43 @@ async fn serve(respond: impl wiremock::Respond + 'static, http: &str) -> wiremoc
     server
 }
 
-/// The card for show `i` (0-based) becomes ready `(i + 1) × 250 ms` in,
-/// the way a cold strip's rows land seconds apart — each after the warm
-/// Home sends as its history loads, since a row is ready only once its
-/// match has come back.
-async fn staggered<F, Fut, T>(n: usize, card: F) -> Vec<T>
+/// The card for show `i` (0-based) becomes ready `(i + 1) × 250 ms`
+/// after `sent` — the warm's request seen at AniList — the way a cold
+/// strip's rows land seconds apart, each after the warm Home sends as
+/// its history loads, since a row is ready only once its match has come
+/// back.
+async fn staggered<F, Fut, T>(
+    n: usize,
+    sent: impl std::future::Future<Output = ()>,
+    card: F,
+) -> Vec<T>
 where
     F: Fn(usize) -> Fut,
     Fut: std::future::Future<Output = T>,
 {
+    sent.await;
     let card = &card;
     futures_util::future::join_all((0..n).map(|i| async move {
         tokio::time::sleep(Duration::from_millis(250) * u32::try_from(i + 1).unwrap_or(1)).await;
         card(i).await
     }))
     .await
+}
+
+/// Returns once `server` has received a request that `asked` reads.
+async fn seen<F, Fut>(asked: F)
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Vec<crate::meta::anilist_streaming_eps_fake_test::Asked>>,
+{
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    while asked().await.is_empty() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the warm sent nothing"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
 }
 
 #[tokio::test]
@@ -127,7 +162,8 @@ async fn a_cold_strip_warmed_at_once_fills_its_stills_in_one_request_however_lat
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
     let warm = warm_strip(&state, &ids, Some(&base));
-    let cards = staggered(ids.len(), |i| {
+    let sent = seen(|| asked_for_stills(&anilist));
+    let cards = staggered(ids.len(), sent, |i| {
         crate::commands::anilist_eps_thumbs::thumbs_for_show_with_anilist_base(
             &state,
             &ids[i],
@@ -156,7 +192,8 @@ async fn a_cold_strip_warmed_at_once_reads_its_banners_in_one_request_however_la
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
     let warm = warm_strip(&state, &ids, Some(&base));
-    let cards = staggered(ids.len(), |i| {
+    let sent = seen(|| asked_for_banners(&anilist));
+    let cards = staggered(ids.len(), sent, |i| {
         crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, &ids[i], Some(&base))
     });
     let ((), got) = tokio::join!(warm, cards);
@@ -204,7 +241,9 @@ async fn a_warm_skips_what_the_cache_already_holds() {
 #[tokio::test]
 async fn a_warm_whose_caller_left_sends_nothing_more() {
     // Home left: the warm's request is dropped, and so is every lookup
-    // only it was waiting on.
+    // only it was waiting on. The gate keeps half a minute between
+    // requests, so the warm's second request waits there when Home
+    // leaves.
     let (ids, _) = strip();
     let kitsu = serve(Kitsu, "GET").await;
     let anilist = serve(
@@ -216,20 +255,26 @@ async fn a_warm_whose_caller_left_sends_nothing_more() {
     .await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
-    let _gate = crate::meta::anilist_gate::share_for_tests(
+    let gate = crate::meta::anilist_gate::share_for_tests(
         &base,
         crate::meta::anilist_gate::Pace {
-            min_gap: Duration::from_secs(2),
-            background_wait: Duration::from_secs(5),
+            min_gap: Duration::from_secs(30),
+            background_wait: Duration::from_secs(60),
             ..crate::meta::anilist_gate::ANILIST
         },
     );
-    let left = tokio::time::timeout(
-        Duration::from_millis(400),
-        warm_strip(&state, &ids, Some(&base)),
-    );
-    assert!(left.await.is_err(), "the warm was still out");
-    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let queued = crate::held::until("the warm's next request waits for its turn", || {
+        gate.waiting() > 0
+    });
+    tokio::select! {
+        () = warm_strip(&state, &ids, Some(&base)) => panic!("the warm ended inside the gap"),
+        () = queued => {}
+    }
+    crate::held::until("the warm's requests leave the queue", || {
+        gate.waiting() == 0
+    })
+    .await;
+    assert_eq!(gate.let_go().len(), 1, "requests sent for nobody");
     let asked = asked_of(&anilist).await;
     assert!(asked.len() <= 1, "requests sent for nobody: {asked:?}");
 }
@@ -364,24 +409,38 @@ async fn a_warmed_banner_since_found_gone_is_forgotten_and_asked_again() {
 
 #[tokio::test]
 async fn a_card_reading_its_detail_while_the_warm_asks_for_its_banner_shares_that_lookup() {
-    // The warm's banner page is slow to answer. A card whose detail is
-    // read while it is out takes the warm's answer instead of asking
-    // AniList for its banner on its own.
+    // The warm's banner page is held. A card whose detail is read while
+    // it is out takes the warm's answer instead of asking AniList for
+    // its banner on its own.
     let (ids, fake) = strip();
     let kitsu = serve(Kitsu, "GET").await;
     let anilist = wiremock::MockServer::start().await;
+    let (hold, held) = crate::held::gate();
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .respond_with(SlowBanners(fake.clone(), Duration::from_millis(600)))
+        .respond_with(HeldBanners(hold, fake.clone()))
         .mount(&anilist)
         .await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
     let warm = warm_strip(&state, &ids, Some(&base));
     let card = async {
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, &ids[0], Some(&base))
-            .await
-            .expect("a detail")
+        held.asked().await;
+        let mut card = std::pin::pin!(
+            crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(
+                &state,
+                &ids[0],
+                Some(&base)
+            )
+        );
+        let joined = crate::held::until("the card waits on the warm's banner lookup", || {
+            crate::commands::anilist_banner_fill::sharing(&state, &ids[0], Some(&base)) > 0
+        });
+        tokio::select! {
+            _ = &mut card => panic!("the card read its detail before the warm's banner answered"),
+            () = joined => {}
+        }
+        held.release();
+        card.await.expect("a detail")
     };
     let ((), detail) = tokio::join!(warm, card);
     assert_eq!(
@@ -396,16 +455,83 @@ async fn a_card_reading_its_detail_while_the_warm_asks_for_its_banner_shares_tha
     );
 }
 
-/// The stand-in answering banner queries after `delay`.
-struct SlowBanners(FakeAniList, Duration);
+/// The stand-in answering banner queries once the test lets them
+/// through.
+struct HeldBanners(crate::held::Hold, FakeAniList);
 
-impl wiremock::Respond for SlowBanners {
+impl wiremock::Respond for HeldBanners {
     fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
-        let answer = self.0.respond(request);
         if String::from_utf8_lossy(&request.body).contains("bannerImage") {
-            answer.set_delay(self.1)
-        } else {
-            answer
+            self.0.wait_blocking();
         }
+        self.1.respond(request)
     }
+}
+
+/// [`Kitsu`], with a cover for the shows whose MAL id `covered` holds:
+/// in its mappings answer and in its detail alike.
+struct CoveredKitsu {
+    covered: Vec<u32>,
+}
+
+impl wiremock::Respond for CoveredKitsu {
+    fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+        kitsu_answer(request, &self.covered)
+    }
+}
+
+#[tokio::test]
+async fn a_warm_asks_no_banner_for_a_show_kitsu_has_a_cover_for() {
+    // Seven of the strip's ten shows have a Kitsu cover, and their
+    // details never ask for a banner: the warm's banner page carries
+    // the other three alone. Its stills still cover all ten.
+    let (ids, fake) = strip();
+    let kitsu = serve(
+        CoveredKitsu {
+            covered: (1..=7).collect(),
+        },
+        "GET",
+    )
+    .await;
+    let anilist = serve(fake, "POST").await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    warm_strip(&state, &ids, Some(&anilist.uri())).await;
+    assert_eq!(
+        asked_for_banners(&anilist).await,
+        vec![crate::meta::anilist_streaming_eps_fake_test::Asked::PageByMal(vec![8, 9, 10])]
+    );
+    assert_eq!(
+        asked_for_stills(&anilist).await,
+        vec![crate::meta::anilist_streaming_eps_fake_test::Asked::PageByMal((1..=10).collect())]
+    );
+}
+
+#[tokio::test]
+async fn a_warm_of_shows_kitsu_has_covers_for_asks_no_banner_at_all() {
+    let (ids, fake) = strip();
+    let kitsu = serve(
+        CoveredKitsu {
+            covered: (1..=10).collect(),
+        },
+        "GET",
+    )
+    .await;
+    let anilist = serve(fake, "POST").await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    warm_strip(&state, &ids, Some(&anilist.uri())).await;
+    assert_eq!(asked_for_banners(&anilist).await, vec![]);
+    // A covered show's card reads its Kitsu cover, and asks no banner of
+    // its own either.
+    let detail = crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(
+        &state,
+        &ids[0],
+        Some(&anilist.uri()),
+    )
+    .await
+    .expect("a detail");
+    assert_eq!(
+        detail.cover_image.and_then(|c| c.original).as_deref(),
+        Some("https://media.kitsu.app/801.jpg")
+    );
+    assert_eq!(asked_for_banners(&anilist).await, vec![]);
 }

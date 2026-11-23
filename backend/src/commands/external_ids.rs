@@ -5,9 +5,10 @@
 //! episode-thumbnail backfills and aniskip all start from the same
 //! `/anime/:id?include=mappings` answer, and a detail page with two
 //! trackers connected asks for it twice at once. The answer is kept
-//! in `meta_cache` under `kitsu:external-ids:v2:k<kitsu_id>`: thirty
+//! in `meta_cache` under `kitsu:external-ids:v3:k<kitsu_id>`: thirty
 //! days when both ids are present, a day when one is missing (see
-//! [`external_ids_ttl`]). A failed read is kept nowhere — it says
+//! [`external_ids_ttl`]). The row also keeps whether Kitsu has a cover
+//! for the show, which the same answer carries ([`kitsu_has_cover`]). A failed read is kept nowhere — it says
 //! nothing about the mapping. Reads of one show in flight together
 //! share one request: the second waits for the first and takes its row
 //! ([`in_flight`]), so a cold open costs one Kitsu request however
@@ -21,7 +22,7 @@ use crate::app::AppState;
 use crate::cache::ttl::{EXTERNAL_IDS_PARTIAL_TTL, EXTERNAL_IDS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put, SqlitePool};
 use crate::error::Result;
-use crate::meta::kitsu::ExternalIds;
+use crate::meta::kitsu::{ExternalIds, KitsuMappings};
 
 /// One async mutex per Kitsu id being read right now. Process-wide,
 /// like the account write locks, because the reads that race arrive as
@@ -46,6 +47,10 @@ fn in_flight(kitsu_id: &str) -> Arc<tokio::sync::Mutex<()>> {
 /// v2: the mappings parser requires Kitsu's anime document. A v1 row
 /// with no ids may have been kept from a reply that was not that
 /// document at all, and reads the same as a show with no mappings.
+///
+/// v3: the row keeps whether Kitsu has a cover for the show. A v2 row
+/// says nothing about it, and is asked again rather than read as a
+/// show with none.
 fn external_ids_key(kitsu_id: &str) -> String {
     format!("{}{kitsu_id}", crate::cache::families::KITSU_EXTERNAL_IDS)
 }
@@ -69,18 +74,40 @@ pub(crate) fn external_ids_ttl(ids: &ExternalIds) -> Duration {
 /// cache read that fails, or a row that does not parse, is not an
 /// answer about the mapping: the caller asks Kitsu and overwrites it.
 fn cached(pool: &SqlitePool, key: &str) -> Option<ExternalIds> {
+    row(pool, key).map(|row| row.ids)
+}
+
+/// The body of a show's row: its ids, and whether Kitsu has a cover.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Row {
+    #[serde(flatten)]
+    ids: ExternalIds,
+    cover: bool,
+}
+
+fn row(pool: &SqlitePool, key: &str) -> Option<Row> {
     meta_cache_get(pool, key)
         .ok()
         .flatten()
-        .and_then(|body| serde_json::from_str::<ExternalIds>(&body).ok())
+        .and_then(|body| serde_json::from_str::<Row>(&body).ok())
 }
 
 /// Write what Kitsu answered. Best-effort: a failed write costs one
 /// more Kitsu request.
-fn remember(pool: &SqlitePool, key: &str, ids: &ExternalIds) {
-    if let Ok(body) = serde_json::to_string(ids) {
-        let _ = meta_cache_put(pool, key, &body, external_ids_ttl(ids).as_secs());
+fn remember(pool: &SqlitePool, key: &str, mappings: &KitsuMappings) {
+    let row = Row {
+        ids: mappings.ids,
+        cover: mappings.has_cover,
+    };
+    if let Ok(body) = serde_json::to_string(&row) {
+        let _ = meta_cache_put(pool, key, &body, external_ids_ttl(&row.ids).as_secs());
     }
+}
+
+/// Whether Kitsu has a cover for `kitsu_id`, from the show's live
+/// mappings row; `None` when there is none to read. Asks nothing.
+pub(crate) fn kitsu_has_cover(pool: &SqlitePool, kitsu_id: &str) -> Option<bool> {
+    row(pool, &external_ids_key(kitsu_id)).map(|row| row.cover)
 }
 
 /// The MAL and AniList ids Kitsu maps `kitsu_id` to, from the cache
@@ -88,7 +115,7 @@ fn remember(pool: &SqlitePool, key: &str, ids: &ExternalIds) {
 /// readers miss at the same moment.
 ///
 /// # Errors
-/// Whatever [`crate::meta::kitsu::KitsuClient::external_ids_for_kitsu_id`]
+/// Whatever [`crate::meta::kitsu::KitsuClient::mappings_for_kitsu_id`]
 /// answers with: Network / Upstream / ParseFailed.
 pub(crate) async fn external_ids_for(state: &AppState, kitsu_id: &str) -> Result<ExternalIds> {
     let key = external_ids_key(kitsu_id);
@@ -101,9 +128,9 @@ pub(crate) async fn external_ids_for(state: &AppState, kitsu_id: &str) -> Result
     if let Some(ids) = cached(&state.cache_pool, &key) {
         return Ok(ids);
     }
-    let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await?;
-    remember(&state.cache_pool, &key, &ids);
-    Ok(ids)
+    let mappings = state.kitsu.mappings_for_kitsu_id(kitsu_id).await?;
+    remember(&state.cache_pool, &key, &mappings);
+    Ok(mappings.ids)
 }
 
 #[cfg(test)]

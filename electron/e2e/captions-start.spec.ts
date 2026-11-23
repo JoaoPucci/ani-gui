@@ -47,7 +47,7 @@ const mediaDir = path.join(__dirname, "fixtures", "captions");
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
     throw new Error(
-      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`,
+      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`,
     );
   }
 });
