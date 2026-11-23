@@ -43,6 +43,8 @@ pub(super) fn registered_app_path(file: &str) -> Option<String> {
         }
         parse_reg_export(&std::fs::read(&file).ok()?)
     });
+    // An export killed at its limit may still hold the file for a
+    // moment; a file left then is the next lookup's to overwrite (`/y`).
     let _ = std::fs::remove_file(&file);
     found
 }
