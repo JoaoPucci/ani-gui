@@ -110,13 +110,15 @@ async fn anilist(refusals: Option<u64>, retry_after: u64, answer: &str) -> MockS
 }
 
 /// Pause tokio's clock, and check the pause `anilist` is in still has
-/// more left than a fill's wait for its turn: a fill asked on the paused
-/// clock is then held back, not left waiting for the pause to end.
-fn pause_inside(anilist: &MockServer) {
+/// more left than a fill's wait for its turn after `windows` lane
+/// windows: a fill asked on the paused clock, which may gather in the
+/// lane of the one before it first, is then held back, not left waiting
+/// for the pause to end.
+fn pause_inside(anilist: &MockServer, windows: u32) {
     tokio::time::pause();
     let left = crate::meta::anilist_gate::background_wait(&anilist.uri());
     assert!(
-        left > ANILIST.background_wait,
+        left > ANILIST.background_wait + crate::meta::anilist_batch::WINDOW * windows,
         "the machine took the pause before the next view asked: {left:?} left"
     );
 }
@@ -171,7 +173,7 @@ async fn the_same_show_held_twice_is_retried_once() {
     let first = thumbs(&state, "13", &anilist).await;
     // The second view on a paused clock, which moves only from timer to
     // timer: the pause cannot end before the view asks.
-    pause_inside(&anilist);
+    pause_inside(&anilist, 1);
     let second = thumbs(&state, "13", &anilist).await;
     tokio::time::resume();
     assert_eq!(first.len(), 1);
@@ -198,7 +200,7 @@ async fn many_held_shows_each_land() {
     // The next two views on a paused clock, which moves only from timer
     // to timer, their mappings known: the pause cannot end before they
     // ask.
-    pause_inside(&anilist);
+    pause_inside(&anilist, 2);
     for show in ["15", "16"] {
         tickets.extend(thumbs(&state, show, &anilist).await);
     }
@@ -434,7 +436,7 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
     // every task due at one run before it moves on: 41 is held back
     // inside the pause, and the leftovers' lane closes, with no time
     // passing on the way.
-    pause_inside(&anilist);
+    pause_inside(&anilist, 1);
     left.extend(thumbs(&state, "41", &anilist).await);
     assert_eq!(left.len(), 2, "{left:?}");
     super::release(&left);

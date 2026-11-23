@@ -326,6 +326,13 @@ async fn a_card_that_stopped_waiting_is_left_out_of_the_page() {
         let mut dropped =
             std::pin::pin!(thumbs_for_show_with_anilist_base(&state, "3", Some(&base)));
         assert!(futures_util::poll!(&mut dropped).is_pending());
+        let lane = crate::commands::strip_warm::fill_lane(&state, Some(&base));
+        assert_eq!(
+            <crate::meta::anilist_streaming_eps::Streaming as crate::meta::anilist_batch::Kind>::lanes()
+                .gathered(&lane),
+            1,
+            "show 3 waits in the lane"
+        );
     }
     let (first, a, b) = tokio::join!(
         first,

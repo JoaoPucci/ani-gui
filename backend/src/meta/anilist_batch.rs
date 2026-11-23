@@ -24,6 +24,8 @@ mod answers;
 use answers::{answers, Got, Settles, Singles};
 #[path = "anilist_batch_coalesce.rs"]
 mod coalesce;
+#[cfg(test)]
+pub(crate) use coalesce::WINDOW;
 pub(crate) use coalesce::{coalesced, gathered, Lanes};
 #[path = "anilist_batch_log.rs"]
 mod log;
