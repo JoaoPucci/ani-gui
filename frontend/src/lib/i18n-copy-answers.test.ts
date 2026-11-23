@@ -244,6 +244,12 @@ describe('one phrase per term', () => {
 		expect(offenders('pt-BR', (s) => /novamente/i.test(s))).toEqual([]);
 	});
 
+	it('Russian calls an episode «эпизод», never «серия»', () => {
+		expect(
+			offenders('ru', (s) => /(^|[^а-яё])серий?(я|и|ю|ей|ям|ями|ях)?([^а-яё]|$)/i.test(s))
+		).toEqual([]);
+	});
+
 	it('Russian says «Попробуйте снова», never «Попробуйте ещё раз»', () => {
 		expect(offenders('ru', (s) => /Попробуйте ещ[её] раз/i.test(s))).toEqual([]);
 	});
