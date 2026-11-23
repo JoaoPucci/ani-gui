@@ -301,8 +301,9 @@ test('Restart, in the app’s language, starts the app again: this process exits
 });
 
 /** The environment `pid` was started with, from /proc/<pid>/environ. Only
- *  for a process that does not rewrite its own title: Chromium's does,
- *  over the same memory, so an app process reads as empty. */
+ *  for a process that does not set its own title: the app does
+ *  (process.title in main.js), over the same memory, so an app process
+ *  reads as empty. */
 function startedEnv(pid: number): NodeJS.Dict<string> {
 	const env: NodeJS.Dict<string> = {};
 	for (const e of fs.readFileSync(`/proc/${pid}/environ`, 'utf-8').split('\0')) {
