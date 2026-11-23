@@ -2243,6 +2243,13 @@
 		border-color: var(--bone-100);
 		box-shadow: 0 8px 20px -8px color-mix(in oklab, var(--accent) 60%, transparent);
 	}
+	/* Under the mouse, a button the keyboard focused keeps the app's ring
+	   in front of its hover shadow, which replaced it. */
+	.btn-primary:focus-visible:hover {
+		box-shadow:
+			var(--ring),
+			0 8px 20px -8px color-mix(in oklab, var(--accent) 60%, transparent);
+	}
 	.btn-ghost {
 		color: var(--bone-200);
 	}
