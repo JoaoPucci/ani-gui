@@ -186,7 +186,7 @@ pub(crate) const ANILIST_NOT_FOUND_BODY: &str = r#"{"errors":[{"message":"Not Fo
 mod banner_batch;
 pub(crate) use banner_batch::banner_coalesced;
 #[cfg(test)]
-pub(crate) use banner_batch::banners_batch;
+pub(crate) use banner_batch::{banners_batch, banners_gathered};
 
 #[cfg(test)]
 #[path = "anilist_media_test.rs"]
