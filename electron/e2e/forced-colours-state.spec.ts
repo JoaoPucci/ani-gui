@@ -32,7 +32,9 @@
  * Sub/Dub control, the download dialog's modes, the download bar's and
  * the download list's progress, the topbar's picked result, the search
  * page's sort and type chips, the search's progress bar, and the
- * player's timeline and volume fills and tracks. A state shown by text
+ * player's timeline and volume fills and tracks, and an episode tile
+ * the streaming catalogue does not list yet, which must say so in
+ * words. A state shown by text
  * as well (a switch's On/Off label) is still pictured without that
  * text: the control itself must show it. Where a control opts out of
  * the theme's colours, the spec also reads that what it draws stays in
@@ -51,7 +53,13 @@ import http from 'node:http';
 import type net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { appInfo, defaultSettings, topRated, trending } from './fixtures/kitsu';
+import {
+	appInfo,
+	continueKitsuEpisode6,
+	defaultSettings,
+	topRated,
+	trending
+} from './fixtures/kitsu';
 import { appWindow, launchPackagedApp, packagedBinary, stopApp, stopDeadApp } from './launch';
 import { playFromContinue, routeRealPlay, writeReplayConfig } from './real-play';
 import { answer } from './stubs';
@@ -256,6 +264,12 @@ function systemColour(page: Page, name: string): Promise<string> {
 /** The computed value of `prop` on the first element `target` finds. */
 const computed = (target: Locator, prop: string) =>
 	target.first().evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
+
+/** A message from the shipped English catalogue. */
+function message(file: string, key: string): string {
+	const p = path.resolve(__dirname, '../../frontend/messages/en', `${file}.json`);
+	return JSON.parse(fs.readFileSync(p, 'utf8'))[key] as string;
+}
 
 /** A pattern matching `label` and nothing more. */
 const exactly = (label: string) =>
@@ -498,13 +512,6 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			}
 			(window as unknown as { EventSource: unknown }).EventSource = SilentSource;
 		});
-		const message = (file: string, key: string) =>
-			JSON.parse(
-				fs.readFileSync(
-					path.resolve(__dirname, '../../frontend/messages/en', `${file}.json`),
-					'utf8'
-				)
-			)[key] as string;
 		await page
 			.getByRole('button', { name: message('detail', 'download_button'), exact: true })
 			.click();
@@ -728,5 +735,47 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 		}
 	} finally {
 		media.close();
+	}
+});
+
+test('an episode the catalogue does not list yet says so, in a forced-colours theme too', async () => {
+	test.setTimeout(120_000);
+	const { app, page } = await launch();
+	try {
+		// Twelve episodes, of which the catalogue lists ten: the last two
+		// are asked about again on a click.
+		const episodes = Array.from({ length: 12 }, (_, i) => ({
+			...continueKitsuEpisode6,
+			id: `ep-${i + 1}`,
+			number: i + 1,
+			relative_number: i + 1,
+			canonical_title: `Episode ${i + 1}`,
+			thumbnail: null
+		}));
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p.startsWith('/api/kitsu/episodes/')) return j(episodes);
+			if (p === '/api/availability') {
+				return j({ available: true, episode_count: 10, extra_episodes: [] });
+			}
+			return r.fallback();
+		});
+		await sizeViewport(page, 1440, 900);
+		await forcedColours(page);
+		await page.locator(`a[href$="/anime/${topRated[0].id}"]`).first().click();
+		await expect.poll(() => page.url()).toContain(`/anime/${topRated[0].id}`);
+		const listed = page.locator('li[data-ep-num="10"] .ep-tile');
+		const unlisted = page.locator('li[data-ep-num="11"] .ep-tile');
+		await expect(unlisted).toBeVisible({ timeout: 15_000 });
+		await expect(unlisted, 'the tile is past the catalogue').toHaveClass(/ep-tile-recheck/);
+		// Said in words, which the theme keeps: not only by the tile's
+		// dimmed colours, which it replaces.
+		const words = message('detail', 'ep_not_listed');
+		await expect(unlisted.locator('.ep-meta')).toHaveText(words);
+		await expect(listed.locator('.ep-meta')).not.toHaveText(words);
+	} finally {
+		await stopApp(app);
 	}
 });

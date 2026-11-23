@@ -10,6 +10,7 @@
 	"ep_recheck_busy": "Checking availability…",
 	"ep_recheck_failed": "Couldn't check right now — try again in a moment.",
 	"ep_recheck_idle": "Not in the streaming catalogue yet — click to check again.",
+	"ep_not_listed": "Not listed yet",
 	"ep_recheck_still_gated": "Still not in the streaming catalogue.",
 	"ep_unaired": "Unaired",
 	"ep_unaired_recheck_busy": "Checking the schedule…",
