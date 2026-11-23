@@ -23,7 +23,8 @@
  *
  * What it covers: the settings switches and segmented controls, a
  * show's Sub/Dub control, the rail's current page, the download bar's
- * progress, and the player's timeline and volume fill. A state shown by
+ * and the download list's progress, the search's progress bar, and the
+ * player's timeline and volume fill. A state shown by
  * text as well (a switch's On/Off label) is still pictured without that
  * text: the control itself must show it. Every API request is stubbed,
  * but for the player test's play and stream (see real-play.ts).
@@ -354,6 +355,28 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		await expect(bar).toBeVisible({ timeout: 15_000 });
 		await shows(page, bar, "the download bar's progress", () =>
 			hidden(bar.locator('span').first(), true)
+		);
+
+		// The download list's bar for that download.
+		await page.locator('.dl-dock-trigger').click();
+		const rowBar = page.locator('.dl-row-bar').first();
+		await expect(rowBar).toBeVisible();
+		await shows(page, rowBar, "the download list's bar", () =>
+			hidden(rowBar.locator('span').first(), true)
+		);
+		await page.keyboard.press('Escape');
+
+		// The search's progress bar, while a search is out.
+		await page.route('**/api/kitsu/search/page', () => {
+			// Held: the search stays in flight.
+		});
+		const field = page.locator('input[type="search"]').first();
+		await field.fill('fullmetal');
+		await field.press('Enter');
+		const searching = page.locator('.search-progress');
+		await expect(searching).toBeVisible({ timeout: 15_000 });
+		await shows(page, searching, "the search's progress bar", () =>
+			hidden(searching.locator('.search-progress-bar'), true)
 		);
 		await cdp.detach().catch(() => {});
 	} finally {
