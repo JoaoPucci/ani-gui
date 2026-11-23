@@ -7,8 +7,17 @@
 //! showing a dialog). In a test run the backend never fetches the
 //! live file: a flag flipped on the `flags` branch, or a slow or
 //! rate-limited CDN, must not change a test's result. The flags come
-//! from the file `ANI_GUI_TEST_FLAGS_FILE` names, resolved like the
-//! live one, or are the defaults when it names none or cannot be read.
+//! from the file `ANI_GUI_TEST_FLAGS_FILE` names, admitted and
+//! resolved like the live one, or are the defaults when it names none
+//! or cannot be read. Admitted like the live one means a `true` in it
+//! counts only when a `.minisig` beside it verifies, under the build's
+//! keys and, in a backend built with the `test-run-key` feature, the
+//! fixture test-run key as well ([`build_keys`]). That feature is for
+//! test builds, so a backend test (unit or integration, built by
+//! `cargo test --all-features`) and the end-to-end suite's package
+//! (electron's `build:backend:e2e`) can turn a feature on; no release
+//! has it, and in every build the live file is trusted under the
+//! build's keys alone.
 //!
 //! `ANI_GUI_TEST_FLAGS_FILE` means nothing without
 //! `ANI_GUI_UNATTENDED=1`: a normal launch ignores it and reads the
@@ -16,10 +25,14 @@
 
 use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 use super::refresh::refresh;
 use super::remote::{self, FETCH_TIMEOUT, FLAGS_URL};
-use super::resolve::parse_document;
+use super::resolve::{parse_document, Document};
+use super::signature::{
+    admit, verify, MAX_SIGNATURE_BYTES, SIGNATURE_SUFFIX, TEST_RUN_KEYS, TRUSTED_KEYS,
+};
 use super::store::{FlagStore, Origin};
 
 /// The test-run switch.
@@ -74,24 +87,45 @@ pub fn start(
     client: reqwest::Client,
     plan: LaunchPlan,
 ) -> tokio::task::JoinHandle<()> {
+    let keys = build_keys(&plan);
+    start_trusting(store, client, plan, keys)
+}
+
+/// The keys this build trusts `plan`'s file under. The live file:
+/// [`TRUSTED_KEYS`], exactly, in every build. A test run's file: those
+/// and [`TEST_RUN_KEYS`], which only a `test-run-key` build has.
+pub(crate) fn build_keys(plan: &LaunchPlan) -> &'static [&'static str] {
+    static TEST_RUN: LazyLock<Vec<&'static str>> =
+        LazyLock::new(|| TRUSTED_KEYS.iter().chain(TEST_RUN_KEYS).copied().collect());
+    match plan {
+        LaunchPlan::Live { .. } => TRUSTED_KEYS,
+        LaunchPlan::Test { .. } => TEST_RUN.as_slice(),
+    }
+}
+
+/// [`start`], trusting the signature keys `keys` instead of the
+/// build's own.
+pub(crate) fn start_trusting(
+    store: FlagStore,
+    client: reqwest::Client,
+    plan: LaunchPlan,
+    keys: &'static [&'static str],
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         match plan {
             LaunchPlan::Live { cache } => {
                 let client = &client;
-                let fetch = || remote::fetch(client, FLAGS_URL, FETCH_TIMEOUT);
+                let fetch = || remote::fetch_trusting(client, FLAGS_URL, FETCH_TIMEOUT, keys);
                 refresh(&store, cache.as_deref(), fetch, unix_now).await;
             }
-            LaunchPlan::Test { file } => settle_from_test_file(&store, file).await,
+            LaunchPlan::Test { file } => settle_from_test_file(&store, file, keys).await,
         }
     })
 }
 
-async fn settle_from_test_file(store: &FlagStore, file: Option<PathBuf>) {
+async fn settle_from_test_file(store: &FlagStore, file: Option<PathBuf>, keys: &[&str]) {
     let doc = match file {
-        Some(path) => tokio::fs::read(path)
-            .await
-            .ok()
-            .and_then(|b| parse_document(&b)),
+        Some(path) => read_test_file(&path, keys).await,
         None => None,
     };
     store.settle(doc.as_ref(), Origin::Test);
@@ -100,6 +134,21 @@ async fn settle_from_test_file(store: &FlagStore, file: Option<PathBuf>) {
         flags = ?store.current(),
         "remote flags settled"
     );
+}
+
+/// A test run's file, admitted like a fetched one: whole only when a
+/// `.minisig` beside it verifies under `keys`.
+async fn read_test_file(path: &std::path::Path, keys: &[&str]) -> Option<Document> {
+    let body = tokio::fs::read(path).await.ok()?;
+    let doc = parse_document(&body)?;
+    let mut sig_path = path.as_os_str().to_owned();
+    sig_path.push(SIGNATURE_SUFFIX);
+    let signature = tokio::fs::read(PathBuf::from(sig_path))
+        .await
+        .ok()
+        .filter(|s| s.len() <= MAX_SIGNATURE_BYTES)
+        .and_then(|s| String::from_utf8(s).ok());
+    Some(admit(doc, verify(&body, signature.as_deref(), keys)))
 }
 
 fn unix_now() -> u64 {
@@ -111,3 +160,7 @@ fn unix_now() -> u64 {
 #[cfg(test)]
 #[path = "launch_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "launch_keys_test.rs"]
+mod keys_tests;
