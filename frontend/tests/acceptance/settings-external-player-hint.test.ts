@@ -74,6 +74,15 @@ beforeEach(() => {
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
 		http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO)),
+		// What the command becomes on a type change: the configured
+		// command is blank, and the backend's rule keeps a blank blank
+		// whatever the types. Any other command is not this file's.
+		http.get(`${API_BASE}/api/external-player/after-kind-change`, ({ request }) => {
+			const command = new URL(request.url).searchParams.get('command');
+			return command === ''
+				? HttpResponse.json<string>('')
+				: new HttpResponse(null, { status: 500 });
+		}),
 		http.get(`${API_BASE}/api/external-player/standard`, ({ request }) => {
 			asked += 1;
 			const kind = new URL(request.url).searchParams.get('kind') ?? '';
