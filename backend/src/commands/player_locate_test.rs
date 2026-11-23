@@ -192,28 +192,6 @@ fn an_install_folder_wins_over_the_registration() {
 }
 
 #[test]
-fn a_reg_query_answer_gives_its_default_value_whatever_the_language() {
-    let english = "\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\vlc.exe\r\n    (Default)    REG_SZ    C:\\Program Files\\VideoLAN\\VLC\\vlc.exe\r\n\r\n";
-    assert_eq!(
-        parse_reg_default(english).as_deref(),
-        Some("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe")
-    );
-    let portuguese = "\r\nHKEY_CURRENT_USER\\...\\mpv.exe\r\n    (Padrão)    REG_EXPAND_SZ    \"%LOCALAPPDATA%\\mpv\\mpv.exe\"\r\n";
-    assert_eq!(
-        parse_reg_default(portuguese).as_deref(),
-        Some("%LOCALAPPDATA%\\mpv\\mpv.exe")
-    );
-    assert_eq!(parse_reg_default(""), None);
-    assert_eq!(
-        parse_reg_default(
-            "ERROR: The system was unable to find the specified registry key or value.\r\n"
-        ),
-        None
-    );
-    assert_eq!(parse_reg_default("    (Default)    REG_SZ    \r\n"), None);
-}
-
-#[test]
 fn syncplay_on_linux_gets_the_name_as_typed() {
     // A flatpak or snap Syncplay cannot reach a host path, and its own
     // PATH lookup is what a bare name always relied on there.
@@ -397,19 +375,10 @@ fn a_registry_query_that_hangs_is_given_up_on() {
 #[cfg(unix)]
 #[test]
 fn a_registry_query_that_answers_gives_its_output() {
-    let cmd = registry::reg_command(
-        "sh",
-        &strings(&[
-            "-c",
-            "printf '    (Default)    REG_SZ    C:\\\\VLC\\\\vlc.exe\\n'",
-        ]),
-    );
+    let cmd = registry::reg_command("sh", &strings(&["-c", "printf ok"]));
     let out = registry::reg_output(cmd, std::time::Duration::from_secs(10)).expect("output");
     assert!(out.status.success());
-    assert_eq!(
-        parse_reg_default(&String::from_utf8_lossy(&out.stdout)).as_deref(),
-        Some("C:\\VLC\\vlc.exe")
-    );
+    assert_eq!(out.stdout, b"ok");
 }
 
 #[cfg(unix)]

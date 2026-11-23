@@ -20,11 +20,13 @@
 
 #[path = "player_locate_places.rs"]
 mod places;
+#[path = "player_locate_reg_export.rs"]
+mod reg_export;
 #[path = "player_locate_registry.rs"]
 mod registry;
 use places::installs;
+pub use reg_export::parse_reg_export;
 use registry::{expand, registered_app_path};
-pub use registry::{parse_reg_default, parse_reg_export};
 
 /// The OS whose conventions a search follows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

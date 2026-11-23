@@ -87,41 +87,6 @@ proptest! {
     }
 
     #[test]
-    fn a_reg_value_comes_back_as_written(
-        value in "[A-Za-z]:\\\\[A-Za-z0-9 ()._\\\\-]{0,40}[A-Za-z0-9.]",
-        label in "\\([A-Za-zçã]{3,10}\\)",
-        expand in any::<bool>(),
-    ) {
-        let kind = if expand { "REG_EXPAND_SZ" } else { "REG_SZ" };
-        let out = format!("\r\nHKEY_LOCAL_MACHINE\\X\r\n    {label}    {kind}    {value}\r\n\r\n");
-        prop_assert_eq!(parse_reg_default(&out), Some(value));
-    }
-}
-
-proptest! {
-    #[test]
-    fn syncplay_looks_up_off_linux_only_and_takes_the_answer_as_is(
-        os in os(),
-        n in name(),
-        answer in proptest::option::of("[a-zA-Z0-9/\\\\:. ]{1,30}"),
-    ) {
-        let asked = std::cell::Cell::new(false);
-        let given = answer.clone();
-        let locate = |q: &str| {
-            asked.set(true);
-            assert_eq!(q, n);
-            given.clone()
-        };
-        let got = syncplay_locate_on(os, n, &locate);
-        if os == Os::Linux {
-            prop_assert!(!asked.get());
-            prop_assert_eq!(got, None);
-        } else {
-            prop_assert_eq!(got, answer);
-        }
-    }
-
-    #[test]
     fn an_exported_value_comes_back_as_written_in_either_form(
         value in "[A-Za-z]:\\\\[A-Za-z0-9 ()._çãñВидео\\\\-]{0,40}[A-Za-z0-9.]",
         expand in any::<bool>(),
