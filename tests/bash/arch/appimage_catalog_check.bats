@@ -12,8 +12,9 @@
 #
 # Every program the script starts is a stand-in put on PATH: Xvfb
 # reports a display and waits, icewm waits, xdpyinfo answers, import
-# writes a file, and xdotool finds a window of the app's class while a
-# marker file exists. firejail answers the interface listing with what
+# writes a file, and xdotool finds a visible window only when asked
+# for one of the class the marker file names, which is the app's
+# (ani-gui) or icewm's taskbar (icewm). firejail answers the interface listing with what
 # STUB_NET says (loopback by default) and runs the "AppImage", a script
 # that acts out STUB_APP: what it logs, when its window appears and
 # goes, whether it exits. `sleep` is a stand-in too, sleeping a
@@ -54,8 +55,13 @@ EOF
     cat >"$STUB_DIR/bin/xdotool" <<'EOF'
 #!/bin/sh
 [ -e "$STUB_DIR/window" ] || exit 1
+class=$(cat "$STUB_DIR/window")
 case " $* " in
-    *" getwindowname "*) echo ani-gui ;;
+    *" search "*"--onlyvisible "*"--class $class "*) ;;
+    *) exit 1 ;;
+esac
+case " $* " in
+    *" getwindowname "*) echo "$class" ;;
 esac
 exit 0
 EOF
@@ -82,31 +88,38 @@ w="$STUB_DIR/window"
 case "${STUB_APP:?}" in
     good)
         echo '[backend] INFO ani_gui_backend: ani-gui-backend ready lanes=[]'
-        : >"$w"
+        echo ani-gui >"$w"
         echo "[main] app's first page rendered"
         ;;
     no-window)
         echo '[backend] INFO ani_gui_backend: ani-gui-backend ready lanes=[]'
         ;;
+    taskbar-only)
+        # icewm's taskbar is a visible window from the start; the app
+        # logs as if it came up but shows nothing of its own.
+        echo icewm >"$w"
+        echo '[backend] INFO ani_gui_backend: ani-gui-backend ready lanes=[]'
+        echo "[main] app's first page rendered"
+        ;;
     window-goes)
         echo '[backend] INFO ani_gui_backend: ani-gui-backend ready lanes=[]'
-        : >"$w"
+        echo ani-gui >"$w"
         echo "[main] app's first page rendered"
         sleep 4
         rm -f "$w"
         ;;
     no-backend)
-        : >"$w"
+        echo ani-gui >"$w"
         ;;
     splash-only)
         # The backend is up and the splash shows, but the main window
         # never renders its first page: the splash stays, offering
         # Restart and Quit, and nothing logs a startup failure.
         echo '[backend] INFO ani_gui_backend: ani-gui-backend ready lanes=[]'
-        : >"$w"
+        echo ani-gui >"$w"
         ;;
     startup-failed)
-        : >"$w"
+        echo ani-gui >"$w"
         echo '[main] startup failed: Error: backend exited before handshake (code=1, signal=null)'
         ;;
     exits)
@@ -133,6 +146,12 @@ EOF
     [ "$status" -eq 1 ]
     [[ "$output" == *"FAIL: no window of class ani-gui within 30 s"* ]]
     [ -f "$OUT/screen.png" ]
+}
+
+@test "a visible window of another class, icewm's taskbar, is not the app's" {
+    STUB_APP=taskbar-only run sh "$CHECK" "$APPIMAGE" "$OUT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"FAIL: no window of class ani-gui within 30 s"* ]]
 }
 
 @test "a window gone before the hold ends fails" {
