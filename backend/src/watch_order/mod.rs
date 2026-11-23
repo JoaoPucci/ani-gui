@@ -16,11 +16,14 @@ pub use crate::commands::franchise_walk::{Chain, Franchise};
 pub use crate::meta::kitsu::FranchiseEntry as WatchEntry;
 
 pub mod by_start;
+pub mod chain_view;
 mod components;
 pub mod entry;
+pub mod franchise_link;
 pub mod franchise_page;
 pub mod graph;
 mod no_clear_place;
+pub mod page_model;
 pub mod place;
 pub mod progress;
 pub mod rail;
@@ -154,6 +157,14 @@ mod strip_tests;
 #[cfg(test)]
 #[path = "strategies_test.rs"]
 pub(crate) mod strategies;
+
+#[cfg(test)]
+#[path = "page_test.rs"]
+mod page_tests;
+
+#[cfg(test)]
+#[path = "chain_test.rs"]
+mod chain_tests;
 
 #[cfg(test)]
 #[path = "progress_test.rs"]
