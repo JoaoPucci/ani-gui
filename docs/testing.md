@@ -392,8 +392,11 @@ catalog's test starts the released one: on an `ubuntu-22.04` runner
 starts on the catalog's system", runs `tools/appimage-catalog-check.sh`,
 which fails unless a window of the app's own class appears within 30
 seconds and is still there 20 seconds later, the app's log shows its
-backend ready, and no startup failure is logged; the catalog itself
-asks only for a visible window. When it fails, the job keeps the app's
+backend ready and its first page rendered, and no startup failure is
+logged; the catalog itself asks only for a visible window, which the
+splash or the failed-startup dialog would give it.
+`tests/bash/arch/appimage_catalog_check.bats` holds those verdicts
+against stand-ins for the X server, firejail and the app. When it fails, the job keeps the app's
 log and a screenshot as the `catalog-check-failure` artifact. A
 release whose AppImage needs a newer glibc than the catalog's, as
 v0.14.1's did, fails here rather than in the catalog. The firejail is
