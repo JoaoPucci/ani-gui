@@ -411,8 +411,9 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
     // and opens another page, which asks for 42, 43 and 44 inside the
     // pause. Every fresh fill of the page on screen goes before either
     // leftover retry, and the leftovers still land in the cache. The
-    // three fresh fills miss together: the first goes alone, the other
-    // two share one request.
+    // three fresh fills miss together while the gate holds them for the
+    // pause, so they wait for its end in their lane and share one
+    // request.
     let kitsu = kitsu(&[("40", 40), ("41", 41), ("42", 42), ("43", 43), ("44", 44)]).await;
     let anilist = anilist(Some(1), 2, LISTING).await;
     Mock::given(method("POST"))
@@ -442,11 +443,10 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
     super::release(&left);
 
     // The next page asks inside the pause, late enough that the fresh
-    // fills' one-second wait covers what is left of it and the quarter
-    // second the gate keeps between the two requests: none of the pause
-    // can run out while the page asks. The clock runs again once the gate has let
-    // both fresh requests go, so no wait of theirs runs out on a slow
-    // machine either.
+    // fills' one-second wait covers what is left of it: none of the
+    // pause can run out while the page asks. The clock runs again once
+    // the gate has let the fresh request go, so no wait of its runs out
+    // on a slow machine either.
     let pause = crate::meta::anilist_gate::background_wait(&anilist.uri());
     tokio::time::sleep(pause.saturating_sub(Duration::from_millis(600))).await;
     let fresh = async {
@@ -457,16 +457,16 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
         )
     };
     let queued = async {
-        crate::held::until("both fresh requests wait for their turn", || {
-            gate.waiting() == 2
+        crate::held::until("the fresh fills wait for their turn", || {
+            gate.waiting() == 1
         })
         .await;
         assert!(
             !crate::meta::anilist_gate::background_wait(&anilist.uri()).is_zero(),
             "the pause ended before the page asked"
         );
-        crate::held::until("the gate lets both fresh requests go", || {
-            gate.let_go().len() == 3
+        crate::held::until("the gate lets the fresh request go", || {
+            gate.let_go().len() == 2
         })
         .await;
         tokio::time::resume();
@@ -494,17 +494,14 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
             "fresh fill {s} was not kept"
         );
     }
-    // The refusal, the two fresh requests, then the two retries, in the
+    // The refusal, the fresh request, then the two retries, in the
     // order the gate let them go.
     use crate::meta::anilist_gate::Class::{Background, Retry};
-    assert_eq!(
-        gate.let_go(),
-        vec![Background, Background, Background, Retry, Retry]
-    );
+    assert_eq!(gate.let_go(), vec![Background, Background, Retry, Retry]);
     // What each asked for, from the mock's record, which keeps what was
     // asked but not, for two requests sent close together, their order.
     let ids = asked_ids(&anilist).await;
-    assert_eq!(ids.len(), 5, "{ids:?}");
+    assert_eq!(ids.len(), 4, "{ids:?}");
     assert_eq!(ids[0], vec![40], "{ids:?}");
     let (mut fresh, mut retries): (Vec<Vec<u64>>, Vec<Vec<u64>>) = ids[1..]
         .iter()
@@ -516,7 +513,7 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
     assert_eq!(fresh_ids, vec![42, 43, 44], "{ids:?}");
     assert_eq!(
         fresh.iter().map(Vec::len).collect::<Vec<_>>(),
-        vec![1, 2],
+        vec![3],
         "{ids:?}"
     );
     retries.sort();
