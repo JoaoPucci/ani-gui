@@ -17,6 +17,7 @@ use std::future::Future;
 
 use crate::error::Result;
 use crate::meta::anilist::{post_graphql_public, ANILIST_API};
+use crate::meta::anilist_gate::{Ask, Purpose};
 use crate::meta::anilist_pages::Page;
 
 #[path = "anilist_batch_answers.rs"]
@@ -56,8 +57,9 @@ pub(crate) type Keyed<T> = (HashMap<u32, T>, Vec<u32>);
 
 /// What one kind of batched lookup asks and reads.
 pub(crate) trait Kind: Send + Sync + 'static {
-    /// The kind's name in the log: `stills`, `banner`.
-    const NAME: &'static str;
+    /// What the kind's requests are for; its label, `stills` or
+    /// `banner`, is also the kind's name in the lane's line.
+    const PURPOSE: Purpose;
     /// One show's answer; its default is what a show AniList has no
     /// media for reads.
     type Out: Clone + Default + Send + 'static;
@@ -139,8 +141,8 @@ async fn ask_page<K: Kind>(
     };
     let count = ids.len();
     let body = serde_json::json!({ "query": query, "variables": { var: ids } });
-    log::logged(K::NAME, sent, count, async {
-        let bytes = post_graphql_public(client, url, &body).await?;
+    log::logged(K::PURPOSE.name(), sent, count, async {
+        let bytes = post_graphql_public(client, url, &body, Ask::shows(K::PURPOSE, count)).await?;
         parse_page(&bytes, space, K::FIELDS, K::read)
     })
     .await
@@ -153,7 +155,7 @@ pub(crate) fn single<'a, K: Kind>(
     base_override: Option<&'a str>,
 ) -> impl Future<Output = Result<K::Out>> + Send + 'a {
     log::logged(
-        K::NAME,
+        K::PURPOSE.name(),
         log::Sent::Single,
         1,
         K::single(client, want, base_override),
