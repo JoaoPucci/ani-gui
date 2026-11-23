@@ -21,9 +21,9 @@
  * a track or a bar is pictured shown and hidden, which must differ as
  * well. Nothing else changes between the two pictures: the mouse rests
  * in the window's corner and nothing has focus, but in the topbar's
- * results (whose field keeps focus) and the player (whose controls stay
- * up while the timeline or the volume field has focus, the volume
- * showing only then).
+ * results (whose field keeps focus) and the player (the mouse over the
+ * player, and the timeline or the volume field focused, which holds its
+ * controls up and shows the volume).
  *
  * What it covers: Home's hero pager (and a hovered track's colour),
  * the diagnostics switches for the hero's framing and the rows' style,
@@ -685,14 +685,10 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 				video.pause();
 				video.currentTime = video.duration / 2;
 			});
-			// The controls stay up while the pointer is over the player.
-			const keepUp = async () => {
-				const box = await page.locator('section.player-frame').boundingBox();
-				if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-			};
-			await keepUp();
-			// Pictured without moving the mouse away, which would hide the
-			// controls: a part hidden, then shown.
+			// The mouse over the player, where it stays for the pictures.
+			const box = await page.locator('section.player-frame').boundingBox();
+			if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+			// A part hidden, then shown.
 			const apart = async (frame: Locator, part: Locator, what: string) => {
 				const before = await frame.screenshot();
 				await hidden(part, true);
@@ -705,9 +701,9 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 					.toBeGreaterThanOrEqual(SEEN);
 			};
 			// The controls show while the pointer is over the player or
-			// focus is in them: the timeline's focus holds them up where a
-			// pointer over the window does not count as hovering (CI's
-			// virtual display).
+			// focus is in them. On CI they had faded by the time the
+			// timeline was pictured with the pointer alone; the timeline's
+			// focus holds them up, and their opacity is checked.
 			await scrubber.focus();
 			await expect(page.locator('.player-controls')).toHaveCSS('opacity', '1');
 			const fill = page.locator('.pc-scrubber-fill');
