@@ -146,15 +146,15 @@
 	"link_menu_item": "Не тот тайтл…",
 	"link_playing_now": "Сейчас идёт",
 	"link_change_button": "Нет",
-	"link_dialog_body": "В истории записан как «{title}». Сейчас идёт серия {episode}.",
-	"link_warning_episode": "Сейчас идёт серия {episode}, а у этого тайтла серий: {count}.",
+	"link_dialog_body": "В истории записан как «{title}». Сейчас идёт эпизод {episode}.",
+	"link_warning_episode": "Сейчас идёт эпизод {episode}, а у этого тайтла эпизодов: {count}.",
 	"link_switch_now": "Переключиться сейчас",
 	"link_keep_watching": "Остаться на этом",
 	"link_switch_heading": "Переключиться на «{title}»?",
-	"link_switch_hint": "Серия {episode} продолжится с {time}.",
+	"link_switch_hint": "Эпизод {episode} продолжится с {time}.",
 	"link_switched_note": "Сейчас идёт «{title}».",
 	"link_switch_failed": "Не удалось переключиться на «{title}». Попробуйте снова.",
 	"link_dialog_body_single": "В истории записан как «{title}». Сейчас идёт этот тайтл.",
 	"link_switch_hint_single": "Продолжится с {time}.",
-	"link_switch_hint_own": "Продолжится с серии {episode}, где вы остановились."
+	"link_switch_hint_own": "Продолжится с эпизода {episode}, где вы остановились."
 }
