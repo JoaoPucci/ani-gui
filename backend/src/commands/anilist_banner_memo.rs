@@ -9,7 +9,7 @@ use crate::cache::{meta_cache_delete, meta_cache_get, meta_cache_put, SqlitePool
 use crate::meta::kitsu::KitsuAnimeRef;
 
 fn key(kitsu_id: &str) -> String {
-    format!("anilist:banner:v1:k{kitsu_id}")
+    format!("{}{kitsu_id}", crate::cache::families::ANILIST_BANNER)
 }
 
 /// Remember the banner of every ref that carries one, and forget it
@@ -22,6 +22,53 @@ pub(crate) fn remember(pool: &SqlitePool, refs: &[KitsuAnimeRef]) {
             None => meta_cache_delete(pool, &key(&r.id)),
         };
     }
+}
+
+fn warmed_key(kitsu_id: &str) -> String {
+    format!("{}{kitsu_id}", crate::cache::families::ANILIST_STRIP_BANNER)
+}
+
+/// Remember what a Continue strip's warm found for a show's banner: the
+/// banner, or `None` where AniList's media has none. Kept apart from the
+/// trending memo: it is read only where the show's detail has no cover
+/// of its own, and only once ([`take_warmed`]) — the detail row then
+/// carries it for the row's own lifetime, as it carries an answer it
+/// asked for itself. Kept a day at most, as an airing show's detail is.
+pub(crate) fn remember_warmed(pool: &SqlitePool, kitsu_id: &str, banner: Option<&str>) {
+    let _ = meta_cache_put(
+        pool,
+        &warmed_key(kitsu_id),
+        banner.unwrap_or(""),
+        WARMED_TTL.as_secs(),
+    );
+}
+
+/// How long a warm's banner answer waits for the detail read to take it.
+const WARMED_TTL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// [`warmed`], forgotten once read: the detail read that takes it keeps
+/// it in its own row.
+pub(crate) fn take_warmed(pool: &SqlitePool, kitsu_id: &str) -> Option<Option<String>> {
+    let found = warmed(pool, kitsu_id);
+    if found.is_some() {
+        let _ = meta_cache_delete(pool, &warmed_key(kitsu_id));
+    }
+    found
+}
+
+/// What a strip's warm found for a show's banner: `Some(None)` where
+/// AniList has none, `None` where the warm found nothing to say — no
+/// row, or a banner since found gone.
+pub(crate) fn warmed(pool: &SqlitePool, kitsu_id: &str) -> Option<Option<String>> {
+    let found = meta_cache_get(pool, &warmed_key(kitsu_id)).ok().flatten()?;
+    if found.is_empty() {
+        return Some(None);
+    }
+    if crate::meta::images::is_dead(pool, &found) {
+        let _ = meta_cache_delete(pool, &warmed_key(kitsu_id));
+        return None;
+    }
+    Some(Some(found))
 }
 
 /// The banner remembered for a Kitsu id, if any. A remembered URL the

@@ -1,0 +1,338 @@
+{
+ "data": [
+  {
+   "id": "186",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½",
+    "titles": {
+     "en": "Ranma ½",
+     "en_jp": "Ranma ½",
+     "en_us": "Ranma ½",
+     "ja_jp": "らんま1/2"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2",
+     "Ranma ½ Nettou Hen"
+    ],
+    "slug": "ranma-nettou-hen",
+    "startDate": "1989-04-15",
+    "endDate": "1992-09-25",
+    "episodeCount": 161,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "897",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½ OVA",
+    "titles": {
+     "en": "Ranma ½ OVA",
+     "en_jp": "Ranma ½ OVA",
+     "ja_jp": "らんま1/2 OVA"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2 OVA"
+    ],
+    "slug": "ranma-ova",
+    "startDate": "1993-10-21",
+    "endDate": "1994-08-19",
+    "episodeCount": 6,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "901",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½ Super",
+    "titles": {
+     "en_jp": "Ranma ½ Super",
+     "ja_jp": "らんま１／２　ＳＵＰＥＲ"
+    },
+    "abbreviatedTitles": [
+     "Ranma ½ Super OVA",
+     "Ranma 1/2 Super"
+    ],
+    "slug": "ranma-super",
+    "startDate": "1995-09-21",
+    "endDate": "1996-01-19",
+    "episodeCount": 3,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "382",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Chuugoku Nekonron Daikessen! Okite Yaburi no Gekitou-hen!!",
+    "titles": {
+     "en": "Ranma ½: Big Trouble in Nekonron",
+     "en_jp": "Ranma ½: Chuugoku Nekonron Daikessen! Okite Yaburi no Gekitou-hen!!",
+     "ja_jp": "らんま 1/2 中国寝崑崙大決戦! 掟やぶりの激闘編!!"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2 Movie 1"
+    ],
+    "slug": "ranma-chuugoku-nekonron-daikessen-okite-yaburi-no-gekitou-hen",
+    "startDate": "1991-11-02",
+    "endDate": "1991-11-02",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "898",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Yomigaeru Kioku",
+    "titles": {
+     "en": "Ranma ½ Specials",
+     "en_jp": "Ranma ½: Yomigaeru Kioku",
+     "ja_jp": "らんま１／２"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2 Specials"
+    ],
+    "slug": "ranma-special",
+    "startDate": "1994-12-16",
+    "endDate": "1995-02-17",
+    "episodeCount": 2,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "707",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Kessen Tougenkyou! Hanayome wo Torimodose!",
+    "titles": {
+     "en": "Ranma ½: Nihao My Concubine",
+     "en_jp": "Ranma ½: Kessen Tougenkyou! Hanayome wo Torimodose!",
+     "ja_jp": "らんま1/2 決戦桃幻郷! 花嫁を奪りもどせ!!"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2: Nihao My Concubine"
+    ],
+    "slug": "ranma-kessen-tougenkyou-hanayomewo-torimodose",
+    "startDate": "1992-08-01",
+    "endDate": "1992-08-01",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "900",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Chou Musabetsu Kessen! Ranma Team vs. Densetsu no Houou",
+    "titles": {
+     "en": "Ranma ½: Team Ranma vs. The Legendary Phoenix",
+     "en_jp": "Ranma ½: Chou Musabetsu Kessen! Ranma Team vs. Densetsu no Houou",
+     "ja_jp": "らんま１／２ 超無差別決戦！ 乱馬チームVS伝説の鳳凰"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2: Movie 3",
+     "Ranma 1/2: Decisive Batte! Team Ranma vs. The Legendary Phoenix",
+     "Ranma ½: One Flew Over the Kuno's Nest"
+    ],
+    "slug": "ranma-chou-musabetsu-kessen-ranma-team-vs-densetsu-no-houou",
+    "startDate": "1994-08-20",
+    "endDate": "1994-08-20",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4123",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Akumu! Shunmin Kou",
+    "titles": {
+     "en_jp": "Ranma ½: Akumu! Shunmin Kou",
+     "ja_jp": "らんま1/2 悪夢! 春眠香"
+    },
+    "abbreviatedTitles": [
+     "Ranma ½: Okumu! Shunmin Kou",
+     "Ranma ½: Nightmare! Incense of Spring Sleep",
+     "It's a Rumic World: Ranma ½"
+    ],
+    "slug": "ranma-nightmare-incense-of-spring-sleep",
+    "startDate": "2008-07-31",
+    "endDate": "2008-07-31",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4681",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Nettou Uta Gassen",
+    "titles": {
+     "en": "Ranma 1/2: Hot Song Contest",
+     "en_jp": "Ranma ½: Nettou Uta Gassen",
+     "en_us": "Ranma 1/2: Hot Song Contest",
+     "ja_jp": "らんま１／２　熱闘歌合戦"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ranma-nettou-uta-gassen",
+    "startDate": "1990-11-07",
+    "endDate": "1990-11-21",
+    "episodeCount": 2,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6372",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Battle ga Ippai 29-nin no Korinai Yatsura",
+    "titles": {
+     "en": "Ranma ½: Huge Battle! 29 Unteachable Fools",
+     "en_jp": "Ranma ½: Battle ga Ippai 29-nin no Korinai Yatsura",
+     "en_us": "Ranma ½: Huge Battle! 29 Unteachable Fools",
+     "ja_jp": "らんま1/2 スペシャルビデオ バトルがいっぱい29人の懲りないやつら"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2 Special Video: Battle ga Ippai 29-nin no Korinai Yatsura"
+    ],
+    "slug": "ranma-battle-ga-ippai-29-nin-no-korinai-yatsura",
+    "startDate": "1995-03-03",
+    "endDate": "1995-03-03",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6366",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Tendou-ke no Oyobidenai Yatsura!",
+    "titles": {
+     "en_jp": "Ranma ½: Tendou-ke no Oyobidenai Yatsura!",
+     "ja_jp": "らんま1/2 天道家のおよびでない奴ら!"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2: Tendou-ke no Oyobidenai Yatsura!"
+    ],
+    "slug": "ranma-tendou-ke-no-oyobidenai-yatsura",
+    "startDate": "1992-08-30",
+    "endDate": "1992-08-30",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6369",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Totteoki Talk Best of Memories",
+    "titles": {
+     "en": "Ranma ½: Best Memories",
+     "en_jp": "Ranma ½: Totteoki Talk Best of Memories",
+     "en_us": "Ranma ½: Best Memories",
+     "ja_jp": "らんま1/2 とっておきトーク ベスト・オブ・メモリーズ"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2: Best Memories"
+    ],
+    "slug": "ranma-totteoki-talk-best-of-memories",
+    "startDate": "1993-05-01",
+    "endDate": "1993-05-01",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6371",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: DoCo Music Video",
+    "titles": {
+     "en_jp": "Ranma ½: DoCo Music Video",
+     "ja_jp": "らんま1/2 DoCoミュージックビデオ"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2: DoCo Music Video"
+    ],
+    "slug": "ranma-doco-music-video",
+    "startDate": "1995-08-19",
+    "endDate": "1995-08-19",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6370",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: 1994 Music Calendar",
+    "titles": {
+     "en_jp": "Ranma ½: 1994 Music Calendar",
+     "ja_jp": "らんま1/2 1994年ミュージックカレンダー"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2: 1994 Music Calendar"
+    ],
+    "slug": "ranma-1994-music-calendar",
+    "startDate": "1993-01-01",
+    "endDate": "1993-01-01",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6522",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Shimanchu MiRiKa 2nd Series",
+    "titles": {
+     "en": null,
+     "en_jp": "Shimanchu MiRiKa 2nd Series",
+     "ja_jp": null
+    },
+    "abbreviatedTitles": [],
+    "slug": "shimanchu-mirika-2nd-series",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "49291",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Anta Nante.",
+    "titles": {
+     "en_jp": "Anta Nante.",
+     "ja_jp": "あんたなんて。"
+    },
+    "abbreviatedTitles": [],
+    "slug": "anta-nante",
+    "startDate": "2024-10-19",
+    "endDate": "2024-10-19",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

@@ -28,7 +28,11 @@
 //! The async waits' deadlines (`until`, `shared`, `Queue::joined`) are
 //! on tokio's clock, and on a paused clock that clock jumps ahead
 //! whenever the runtime is idle — while a subject works on a thread of
-//! its own, say — so those are for tests on the real clock.
+//! its own, say — so those are for tests on the real clock. The one
+//! exception is a state the subject reaches by its timers alone, with
+//! nothing that state depends on waiting on another thread or the
+//! network: the paused clock then moves only as far as those timers
+//! take it, and the wait's deadline cannot run out first.
 //!
 //! A test that times a subject's deadline once its request is held
 //! runs it through [`frozen_until`], whose clock stands still until the

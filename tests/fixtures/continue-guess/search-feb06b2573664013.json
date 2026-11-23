@@ -1,0 +1,88 @@
+{
+ "data": [
+  {
+   "id": "13929",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul:re",
+    "titles": {
+     "en_jp": "Tokyo Ghoul:re",
+     "ja_jp": "東京喰種トーキョーグール：re"
+    },
+    "abbreviatedTitles": [
+     "トーキョーグール：re",
+     "Tokyo Kushu:re",
+     "Toukyou Kuushu:re"
+    ],
+    "slug": "tokyo-ghoul-re",
+    "startDate": "2018-04-03",
+    "endDate": "2018-06-19",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41359",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul:re 2",
+    "titles": {
+     "en": "Tokyo Ghoul:re 2",
+     "en_jp": "Tokyo Ghoul:re 2",
+     "ja_jp": "京喰種：re 第2期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "tokyo-ghoul-re-2",
+    "startDate": "2018-10-09",
+    "endDate": "2018-12-25",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "9135",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul √A",
+    "titles": {
+     "en": "Tokyo Ghoul √A",
+     "en_jp": "Tokyo Ghoul √A",
+     "en_us": "Tokyo Ghoul √A",
+     "ja_jp": "東京喰種√A"
+    },
+    "abbreviatedTitles": [
+     "Tokyo Ghoul Root A",
+     "Tokyo Ghoul 2nd Season",
+     "Tokyo Ghoul Second Season"
+    ],
+    "slug": "tokyo-ghoul-2",
+    "startDate": "2015-01-09",
+    "endDate": "2015-03-27",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "12550",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Force of Will",
+    "titles": {
+     "en": "",
+     "en_jp": "Force of Will",
+     "ja_jp": ""
+    },
+    "abbreviatedTitles": [],
+    "slug": "force-of-will",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "tba"
+   }
+  }
+ ]
+}

@@ -1,0 +1,48 @@
+{
+ "data": [
+  {
+   "id": "10028",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Koe no Katachi",
+    "titles": {
+     "en": "A Silent Voice",
+     "en_jp": "Koe no Katachi",
+     "en_us": "A Silent Voice",
+     "ja_jp": "聲の形"
+    },
+    "abbreviatedTitles": [
+     "The Shape of Voice",
+     "A Silent Voice: The Movie"
+    ],
+    "slug": "koe-no-katachi",
+    "startDate": "2016-09-17",
+    "endDate": "2016-09-17",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41567",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Koi wo Shita no wa",
+    "titles": {
+     "en": "Speed of Youth",
+     "en_jp": "Koi wo Shita no wa",
+     "ja_jp": "恋をしたのは"
+    },
+    "abbreviatedTitles": [
+     "Koe no Katachi Specials"
+    ],
+    "slug": "koi-wo-shita-no-wa",
+    "startDate": "2017-05-17",
+    "endDate": "2017-05-17",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

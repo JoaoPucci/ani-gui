@@ -14,6 +14,7 @@ fn the_projection_carries_the_tracks_with_the_stream_and_referer() {
         player_kind: ExternalPlayerKind::Mpv,
         custom_args_template: None,
         subtitle_urls: vec!["https://cdn.example/x/subs/en.vtt".into()],
+        subtitles_off: false,
     };
     let args = syncplay_launch_for(
         launch,

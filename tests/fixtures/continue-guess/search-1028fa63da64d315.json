@@ -1,0 +1,419 @@
+{
+ "data": [
+  {
+   "id": "818",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama",
+    "titles": {
+     "en": "Gintama",
+     "en_jp": "Gintama",
+     "ja_jp": "銀魂"
+    },
+    "abbreviatedTitles": [
+     "Gin Tama",
+     "Silver Soul",
+     "Yorinuki Gintama-san"
+    ],
+    "slug": "gintama",
+    "startDate": "2006-04-04",
+    "endDate": "2010-03-25",
+    "episodeCount": 201,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "5971",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama'",
+    "titles": {
+     "en_jp": "Gintama'",
+     "en_us": "Gintama Season 2",
+     "ja_jp": "銀魂'"
+    },
+    "abbreviatedTitles": [
+     "Gintama (2011)"
+    ],
+    "slug": "gintama-2",
+    "startDate": "2011-04-04",
+    "endDate": "2012-03-26",
+    "episodeCount": 51,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7253",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama': Enchousen",
+    "titles": {
+     "en_jp": "Gintama': Enchousen",
+     "en_us": "Gintama: Enchousen",
+     "ja_jp": "銀魂' 延長戦"
+    },
+    "abbreviatedTitles": [
+     "Gintama' (2012)",
+     "Gintama' Overdrive",
+     "Kintama"
+    ],
+    "slug": "gintama-enchousen",
+    "startDate": "2012-10-04",
+    "endDate": "2013-03-28",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "12553",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama.",
+    "titles": {
+     "en_jp": "Gintama.",
+     "en_us": "Gintama Season 5",
+     "ja_jp": "銀魂。"
+    },
+    "abbreviatedTitles": [
+     "Gintama (2017)"
+    ],
+    "slug": "gintama-2017",
+    "startDate": "2017-01-09",
+    "endDate": "2017-03-27",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7241",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama Movie 2: Kanketsu-hen - Yorozuya yo Eien Nare",
+    "titles": {
+     "en_jp": "Gintama Movie 2: Kanketsu-hen - Yorozuya yo Eien Nare",
+     "ja_jp": "劇場版 銀魂 完結篇 万事屋よ永遠なれ"
+    },
+    "abbreviatedTitles": [
+     "Gintama: The Final Chapter - Be Forever Yorozuya",
+     "Gintama Movie 2"
+    ],
+    "slug": "gintama-kanketsu-hen-yorozuya-yo-eien-nare",
+    "startDate": "2013-07-06",
+    "endDate": "2013-07-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "14095",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama.: Shirogane no Tamashii-hen",
+    "titles": {
+     "en": "Gintama.: Silver Soul Arc",
+     "en_jp": "Gintama.: Shirogane no Tamashii-hen",
+     "ja_jp": "銀魂. 銀ノ魂篇"
+    },
+    "abbreviatedTitles": [
+     "Gintama. (2018)",
+     "Gintama.: Silver Soul Arc"
+    ],
+    "slug": "gintama-shirogane-no-tamashii-hen",
+    "startDate": "2018-01-08",
+    "endDate": "2018-03-25",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4989",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama: The Movie",
+    "titles": {
+     "en": "Gintama: The Movie",
+     "en_jp": "Gintama Movie 1: Shinyaku Benizakura-hen",
+     "en_us": "Gintama: The Movie",
+     "ja_jp": "劇場版 銀魂 新訳紅桜篇"
+    },
+    "abbreviatedTitles": [
+     "Gintama: Benizakura Arc - A New Retelling",
+     "Gintama Movie: Crimson Sakura Chapter New Edition",
+     "Gintama: Shin-yaku Benizakura-hen"
+    ],
+    "slug": "gintama-benizakura-arc-a-new-retelling",
+    "startDate": "2010-04-24",
+    "endDate": "2010-04-24",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13726",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama.: Porori-hen",
+    "titles": {
+     "en": "Gintama.: Slip Arc",
+     "en_jp": "Gintama.: Porori-hen",
+     "en_us": "Gintama.: Slip Arc",
+     "ja_jp": "銀魂。ポロリ編"
+    },
+    "abbreviatedTitles": [],
+    "slug": "gintama-porori-hen",
+    "startDate": "2017-10-02",
+    "endDate": "2017-12-25",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41079",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama.: Shirogane no Tamashii-hen 2",
+    "titles": {
+     "en": "Gintama.: Silver Soul Arc 2",
+     "en_jp": "Gintama.: Shirogane no Tamashii-hen 2",
+     "ja_jp": "銀魂. 銀ノ魂篇 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "gintama-shirogane-no-tamashii-hen-2",
+    "startDate": "2018-07-09",
+    "endDate": "2018-10-08",
+    "episodeCount": 14,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4797",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama: Shiroyasha Koutan",
+    "titles": {
+     "en_jp": "Gintama: Shiroyasha Koutan",
+     "ja_jp": "ジャンプアニメツアー 2008 白夜叉降誕"
+    },
+    "abbreviatedTitles": [
+     "Gintama: Jump Festa 2008 Special",
+     "Gintama: Jump Anime Tour 2008 Special"
+    ],
+    "slug": "gintama-jump-anime-tour-2008-special",
+    "startDate": "2008-09-21",
+    "endDate": "2008-09-21",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2671",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama: Nanigoto mo Saiyo ga Kanjin nano de Tasho Senobisuru Kurai ga Choudoyoi",
+    "titles": {
+     "en_jp": "Gintama: Nanigoto mo Saiyo ga Kanjin nano de Tasho Senobisuru Kurai ga Choudoyoi",
+     "ja_jp": "銀魂〜何事も最初が肝心なので多少背伸びするくらいが丁度良い〜"
+    },
+    "abbreviatedTitles": [
+     "Gintama: Jump Festa 2005 Special"
+    ],
+    "slug": "gintama-jump-festa-2005-special",
+    "startDate": "2005-09-01",
+    "endDate": "2005-09-01",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43683",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama: The Final",
+    "titles": {
+     "en_jp": "Gintama: The Final",
+     "ja_jp": "銀魂 THE FINAL"
+    },
+    "abbreviatedTitles": [],
+    "slug": "gintama-the-final",
+    "startDate": "2021-01-08",
+    "endDate": "2021-01-08",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "5842",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama: Shinyaku Benizakura-hen",
+    "titles": {
+     "en_jp": "Gintama: Shinyaku Benizakura-hen",
+     "ja_jp": "銀魂 新訳紅桜篇"
+    },
+    "abbreviatedTitles": [
+     "Gintama: Shinyaku Benizakura-hen OVA",
+     "Gintama: Benizakura Arc - A New Retelling Special",
+     "Gintama Movie: Crimson Sakura Chapter New Edition",
+     "Gintama: Shin-yaku Benizakura-hen"
+    ],
+    "slug": "gintama-shinyaku-benizakura-hen-special",
+    "startDate": "2010-12-15",
+    "endDate": "2010-12-15",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8627",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama': Futon ni Haitte kara Buki Nokoshi ni Kizuite Neru ni Nerenai Toki mo Aru",
+    "titles": {
+     "en_jp": "Gintama': Futon ni Haitte kara Buki Nokoshi ni Kizuite Neru ni Nerenai Toki mo Aru",
+     "ja_jp": "銀魂 〜布団に入ってから拭き残しに気付いて寝るに寝れない時もある〜"
+    },
+    "abbreviatedTitles": [
+     "Gintama (2015)",
+     "Gintama OAD",
+     "Gintama OVA",
+     "Gintama: Jump Festa 2014 Special"
+    ],
+    "slug": "gintama-jump-festa-2014-special",
+    "startDate": "2015-04-03",
+    "endDate": "2015-04-03",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6278",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama: Dai Hanseikai",
+    "titles": {
+     "en_jp": "Gintama: Dai Hanseikai",
+     "ja_jp": "アニメ銀魂　大反省会"
+    },
+    "abbreviatedTitles": [
+     "Gintama Harumatsuri 2010"
+    ],
+    "slug": "gintama-dai-hanseikai",
+    "startDate": "2010-03-25",
+    "endDate": "2010-03-25",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43829",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama: THE SEMI-FINAL",
+    "titles": {
+     "en_jp": "Gintama: THE SEMI-FINAL",
+     "ja_jp": "銀魂 THE SEMI-FINAL"
+    },
+    "abbreviatedTitles": [
+     "#銀魂ザファイナル"
+    ],
+    "slug": "gintama-the-semi-final",
+    "startDate": "2021-01-15",
+    "endDate": "2021-01-20",
+    "episodeCount": 2,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7888",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama x Mameshiba",
+    "titles": {
+     "en_jp": "Gintama x Mameshiba",
+     "ja_jp": "銀魂×豆しば"
+    },
+    "abbreviatedTitles": [
+     "Gintama: Kanketsu-hen - Yorozuya yo Eien Nare TV Special"
+    ],
+    "slug": "gintama-x-mameshiba",
+    "startDate": "2013-01-01",
+    "endDate": "2013-12-18",
+    "episodeCount": 6,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42516",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama: Monster Strike-hen",
+    "titles": {
+     "en_jp": "Gintama: Monster Strike-hen",
+     "ja_jp": "銀魂 ～モンスターストライク編～"
+    },
+    "abbreviatedTitles": [
+     "Gintama x Monster Strike"
+    ],
+    "slug": "gintama-monster-strike-hen",
+    "startDate": "2019-08-29",
+    "endDate": "2019-09-02",
+    "episodeCount": 2,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49020",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama on Theater 2D: Ikkoku Keisei-hen",
+    "titles": {
+     "en_jp": "Gintama on Theater 2D: Ikkoku Keisei-hen",
+     "ja_jp": "銀魂オンシアター2D 一国傾城篇"
+    },
+    "abbreviatedTitles": [],
+    "slug": "gintama-on-theater-2d-ikkoku-keisei-hen",
+    "startDate": "2024-06-21",
+    "endDate": "2024-06-21",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50384",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama x Meta Quest 3 Collaboration CM",
+    "titles": {
+     "en_jp": "Gintama x Meta Quest 3 Collaboration CM",
+     "ja_jp": "TVアニメ「銀魂」× Meta Quest 3 コラボCM"
+    },
+    "abbreviatedTitles": [],
+    "slug": "gintama-x-meta-quest-3-collaboration-cm",
+    "startDate": "2023-12-01",
+    "endDate": "2023-12-01",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

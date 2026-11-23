@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeStartResume, type ResumePlayArgs, type StartResumeDeps } from './start-resume';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
 	return { id, ep_no: ep, title };
 }
 
 function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		slug: `slug-${id}`,
 		canonical_title: `Title ${id}`,
@@ -17,7 +18,7 @@ function makeMatch(id: string, episodeCount: number | null): KitsuAnimeRef {
 		status: 'current',
 		poster_image: null,
 		start_date: null
-	} as unknown as KitsuAnimeRef;
+	});
 }
 
 interface Harness {
@@ -43,23 +44,33 @@ function makeHarness(overrides: Partial<StartResumeDeps> = {}): Harness {
 		onFailure: (title, e, args) => {
 			failures.push([title, e, args]);
 		},
-		getSettings: vi.fn().mockImplementation(async () => {
-			log.push('settings');
-			return { mode: 'sub' as const, quality: 'best' };
-		}),
+		getSettings: vi
+			.fn<NonNullable<StartResumeDeps['getSettings']>>()
+			.mockImplementation(async () => {
+				log.push('settings');
+				return { mode: 'sub' as const };
+			}),
 		getPlayableCount: () => null,
 		setPlayableCount: (id, c) => counts.push([id, c]),
-		fetchInteractiveCount: vi.fn().mockImplementation(async () => {
-			log.push('interactive-count');
-			return { count: 12, approximate: false };
-		}),
-		resolvePlay: vi.fn().mockImplementation(async () => {
-			log.push('resolve-play');
-			return { session_id: 's1' };
-		}),
-		markWatched: vi.fn().mockResolvedValue(undefined),
-		syncTrackers: vi.fn().mockResolvedValue(undefined),
-		navigateToSession: vi.fn().mockImplementation(() => log.push('nav-session')),
+		fetchInteractiveCount: vi
+			.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
+			.mockImplementation(async () => {
+				log.push('interactive-count');
+				return { count: 12, approximate: false };
+			}),
+		resolvePlay: vi
+			.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+			.mockImplementation(async () => {
+				log.push('resolve-play');
+				return { session_id: 's1' };
+			}),
+		markWatched: vi.fn<NonNullable<StartResumeDeps['markWatched']>>().mockResolvedValue(undefined),
+		syncTrackers: vi
+			.fn<NonNullable<StartResumeDeps['syncTrackers']>>()
+			.mockResolvedValue(undefined),
+		navigateToSession: vi
+			.fn<NonNullable<StartResumeDeps['navigateToSession']>>()
+			.mockImplementation(() => log.push('nav-session')),
 		...overrides
 	};
 	return { deps, log, busyLog, counts, failures };
@@ -80,7 +91,7 @@ describe('makeStartResume (click orchestration)', () => {
 		]);
 		// Replay at the live cap: watched 12, live count 12 → episode 12.
 		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
-			expect.objectContaining({ episode: 12, mode: 'sub', quality: 'best' }),
+			expect.objectContaining({ episode: 12, mode: 'sub' }),
 			expect.any(Function)
 		);
 		expect(h.counts).toEqual([['h1', 12]]);
@@ -128,7 +139,7 @@ describe('makeStartResume (click orchestration)', () => {
 
 	it('writes nothing to the trackers for an episode the session could not verify', async () => {
 		const h = makeHarness({
-			resolvePlay: vi.fn().mockResolvedValue({
+			resolvePlay: vi.fn<NonNullable<StartResumeDeps['resolvePlay']>>().mockResolvedValue({
 				session_id: 's1',
 				episode: '13',
 				episode_unverified: true
@@ -142,7 +153,9 @@ describe('makeStartResume (click orchestration)', () => {
 
 	it('a failed play resolution clears busy and reports the failure', async () => {
 		const h = makeHarness({
-			resolvePlay: vi.fn().mockRejectedValue(new Error('no sources'))
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockRejectedValue(new Error('no sources'))
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
@@ -171,7 +184,9 @@ describe('makeStartResume (click orchestration)', () => {
 		let release!: () => void;
 		const worded = new Promise<void>((r) => (release = r));
 		const h = makeHarness({
-			resolvePlay: vi.fn().mockRejectedValue(new Error('no sources')),
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockRejectedValue(new Error('no sources')),
 			onFailure: () => worded
 		});
 		const start = makeStartResume(h.deps);
@@ -188,7 +203,9 @@ describe('makeStartResume (click orchestration)', () => {
 
 	it('a countless interactive lookup writes no cap and falls back to the Kitsu count', async () => {
 		const h = makeHarness({
-			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('down'))
+			fetchInteractiveCount: vi
+				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
+				.mockRejectedValue(new Error('down'))
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 24), 24, false);
@@ -214,11 +231,13 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		const labels: (string | null)[] = [];
 		const h = makeHarness({
 			onProgress: (l) => labels.push(l),
-			resolvePlay: vi.fn().mockImplementation(async (_args, onProgress) => {
-				onProgress('searching…');
-				onProgress('provider ✓');
-				return { session_id: 's1' };
-			})
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockImplementation(async (_args, onProgress) => {
+					onProgress('searching…');
+					onProgress('provider ✓');
+					return { session_id: 's1' };
+				})
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
@@ -230,7 +249,9 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		// markWatched is best-effort: the episode is already resolved
 		// and the user is owed the player regardless.
 		const h = makeHarness({
-			markWatched: vi.fn().mockRejectedValue(new Error('hsts locked'))
+			markWatched: vi
+				.fn<NonNullable<StartResumeDeps['markWatched']>>()
+				.mockRejectedValue(new Error('hsts locked'))
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
@@ -241,7 +262,9 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 
 	it('still navigates when the tracker sync fails', async () => {
 		const h = makeHarness({
-			syncTrackers: vi.fn().mockRejectedValue(new Error('anilist 503'))
+			syncTrackers: vi
+				.fn<NonNullable<StartResumeDeps['syncTrackers']>>()
+				.mockRejectedValue(new Error('anilist 503'))
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
@@ -256,7 +279,7 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
 
 		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
-			expect.objectContaining({ guess: true }),
+			expect.objectContaining({ guess: true, row: 'h1' }),
 			expect.any(Function)
 		);
 		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: true }));
@@ -270,6 +293,83 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		);
 	});
 
+	it("names the card's row on a play no guess opened, so the backend keeps the line's show", async () => {
+		// Codex review: a link landing while the resume awaited its cap
+		// rematches the row; the resume still names the old show, and with
+		// the card's row the backend keeps the correction.
+		const h = makeHarness({ isGuess: () => false });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: false, cardRow: 'h1' }),
+			expect.any(Function)
+		);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ cardRow: 'h1' }));
+	});
+
+	it('records no id and writes no tracker for a play the backend kept off its line', async () => {
+		const h = makeHarness({
+			isGuess: () => false,
+			resolvePlay: vi.fn().mockResolvedValue({ session_id: 's1', line_kept: true })
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: true }));
+		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+	});
+
+	it("records a guess whose play landed on the card's own listing, and writes the trackers", async () => {
+		const h = makeHarness({
+			isGuess: (id) => id === 'h1',
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockResolvedValue({ session_id: 's1', own_listing: true })
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+
+		expect(h.deps.markWatched).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: false, episode: 6 })
+		);
+		expect(h.deps.syncTrackers).toHaveBeenCalledWith('k1', 6, 12, true);
+	});
+
+	it('records the guess but writes no tracker for an episode the session could not verify', async () => {
+		const h = makeHarness({
+			isGuess: (id) => id === 'h1',
+			resolvePlay: vi
+				.fn()
+				.mockResolvedValue({ session_id: 's1', own_listing: true, episode_unverified: true })
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: false }));
+		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+	});
+
+	it("opens a card that stands for the line clicked as a guess of that line, from the shown row's progress", async () => {
+		// JoJo: the card shows the 2012 listing's row, which a guessed play
+		// of the 2000 card wrote, and stands for the 2000 card's line.
+		const h = makeHarness({ isGuess: (id) => id === 'h-card' });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h-played', '5', 'Show'), makeMatch('k1', 12), 12, true, 'h-card');
+
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true, row: 'h-card', episode: 6 }),
+			expect.any(Function)
+		);
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
+			'k1',
+			{ session_id: 's1' },
+			6,
+			true,
+			'h-card'
+		);
+		// The cap is the shown row's, as its progress is.
+		expect(h.counts).toEqual([['h-played', 12]]);
+	});
+
 	it('opens a trusted match as the show itself', async () => {
 		const h = makeHarness({ isGuess: () => false });
 		const start = makeStartResume(h.deps);
@@ -279,6 +379,8 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 			expect.objectContaining({ guess: false }),
 			expect.any(Function)
 		);
+		// Only a guess names its card's row on the play.
+		expect(vi.mocked(h.deps.resolvePlay).mock.calls[0][0].row).toBeUndefined();
 		expect(h.deps.syncTrackers).toHaveBeenCalledWith('k1', 6, 12, true);
 		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
 			'k1',
@@ -292,7 +394,9 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 
 describe('makeStartResume — an episode left part-way', () => {
 	it('goes back to the last watched episode when it was left part-way', async () => {
-		const leftPartWay = vi.fn((kitsuId: string, ep: number) => kitsuId === 'k1' && ep === 5);
+		const leftPartWay = vi.fn<NonNullable<StartResumeDeps['leftPartWay']>>(
+			(kitsuId: string, ep: number) => kitsuId === 'k1' && ep === 5
+		);
 		const h = makeHarness({ getPlayableCount: () => 12, leftPartWay });
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
@@ -416,14 +520,18 @@ describe('makeStartResume (the row as it reads now)', () => {
 		// row reads "12.5", and Continue goes on to 13, not to 25.
 		const log: string[] = [];
 		const h = makeHarness({
-			fetchInteractiveCount: vi.fn().mockImplementation(async () => {
-				log.push('interactive-count');
-				return { count: 36, approximate: false };
-			}),
-			currentNumber: vi.fn().mockImplementation(async () => {
-				log.push('current-number');
-				return { ep_no: '12.5', former_ep_no: '24.5' };
-			})
+			fetchInteractiveCount: vi
+				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
+				.mockImplementation(async () => {
+					log.push('interactive-count');
+					return { count: 36, approximate: false };
+				}),
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockImplementation(async () => {
+					log.push('current-number');
+					return { ep_no: '12.5', former_ep_no: '24.5' };
+				})
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
@@ -439,10 +547,14 @@ describe('makeStartResume (the row as it reads now)', () => {
 		// moves to "12.5" before Continue asks whether it was.
 		const kept = new Set(['k1:24.5']);
 		const h = makeHarness({
-			currentNumber: vi.fn().mockResolvedValue({ ep_no: '12.5', former_ep_no: '24.5' }),
-			movePosition: vi.fn().mockImplementation((id: string, from: number, to: number) => {
-				if (kept.delete(`${id}:${from}`)) kept.add(`${id}:${to}`);
-			}),
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockResolvedValue({ ep_no: '12.5', former_ep_no: '24.5' }),
+			movePosition: vi
+				.fn<NonNullable<StartResumeDeps['movePosition']>>()
+				.mockImplementation((id: string, from: number, to: number) => {
+					if (kept.delete(`${id}:${from}`)) kept.add(`${id}:${to}`);
+				}),
 			leftPartWay: (id, ep) => kept.has(`${id}:${ep}`)
 		});
 		const start = makeStartResume(h.deps);
@@ -456,7 +568,9 @@ describe('makeStartResume (the row as it reads now)', () => {
 
 	it('resumes from what the card read when the row cannot be asked', async () => {
 		const h = makeHarness({
-			currentNumber: vi.fn().mockRejectedValue(new Error('offline'))
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockRejectedValue(new Error('offline'))
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
@@ -468,9 +582,13 @@ describe('makeStartResume (the row as it reads now)', () => {
 
 	it('opens the session on the episode it plays, and syncs that', async () => {
 		const h = makeHarness({
-			fetchInteractiveCount: vi.fn().mockResolvedValue({ count: 36, approximate: false }),
-			resolvePlay: vi.fn().mockResolvedValue({ session_id: 's1', episode: '12.5' }),
-			followPlayed: vi.fn().mockReturnValue(12.5)
+			fetchInteractiveCount: vi
+				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
+				.mockResolvedValue({ count: 36, approximate: false }),
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockResolvedValue({ session_id: 's1', episode: '12.5' }),
+			followPlayed: vi.fn<NonNullable<StartResumeDeps['followPlayed']>>().mockReturnValue(12.5)
 		});
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '24', 'Show'), makeMatch('k1', 36), 36, false);
@@ -497,13 +615,15 @@ describe('makeStartResume (no listing behind the cap)', () => {
 		// one, and the row then reads as it is.
 		let warmed = false;
 		const h = makeHarness({
-			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('offline')),
+			fetchInteractiveCount: vi
+				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
+				.mockRejectedValue(new Error('offline')),
 			currentNumber: vi
 				.fn()
 				.mockImplementation(async () =>
 					warmed ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
 				),
-			warm: vi.fn().mockImplementation(async () => {
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockImplementation(async () => {
 				warmed = true;
 			})
 		});
@@ -518,8 +638,10 @@ describe('makeStartResume (no listing behind the cap)', () => {
 
 	it('warms nothing when a lookup measured the cap or the row is a whole episode', async () => {
 		const measured = makeHarness({
-			currentNumber: vi.fn().mockResolvedValue({ ep_no: '24.5' }),
-			warm: vi.fn().mockResolvedValue(undefined)
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockResolvedValue({ ep_no: '24.5' }),
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockResolvedValue(undefined)
 		});
 		await makeStartResume(measured.deps)(
 			makeEntry('h1', '24.5', 'Show'),
@@ -529,8 +651,10 @@ describe('makeStartResume (no listing behind the cap)', () => {
 		);
 		expect(measured.deps.warm).not.toHaveBeenCalled();
 		const whole = makeHarness({
-			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('offline')),
-			warm: vi.fn().mockResolvedValue(undefined)
+			fetchInteractiveCount: vi
+				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
+				.mockRejectedValue(new Error('offline')),
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockResolvedValue(undefined)
 		});
 		await makeStartResume(whole.deps)(makeEntry('h1', '5', 'Show'), makeMatch('k1', 36), 36, false);
 		expect(whole.deps.warm).not.toHaveBeenCalled();
@@ -538,9 +662,13 @@ describe('makeStartResume (no listing behind the cap)', () => {
 
 	it('resumes from what it read when the warm fails', async () => {
 		const h = makeHarness({
-			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('offline')),
-			currentNumber: vi.fn().mockResolvedValue({ ep_no: '24.5' }),
-			warm: vi.fn().mockRejectedValue(new Error('offline'))
+			fetchInteractiveCount: vi
+				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
+				.mockRejectedValue(new Error('offline')),
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockResolvedValue({ ep_no: '24.5' }),
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockRejectedValue(new Error('offline'))
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
 		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
@@ -555,9 +683,13 @@ describe('makeStartResume (what the watch records)', () => {
 		// The resolution the play left is kept under the episode it
 		// played; a mark-watched for the request would find none.
 		const h = makeHarness({
-			fetchInteractiveCount: vi.fn().mockResolvedValue({ count: 36, approximate: false }),
-			resolvePlay: vi.fn().mockResolvedValue({ session_id: 's1', episode: '12.5' }),
-			followPlayed: vi.fn().mockReturnValue(12.5)
+			fetchInteractiveCount: vi
+				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
+				.mockResolvedValue({ count: 36, approximate: false }),
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockResolvedValue({ session_id: 's1', episode: '12.5' }),
+			followPlayed: vi.fn<NonNullable<StartResumeDeps['followPlayed']>>().mockReturnValue(12.5)
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '24', 'Show'), makeMatch('k1', 36), 36, false);
 		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ episode: 12.5 }));
@@ -597,14 +729,44 @@ describe('makeStartResume (after the viewer moved on)', () => {
 		expect(c.claims).toEqual(['claim']);
 	});
 
+	it('claims navigation and holds the card busy before its line is known, and plays as that line once it is', async () => {
+		const c = claimed();
+		let line!: (row: string) => void;
+		const h = makeHarness({
+			isGuess: (id) => id === 'h-card',
+			claimNavigation: () => {
+				h.log.push('claim');
+				return c.claimNavigation();
+			}
+		});
+		const started = makeStartResume(h.deps)(
+			makeEntry('h-played', '5', 'Show'),
+			makeMatch('k1', 12),
+			12,
+			true,
+			new Promise<string>((r) => (line = r))
+		);
+		await Promise.resolve();
+		// A second click meanwhile finds the card busy.
+		expect(h.log).toEqual(['claim', 'busy:k1']);
+		line('h-card');
+		await started;
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true, row: 'h-card' }),
+			expect.any(Function)
+		);
+	});
+
 	it('opens no player once the claim lapsed, and lets the card go', async () => {
 		const c = claimed();
 		const h = makeHarness({
 			claimNavigation: c.claimNavigation,
-			resolvePlay: vi.fn().mockImplementation(async () => {
-				c.lapse();
-				return { session_id: 's1' };
-			})
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockImplementation(async () => {
+					c.lapse();
+					return { session_id: 's1' };
+				})
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
 		expect(h.deps.navigateToSession).not.toHaveBeenCalled();
@@ -615,10 +777,12 @@ describe('makeStartResume (after the viewer moved on)', () => {
 		const c = claimed();
 		const h = makeHarness({
 			claimNavigation: c.claimNavigation,
-			resolvePlay: vi.fn().mockImplementation(async () => {
-				c.lapse();
-				return { session_id: 's1' };
-			})
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockImplementation(async () => {
+					c.lapse();
+					return { session_id: 's1' };
+				})
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
 		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ episode: 4 }));
@@ -628,10 +792,12 @@ describe('makeStartResume (after the viewer moved on)', () => {
 		const c = claimed();
 		const h = makeHarness({
 			claimNavigation: c.claimNavigation,
-			resolvePlay: vi.fn().mockImplementation(async () => {
-				c.lapse();
-				throw new Error('no session');
-			})
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockImplementation(async () => {
+					c.lapse();
+					throw new Error('no session');
+				})
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
 		expect(h.failures).toEqual([]);
@@ -649,14 +815,16 @@ describe('makeStartResume (after the viewer moved on)', () => {
 describe('makeStartResume (moved on before the session was asked for)', () => {
 	it('resolves nothing and marks nothing started once the claim lapsed', async () => {
 		let holds = true;
-		const markStarted = vi.fn();
+		const markStarted = vi.fn<NonNullable<StartResumeDeps['markStarted']>>();
 		const h = makeHarness({
 			claimNavigation: () => () => holds,
 			markStarted,
-			getSettings: vi.fn().mockImplementation(async () => {
-				holds = false;
-				return { mode: 'sub' as const, quality: 'best' };
-			})
+			getSettings: vi
+				.fn<NonNullable<StartResumeDeps['getSettings']>>()
+				.mockImplementation(async () => {
+					holds = false;
+					return { mode: 'sub' as const };
+				})
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
 		expect(h.deps.resolvePlay).not.toHaveBeenCalled();
@@ -674,10 +842,12 @@ describe('makeStartResume (moved on before its provider work)', () => {
 		let holds = true;
 		const h = makeHarness({
 			claimNavigation: () => () => holds,
-			getSettings: vi.fn().mockImplementation(async () => {
-				holds = false;
-				return { mode: 'sub' as const, quality: 'best' };
-			})
+			getSettings: vi
+				.fn<NonNullable<StartResumeDeps['getSettings']>>()
+				.mockImplementation(async () => {
+					holds = false;
+					return { mode: 'sub' as const };
+				})
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '3', 'Show'), makeMatch('k1', 24), 24, false);
 		expect(h.deps.fetchInteractiveCount).not.toHaveBeenCalled();
@@ -690,12 +860,16 @@ describe('makeStartResume (moved on before its provider work)', () => {
 		let holds = true;
 		const h = makeHarness({
 			claimNavigation: () => () => holds,
-			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('offline')),
-			currentNumber: vi.fn().mockImplementation(async () => {
-				holds = false;
-				return { ep_no: '24.5' };
-			}),
-			warm: vi.fn().mockResolvedValue(undefined)
+			fetchInteractiveCount: vi
+				.fn<NonNullable<StartResumeDeps['fetchInteractiveCount']>>()
+				.mockRejectedValue(new Error('offline')),
+			currentNumber: vi
+				.fn<NonNullable<StartResumeDeps['currentNumber']>>()
+				.mockImplementation(async () => {
+					holds = false;
+					return { ep_no: '24.5' };
+				}),
+			warm: vi.fn<NonNullable<StartResumeDeps['warm']>>().mockResolvedValue(undefined)
 		});
 		await makeStartResume(h.deps)(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
 		expect(h.deps.warm).not.toHaveBeenCalled();
@@ -712,7 +886,9 @@ describe('makeStartResume (moved on while a failure is worded)', () => {
 		let current: (() => boolean) | undefined;
 		const h = makeHarness({
 			claimNavigation: () => () => holds,
-			resolvePlay: vi.fn().mockRejectedValue(new Error('no session')),
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockRejectedValue(new Error('no session')),
 			onFailure: (_title, _e, _args, isCurrent) => {
 				current = isCurrent;
 			}
@@ -721,5 +897,115 @@ describe('makeStartResume (moved on while a failure is worded)', () => {
 		expect(current?.()).toBe(true);
 		holds = false;
 		expect(current?.()).toBe(false);
+	});
+
+	it('plays a card whose line could not be read from its own row, and tells the failure surface the line was not read', async () => {
+		// Codex review: the row played is not known to be the line the
+		// card stands for, so the failure must not offer to correct it.
+		let unread: boolean | undefined;
+		const h = makeHarness({
+			isGuess: () => true,
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockRejectedValue(new Error('no session')),
+			onFailure: (_title, _e, _args, _isCurrent, lineUnread) => {
+				unread = lineUnread;
+			}
+		});
+		await makeStartResume(h.deps)(
+			makeEntry('h1', '3', 'Show'),
+			makeMatch('k1', 24),
+			24,
+			false,
+			Promise.resolve(null)
+		);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true, row: 'h1' }),
+			expect.any(Function)
+		);
+		expect(unread).toBe(true);
+	});
+
+	it('tells the failure surface a line that was read was read', async () => {
+		let unread: boolean | undefined;
+		const h = makeHarness({
+			isGuess: () => true,
+			resolvePlay: vi
+				.fn<NonNullable<StartResumeDeps['resolvePlay']>>()
+				.mockRejectedValue(new Error('no session')),
+			onFailure: (_title, _e, _args, _isCurrent, lineUnread) => {
+				unread = lineUnread;
+			}
+		});
+		await makeStartResume(h.deps)(
+			makeEntry('h1', '3', 'Show'),
+			makeMatch('k1', 24),
+			24,
+			false,
+			Promise.resolve('h0')
+		);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ row: 'h0' }),
+			expect.any(Function)
+		);
+		expect(unread).toBe(false);
+	});
+
+	it("plays the clicked show in its own audio, the settings' mode the default", async () => {
+		const h = makeHarness({
+			modeFor: (kitsuId, fallback) => (kitsuId === 'k1' ? 'dub' : fallback)
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '12', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ mode: 'dub' }),
+			expect.any(Function)
+		);
+		expect(h.deps.fetchInteractiveCount).toHaveBeenCalledWith(expect.anything(), 'dub');
+
+		const other = makeHarness({
+			modeFor: (kitsuId, fallback) => (kitsuId === 'k1' ? 'dub' : fallback)
+		});
+		await makeStartResume(other.deps)(
+			makeEntry('h2', '3', 'Other'),
+			makeMatch('k2', 24),
+			24,
+			false
+		);
+		expect(other.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ mode: 'sub' }),
+			expect.any(Function)
+		);
+	});
+});
+
+describe('a resume whose row is matched again while it works', () => {
+	it("pins no cap: the one it learned is the former show's", async () => {
+		// The card is linked (from its pill, by keyboard, behind the
+		// resume's overlay) while the click's cap lookup is out.
+		let relinked = false;
+		const h = makeHarness({
+			since: () => {
+				h.log.push('view');
+				return () => !relinked;
+			},
+			fetchInteractiveCount: vi.fn().mockImplementation(async () => {
+				h.log.push('interactive-count');
+				relinked = true;
+				return { count: 1, approximate: false };
+			})
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '1', 'Show'), makeMatch('k1', 1), 1, true);
+		expect(h.counts).toEqual([]);
+		// The view is the row as the click found it.
+		expect(h.log.indexOf('view')).toBeLessThan(h.log.indexOf('settings'));
+	});
+
+	it('pins the cap while the row is still matched as the click found it', async () => {
+		const h = makeHarness({ since: () => () => true });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '12', 'Show'), makeMatch('k1', 24), 24, false);
+		expect(h.counts).toEqual([['h1', 12]]);
 	});
 });

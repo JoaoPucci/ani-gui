@@ -7,7 +7,7 @@ This page covers the dev environment, the build pipeline, and debugging tips. Fo
 | Tool | Version | Purpose |
 |---|---|---|
 | Rust | pinned in `rust-toolchain.toml` | Rust sidecar backend |
-| Node | 20+ | renderer + Electron shell |
+| Node | 22.13+ (20+ for the frontend alone) | renderer + Electron shell; the Electron helper tests and e2e suite need 22.13 |
 | pnpm | 9+ | package manager |
 | `bats-core`, `bats-mock`, `bats-assert`, `bats-file` | pinned in `tests/bash/helpers/install-bats.sh` | bash tests |
 | `shellcheck`, `shfmt` | latest stable | bash linters |
@@ -38,7 +38,7 @@ sudo apt install -y build-essential libssl-dev pkg-config
 # Renderer + Electron shell (Node + pnpm via nvm)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 # (open a new shell, or `source ~/.bashrc`)
-nvm install 20
+nvm install 22   # packaging needs 22.12 or later, the e2e suite 22.13
 # pnpm needs no separate install or version choice: package.json's
 # packageManager field pins it, and corepack fetches that version.
 corepack enable
@@ -188,12 +188,26 @@ sudo apt install musl-tools   # musl-gcc, for the C the backend compiles in (SQL
 that backend themselves (`pnpm run build:backend:linux`). The dev loop
 keeps using the ordinary debug build.
 
-Artifacts land in `electron/dist/`. There is no release-packaging CI —
-no workflow triggers on a tag and nothing publishes installers. (The
-e2e workflow does run `pnpm run dist` on Linux to produce the
-`linux-unpacked/` build it tests against, so electron-builder itself is
-exercised in CI; publishing is not.) Release artifacts are built on a
-matching host and uploaded to the GitHub release by hand:
+Artifacts land in `electron/dist/`. No workflow triggers on a tag and
+nothing publishes installers: release files are uploaded to the GitHub
+release by hand. They can come from either of two places.
+
+- **The Packages workflow.** `.github/workflows/packages.yml`, started
+  by hand on the release commit, builds all three packages on GitHub's
+  runners with the same commands as below and keeps them as run
+  artifacts for thirty days, with a `SHA256SUMS` naming them. "Packages
+  built in CI" in `docs/testing.md` has the steps.
+- **A matching host**, with the commands below.
+
+(The e2e workflow also runs `pnpm run dist` on Linux, in its
+release-shaped job, and checks the backend it packages. The package
+the end-to-end suite drives is a different one, `pnpm run
+package:e2e`, written to `electron/dist-e2e/`: see
+[Remote flags](#remote-flags). The Packages workflow builds every
+package on a pull request that changes how one is built, publishing
+none of them; on that pull request and on a run started by hand it
+also starts the AppImage the way the AppImageHub catalog's test does,
+as "Packages built in CI" in `docs/testing.md` describes.)
 
 | Target | Host | Command |
 |---|---|---|
@@ -238,7 +252,9 @@ set RUST_LOG=ani_gui=debug,axum=info
 pnpm --dir electron dev
 ```
 
-There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines, tagged with the level Electron reports for each: `verbose` for `console.debug`, `info` for `console.log` and `console.info`, then `warning` and `error`). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file.
+There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines, tagged with the level Electron reports for each: `verbose` for `console.debug`, `info` for `console.log` and `console.info`, then `warning` and `error`). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file. If that terminal closes, or the reader of a pipe the output goes to exits, the app stops writing its log (`electron/lib/stdio-guard.cjs`). Closing the terminal also asks an app running in its foreground to quit, and it does; one started in the background (`& disown`), or one whose pipe reader exited, carries on until it is quit. On Linux the packaged launcher (`ani-gui`, `electron/lib/linux-launcher.cjs`) keeps the app off the terminal it was started from: the app reads `/dev/null`, its output reaches the terminal through the launcher, and closing the terminal, Ctrl-C or a `kill` of the launcher reaches the app as one SIGTERM. Only that one. A second Ctrl-C, or a second `kill` of the launcher, that comes more than half a second after the first ends the app by force, as a second Ctrl-C does for `docker compose up`: the launcher sends SIGKILL to the app's process group, which holds the app and the helpers it started, prints `[launcher] a second stop: ani-gui ended by force (SIGKILL); what it changed in its last moments may not be saved`, and exits with 137. The backend, in a group of its own, stops itself when the app's end of its stdin closes. The app treats a signal sent to it alone, however many times it comes, as the same quit (`electron/lib/termination-signals.cjs`, until the session's end has been announced), so short of a SIGKILL to the app's pid, or a signal to its whole process group while the app can still answer it, this is how a stuck quit is cut short from the terminal. It is the person's explicit override, and what the quit had not yet written is lost, settings changed in the last moments included, and the profile's lock is left for the next launch to take over. The signals one event delivers arrive well inside that half second (a closed terminal's SIGHUPs and SIGCONT, a session's SIGTERM and SIGHUP to every process, under a millisecond apart), and a SIGHUP never forces: closing the terminal after a Ctrl-C leaves the quit running. A logout or shutdown is a SIGTERM to the launcher too, so one that comes more than half a second into a quit started from the terminal also ends it by force. Ctrl-Z suspends the launcher alone, and the app runs on. A launcher killed outright (`kill -9`) leaves the app a SIGTERM where `setpriv` supports `--pdeathsig`. An app restarted from the splash's Restart on the `.deb` is no longer the launcher's child: it keeps relaying its output through the launcher's pipes while the terminal is open, but a closed terminal or Ctrl-C never reaches it, so it runs until it is quit. A process that holds the terminal itself, as the binary run directly (`ani-gui.bin`) or `pnpm dev`'s Electron does, ends with an abort (SIGABRT) when it exits after its terminal has closed, once it has shut down: Node puts the terminal's settings back on the way out, and on a closed terminal that step aborts. Started with all three of its stdin, stdout and stderr off the terminal (`</dev/null >log 2>&1`), it exits cleanly.
+
+The renderer runs under a content security policy ([architecture](./architecture.md#the-renderers-content-security-policy)). A refusal shows up on the terminal as a `[renderer:error] Refused to …` line, usually naming the directive. A dev window that stays blank, or a poster, stream or animation that quietly never loads, is worth checking against those lines first.
 
 A packaged build whose startup fails — the backend does not start, or the window never gets its first page — says so in an error dialog before it exits with code 1: in the app's language, with the failure's own message as the detail (the same text the `[main] startup failed:` log line carries). The dialog closes by itself after a minute. A dev launch shows no dialog; the reason is on its terminal.
 
@@ -272,9 +288,11 @@ curl -sI http://127.0.0.1:42337/healthz
 |---|---|
 | `RUST_LOG` | tracing filter |
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
-| `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
-| `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e suites do): a packaged build whose startup fails then exits at once instead of showing its error dialog |
+| `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend. The backend refuses every API request from such a tab (see the question below) |
+| `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e launch helper and the backend's integration tests always do): a packaged build whose startup fails then exits at once instead of showing its error dialog, and the backend never fetches the live remote flags file, taking its flags from `ANI_GUI_TEST_FLAGS_FILE` or the defaults ([Remote flags](#remote-flags)) |
+| `ANI_GUI_TEST_FLAGS_FILE` | only with `ANI_GUI_UNATTENDED=1`: a flags file, in the remote file's format, that the test run's flags come from. A `true` in it counts only when a `.minisig` beside it verifies under the build's keys, as for the live file, or, in a backend built with the `test-run-key` feature, under the fixture test-run key ([Remote flags](#remote-flags)). Ignored on any other launch |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
+| `ANI_GUI_TEST_PROFILE_ROOT` | the backend's test harness only, never set by the app or by hand: roots the backend's whole profile (config, cache, state, logs, default downloads) under one folder on every platform, ahead of everything else here. The backend's integration tests set it ([Testing](testing.md#running-tests-locally)) |
 
 **Dev data isolation.** Any source-built backend (`cargo run`, the
 standalone browser-dev flow above, the Electron dev launcher) is a debug
@@ -293,6 +311,361 @@ dev launcher's `ELECTRON_DEV=1` or `ANI_GUI_DEV` is set, so `pnpm dev`
 runs beside an installed copy. A bare `electron .` with neither set uses
 the installed app's shell profile, and hands over to it if it is running.
 
+## Remote flags
+
+The maintainer can switch a declared flag without a release by editing
+`flags.json` on the repository's `flags` branch (and, to turn a feature
+on, signing it). What a flag may do, and which values need the file
+signed, is in
+[`architecture.md`](./architecture.md#remote-flags). Only a flag
+declared in `backend/src/flags/mod.rs` (`DECLARED`) has any effect. A
+build ignores names it does not declare and values its declaration
+does not list.
+
+**Creating the branch (once).** The branch holds `flags.json` and,
+once the file is signed, its signature `flags.json.minisig` and a
+`.gitattributes` that keeps both byte for byte (see
+[Signing the flags file](#signing-the-flags-file) below). It is not the
+default branch, so the `master` ruleset does not cover it. These
+commands create it in a separate worktree next to the checkout. Run
+them in bash from the repository root:
+
+```sh
+git worktree add --detach ../ani-gui-flags
+cd ../ani-gui-flags
+git switch --orphan flags
+printf '{ "flags": {} }\n' > flags.json
+git add flags.json
+git commit -m "chore: start the remote flags file"
+git push -u origin flags
+```
+
+On another checkout, once the branch exists, make the same worktree
+from the repository root (the same two commands in bash and
+PowerShell):
+
+```sh
+git fetch origin flags
+git worktree add ../ani-gui-flags flags
+```
+
+Until the branch exists, every launch gets a 404 and uses the
+defaults, which is also what an empty `flags` object does, and each
+session retries the file after 3, 10 and 30 minutes and then hourly.
+Create the branch before the first release that carries this.
+
+**The format.** One JSON object with a `flags` object inside, each flag
+`true` or `false`. Flags are default OFF, and any read failure means
+OFF: a flag the file does not mention, or one it gives any other value,
+is off. `true` turns a flag's feature on, and counts only in a signed
+file (see [Signing the flags file](#signing-the-flags-file)); `false`
+counts in any file. A release declares no flag yet, so the file
+changes nothing (only a test-run build declares one, the probe the
+end-to-end suite drives):
+
+```json
+{
+  "flags": {
+    "some_feature": true
+  }
+}
+```
+
+An unsigned file, or one whose signature is stale, keeps every `false`
+and loses every `true`, so each feature it would turn on stays off on
+every install.
+
+**Changing a flag.** Edit `flags.json` in the worktree above, not in
+GitHub's web editor, and publish it. Once `flags.json.minisig` is on
+the branch, publish every edit with step 3 of
+[Signing the flags file](#signing-the-flags-file): the signature covers
+the whole file, and an edit pushed without a fresh one turns off every
+feature the file turns on (step 3 says how long). Until then the file
+is published unsigned, and a `true` in it changes nothing. In bash:
+
+```sh
+cd ../ani-gui-flags &&
+  git pull &&
+  python3 -m json.tool flags.json &&
+  git commit -am "chore: turn some_feature off" &&
+  git push
+```
+
+In PowerShell (on `py -3`, see step 3):
+
+```powershell
+& {
+  Set-Location -ErrorAction Stop ..\ani-gui-flags
+  git pull
+  if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }
+  py -3 -m json.tool flags.json
+  if ($LASTEXITCODE -ne 0) { throw 'flags.json is not valid JSON' }
+  git commit -am "chore: turn some_feature off"
+  if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+  git push
+  if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
+}
+```
+
+Each command runs only if the one before it succeeded, so a file that
+is not JSON is never committed or pushed.
+
+`python3 -m json.tool` checks only that the file is JSON. Two other
+mistakes get past it and fail differently:
+
+- **The wrong shape** (no `flags` object at the top, for example) is
+  treated like malformed JSON. Each launch counts it as a failed fetch
+  and keeps the copy it cached, so the change does not apply, and the
+  values that copy holds stay in force for up to seven days.
+- **A wrong name or value** (a misspelt flag, `"true"` as a string, a
+  value the declaration does not allow) puts that flag back at its
+  default, off.
+
+So after pushing, wait out the five-minute CDN cache, launch the app,
+and confirm the values with `GET /api/flags` (below), from the
+DevTools console of an Electron dev run (`pnpm dev` in `electron/`
+opens one), since the API answers only requests carrying the
+launch's secret.
+
+**Turning a feature off again.** Set its flag to `false`, or remove its
+entry, and publish the file as above. Any file may do that, signed or
+not. Removing the whole file, or the branch, also works in the end. But
+installs then get a 404, which counts as a failed fetch, so each one
+keeps the copy it cached for up to seven days.
+
+**How long until installs see it.** `raw.githubusercontent.com` serves
+the file with `Cache-Control: max-age=300`, so the CDN can return the
+old copy for up to five minutes after a push. After that, each install
+picks up the change the next time it launches, when the file arrives
+within that launch's two-second cap. A launch on a slow connection that
+misses the cap keeps fetching in the background and caches the file,
+so it applies from the launch after. Worst case: one launch delay;
+never stuck unless the file can't be downloaded at all during an entire
+session. An app already running keeps the flags it decided at launch
+until it is restarted. An install that cannot reach GitHub at all keeps
+its cached copy for up to seven days, then uses the defaults.
+
+To see what a running backend decided, read
+`GET <api base>/api/flags` from the DevTools console of an Electron
+dev run (`pnpm dev` in `electron/` opens one), which has the launch's
+secret the API asks for:
+
+```js
+fetch(`${aniGui.apiBase}/api/flags`, {
+  headers: { "x-ani-gui-internal-secret": aniGui.internalSecret },
+}).then((r) => r.json());
+```
+
+It returns every declared flag's value and
+where they came from (`origin`: `file`, `cache` or `defaults`, or
+`test` in a test run). The
+backend logs the decision at `info` as `remote flags settled`, with the
+same origin, and each fetch that gets a valid flags file logs the
+signature's verdict as `flags file signature checked` (`Verified`,
+`Unsigned` or `Invalid`). The app's window gets the same values from
+the preload, as `window.aniGui.flags`.
+
+**Development and test runs.** `pnpm dev` is a normal launch: it reads
+the live file, so a flag flipped on the branch reaches a dev run too.
+Test runs never do. The end-to-end launch helper and the backend's
+integration tests set `ANI_GUI_UNATTENDED=1`, and their flags come from
+`ANI_GUI_TEST_FLAGS_FILE` or the defaults (see the table of
+environment variables above). That file is admitted like the live one,
+so it turns a feature on only with a `.minisig` beside it that verifies
+under the build's keys.
+
+A backend built with the `test-run-key` cargo feature also accepts a
+test run's `.minisig` made with the fixture test-run key, so a backend
+test (unit or integration) and the end-to-end suite can turn a feature
+on. It also declares `test_run_probe`, a flag that gates nothing, so
+the suite can drive the mechanism in each state whether or not a real
+flag is declared. That key's secret is public: it is derived from a
+fixed seed in `backend/tests/fixtures/flags-signature/make.py` (the
+suite's own signer, `electron/e2e/flags-file.ts`, derives it the same
+way and is checked against those fixtures), and the fixtures' README
+says which files it signs. The live file is never trusted under it, in
+any build. `cargo test --all-features` (CI and the pre-push hook)
+builds the backend's tests with the feature, and the coverage run
+without it, so its tests run both ways. A `cargo test --all-features`
+run also leaves a debug `ani-gui-backend` built with the feature in the
+target directory; it trusts the key only in a test run
+(`ANI_GUI_UNATTENDED=1`), and nothing is packaged from there.
+
+The end-to-end suite runs a package of its own, `pnpm run
+package:e2e`. It is the release's Linux package except for two
+things, which keep it apart from a release (inside, its name, id and
+version are the release's): its backend is built by
+`build:backend:e2e` with the feature, into `backend/target-e2e/`,
+which no release configuration reads; and it is an unpacked tree only,
+in `electron/dist-e2e/`, with no AppImage or `.deb`
+(`electron/lib/e2e-package.cjs`). No release script enables the
+feature, reaches that build or packages with that configuration, which
+`tests/arch/test_run_key.sh` checks for both platforms' scripts. In
+CI the e2e workflow builds the release-shaped package (`pnpm run
+dist`) in a parallel job and checks that its backend holds neither the
+key nor the probe, and checks that the e2e package's backend does hold
+the key, so the search is one that can find it. Another parallel job,
+on Windows, builds the backend with the script a Windows release runs
+(`pnpm run build:backend`) and makes the same key and probe search on
+it, and checks that it names no VC++ runtime DLL. The Packages
+workflow (`.github/workflows/packages.yml`), which builds the release
+files, makes the same key and probe search on the backend of each
+package it builds: the Windows installer's and the AppImage and
+`.deb`'s. `tests/arch/test_run_key.sh` holds that all four searches
+exist.
+
+**Declaring a flag** (for the change that adds one). Declare it as a
+`pub const FlagDecl` of kind `FlagKind::Rollout`, list it in
+`DECLARED`, read it through that constant, and register a test case for
+both its values, off and on, in `flags::matrix::CASES`. A test fails
+until both have one. Then add `electron/e2e/flags/<name>.spec.ts`, which
+launches the packaged app with the flag off (no file, and an unsigned
+file turning it on) and on (a file signed by the test-run key, written
+with `writeFlagsFile`), and asserts what the person sees in each state;
+`flags/test_run_probe.spec.ts` is the pattern. A backend test fails
+while a declared flag has no such spec.
+
+## Signing the flags file
+
+A flag's `true` turns its feature on, and is used only when `flags.json`
+is signed with minisign and the signature verifies against a public key
+the build trusts (`backend/src/flags/signature.rs`, `TRUSTED_KEYS`).
+Each launch fetches `flags.json.minisig` from beside `flags.json` on the
+`flags` branch. An unsigned file, a signature that does not verify, or a
+build that trusts no key keeps the file's `false` values and drops every
+`true`. The shipped build trusts no key yet: the maintainer generates
+the key, and its public half goes into a release, before any flag is
+turned on remotely.
+
+The private key never goes into this repository, a pull request, CI or
+any shared drive. Keep it, and its password, offline with the
+maintainer. Anyone holding it can turn on, on every install, any
+feature a build declares as a flag.
+
+These steps need [minisign](https://jedisct1.github.io/minisign/)
+0.11 or later. Each step is given for bash on Linux and for
+PowerShell 7.1 or later on Windows.
+
+**0. Keep the file's bytes as they are pushed (once).** The signature
+covers the exact bytes, and the `flags` branch does not carry the main
+branch's `.gitattributes`. A checkout that converts line endings (Git
+for Windows with `core.autocrlf=true`) would sign bytes that are not the
+ones GitHub serves. In the branch's worktree:
+
+```sh
+printf 'flags.json -text\n*.minisig -text\n' > .gitattributes
+git add .gitattributes
+git commit -m "chore: keep the flags file's bytes as signed"
+git push
+```
+
+```powershell
+Set-Content -NoNewline -Path .gitattributes -Value "flags.json -text`n*.minisig -text`n"
+git add .gitattributes
+git commit -m "chore: keep the flags file's bytes as signed"
+git push
+```
+
+**1. Make the key pair (once per key).**
+
+```sh
+mkdir -p ~/.minisign
+minisign -G -p ~/.minisign/ani-gui-flags.pub -s ~/.minisign/ani-gui-flags.key
+```
+
+```powershell
+New-Item -ItemType Directory -Force "$HOME\.minisign" | Out-Null
+minisign -G -p "$HOME\.minisign\ani-gui-flags.pub" -s "$HOME\.minisign\ani-gui-flags.key"
+```
+
+minisign asks for a password for the secret key. `ani-gui-flags.pub`
+holds two lines; the second is the public key, a base64 string starting
+`RW`.
+
+**2. Trust the key in a release.** Add that second line to
+`TRUSTED_KEYS` in `backend/src/flags/signature.rs`, one line:
+
+```rust
+pub const TRUSTED_KEYS: &[&str] = &["RW…the second line of ani-gui-flags.pub…"];
+```
+
+Then change what pins the shipped build as trusting no key: the test
+`the_shipped_build_trusts_no_key_until_the_maintainer_adds_one` in
+`signature_test.rs`, to pin the list you added, and the sentence in
+`docs/PRIVACY.md` saying this version trusts no signing key. Sentences
+that describe the shipped build as trusting no key also go stale: the
+first paragraph of this section, the `TRUSTED_KEYS` comment in
+`signature.rs`, and the end of "What a signature adds" in
+[`architecture.md`](./architecture.md#remote-flags). Ship the
+release. Installs on older releases ignore the signature and turn
+nothing on; that is the safe direction.
+
+**3. Sign and publish.** After every edit of `flags.json`, sign the
+exact bytes you push, then commit the file and its signature together:
+
+```sh
+cd ../ani-gui-flags &&
+  git pull &&
+  python3 -m json.tool flags.json &&
+  minisign -S -s ~/.minisign/ani-gui-flags.key -m flags.json \
+    -t "flags.json $(date -u +%Y-%m-%dT%H:%M:%SZ)" &&
+  minisign -V -p ~/.minisign/ani-gui-flags.pub -m flags.json &&
+  git add flags.json flags.json.minisig &&
+  git commit -m "chore: say what changed" &&
+  git push
+```
+
+`-S` writes `flags.json.minisig` beside the file with minisign's default
+prehashed signature, the only kind the app accepts; `-V` checks it
+before it is pushed. Each command runs only if the one before it
+succeeded, so a file that is not JSON, or a signature that does not
+verify, is never committed or pushed. Put what changed in the commit
+message. In PowerShell (Windows' `python3` may be the Store's
+placeholder, so the check uses `py -3`; PowerShell's own
+`ConvertFrom-Json` accepts comments the app does not, so it is no
+substitute):
+
+```powershell
+& {
+  Set-Location -ErrorAction Stop ..\ani-gui-flags
+  git pull
+  if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }
+  py -3 -m json.tool flags.json
+  if ($LASTEXITCODE -ne 0) { throw 'flags.json is not valid JSON' }
+  minisign -S -s "$HOME\.minisign\ani-gui-flags.key" -m flags.json -t "flags.json $(Get-Date -AsUTC -UFormat '%Y-%m-%dT%H:%M:%SZ')"
+  if ($LASTEXITCODE -ne 0) { throw 'signing failed' }
+  minisign -V -p "$HOME\.minisign\ani-gui-flags.pub" -m flags.json
+  if ($LASTEXITCODE -ne 0) { throw 'the signature does not verify' }
+  git add flags.json flags.json.minisig
+  if ($LASTEXITCODE -ne 0) { throw 'git add failed' }
+  git commit -m "chore: say what changed"
+  if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+  git push
+  if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
+}
+```
+
+After pushing, wait out the CDN's five-minute cache: until both files
+are fresh it can serve the new file with the old signature, and a
+launch in that window keeps the `false` values and turns nothing on. An
+edit pushed without a fresh signature leaves the old signature beside
+new bytes: installs keep the `false` values and turn nothing on until a
+matching signature is pushed. GitHub's web editor cannot sign, so make
+every edit in the worktree; an edit already made there needs this step
+at once.
+
+**4. Rotating the key.** Make the new pair (step 1), add its public key
+to `TRUSTED_KEYS` beside the old one, and ship that release. Once it is
+out, sign with the new key only. A release later, remove the old key
+from the list. If a secret key is lost or leaked, delete
+`flags.json.minisig` from the branch at once, and ship a release that
+removes that key. An install turns off every feature the file turned on
+once a launch has downloaded the unsigned file: on that launch if the
+file arrives within its two-second wait, otherwise on the next (a
+deleted signature answers 404 at once, so it adds no wait). One that
+cannot reach the file keeps its cached copy, and what it turned on, for
+up to seven days.
+
 ## Code style
 
 - **Rust**: `cargo fmt` (settings in `rustfmt.toml`); `cargo clippy -D warnings` enforced by CI.
@@ -307,5 +680,5 @@ The GUI plays inside the window using hls.js + a local stream proxy. `mpv` is on
 **Where does the GUI keep watch history?**
 In its own state directory, as `history` — the CLI keeps its own file separately. The two used to share one, but the provider switch re-keyed both sides onto different show ids, so a shared file no longer carried anything either could read.
 
-**Why does the dev server work in a browser tab too?**
-By design — opening `http://localhost:5173` in any browser shows the same UI the Electron renderer loads. Useful for fast iteration. Production builds always run inside Electron because the streaming proxy + native window matter for the shipped product; standalone-browser dev only works against a separately-running backend (set `VITE_ANI_GUI_API_BASE` to its loopback URL).
+**Does the dev server work in a plain browser tab?**
+Opening `http://localhost:5173` in any browser loads the same UI the Electron renderer loads, but it no longer reaches the backend. The backend answers its API only to requests carrying the secret it prints at startup ([Who the backend answers](architecture.md#who-the-backend-answers)), which the Electron preload hands the renderer; a plain browser tab has no preload, so every API request it makes, even with `VITE_ANI_GUI_API_BASE` pointing at a running backend, is refused with `403`. Iterate under Electron (`pnpm dev` in `electron/`) instead. It would also run under only the half of the content security policy the bundle carries; the half that names the backend's lanes comes from the Electron shell.

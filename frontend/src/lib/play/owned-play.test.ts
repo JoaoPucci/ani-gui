@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { altTitlesFromKitsu, type KitsuAnimeRef } from '$lib/api';
+import { altTitlesFromKitsu } from '$lib/api';
 import {
 	claimPlay,
 	playArgsFor,
+	playedRecord,
 	playMode,
-	playQuality,
 	recordPlayed,
 	runOwnedPlay
 } from './owned-play';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 /** A route's visit counter, as the pages keep it: it advances on every
  *  change of the show id, including a round trip back. */
 function routeVisits() {
@@ -197,7 +198,7 @@ describe('a play whose page was destroyed', () => {
 });
 
 describe('playArgsFor', () => {
-	const show = {
+	const show = kitsuRefAnswer({
 		id: '42',
 		canonical_title: 'Show',
 		episode_count: 12,
@@ -205,14 +206,13 @@ describe('playArgsFor', () => {
 		start_date: '2019-04-01',
 		titles: { en: 'Show EN' },
 		abbreviated_titles: []
-	} as unknown as KitsuAnimeRef;
+	});
 
 	it('builds the play request from the show as it was at the click', () => {
 		const args = playArgsFor({
 			title: 'Show',
 			episode: 5,
 			mode: 'dub',
-			quality: '1080',
 			show,
 			kitsuId: '42'
 		});
@@ -220,7 +220,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: '5',
 			mode: 'dub',
-			quality: '1080',
 			episode_count: 12,
 			year: 2019,
 			subtype: 'TV',
@@ -228,6 +227,8 @@ describe('playArgsFor', () => {
 		});
 		expect(args.alt_titles).toEqual(altTitlesFromKitsu(show));
 		expect(args.alt_titles).toContain('Show EN');
+		// No quality: the backend resolves the master for every play.
+		expect('quality' in args).toBe(false);
 	});
 
 	it('carries no Kitsu id when the play records none', () => {
@@ -235,7 +236,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 5,
 			mode: 'sub',
-			quality: 'best',
 			show,
 			kitsuId: undefined
 		});
@@ -247,7 +247,6 @@ describe('playArgsFor', () => {
 			title: 'Show',
 			episode: 1,
 			mode: 'sub' as const,
-			quality: 'best',
 			show,
 			kitsuId: '42'
 		};
@@ -255,16 +254,99 @@ describe('playArgsFor', () => {
 		expect('version' in playArgsFor(base)).toBe(false);
 	});
 
+	it("names the show's remembered captions choice, and none when none is", () => {
+		const base = {
+			title: 'Show',
+			episode: 1,
+			mode: 'sub' as const,
+			show,
+			kitsuId: '42'
+		};
+		expect(playArgsFor({ ...base, caption: 'es-419' }).caption).toBe('es-419');
+		expect('caption' in playArgsFor(base)).toBe(false);
+	});
+
 	it('takes a missing show as no metadata', () => {
 		const args = playArgsFor({
 			title: 'Show',
 			episode: 1,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: '42'
 		});
 		expect(args).toMatchObject({ episode_count: null, year: null, subtype: null });
+	});
+});
+
+describe("playArgsFor — a guessed card's row", () => {
+	const base = {
+		title: 'Show',
+		episode: 3,
+		mode: 'sub' as const,
+		show: null,
+		kitsuId: undefined
+	};
+
+	it("names the guessed card's row when given, and only then", () => {
+		expect(playArgsFor({ ...base, guessRow: 'hianime:show-1' }).guess_row).toBe('hianime:show-1');
+		expect('guess_row' in playArgsFor(base)).toBe(false);
+	});
+
+	it("names the card's row of a session no guess opened when given, and only then", () => {
+		expect(playArgsFor({ ...base, cardRow: 'hianime:show-1' }).card_row).toBe('hianime:show-1');
+		expect('card_row' in playArgsFor(base)).toBe(false);
+	});
+
+	it("names the guessed card's guess when given, and only then", () => {
+		const args = playArgsFor({ ...base, guessId: '42', guessRow: 'hianime:show-1' });
+		expect(args.guess_id).toBe('42');
+		expect('kitsu_id' in args).toBe(false);
+		expect('guess_id' in playArgsFor(base)).toBe(false);
+	});
+});
+
+describe('playedRecord', () => {
+	const args = { title: 'Show', episode: '5', mode: 'sub' } as const;
+
+	it('records and mirrors a play no guess opened under the show', () => {
+		expect(playedRecord(args, '42', false, {})).toEqual({
+			args: { ...args, kitsu_id: '42' },
+			mirror: true
+		});
+	});
+
+	it("neither records nor mirrors a card's play the backend kept off its line", () => {
+		// A player mounted again after "Keep watching this" plays the old
+		// show before it read the pick back: the line names another show.
+		expect(playedRecord(args, '42', false, { line_kept: true })).toEqual({
+			args,
+			mirror: false
+		});
+		// The session's own args name the page's show: that id goes too.
+		expect(playedRecord({ ...args, kitsu_id: '42' }, '42', false, { line_kept: true })).toEqual({
+			args,
+			mirror: false
+		});
+	});
+
+	it("records and mirrors a guess's play that landed on the card's own listing", () => {
+		expect(playedRecord(args, '42', true, { own_listing: true })).toEqual({
+			args: { ...args, kitsu_id: '42' },
+			mirror: true
+		});
+	});
+
+	it("records no id and mirrors nothing for a guess's play that landed elsewhere", () => {
+		const guessed = { ...args, guess_row: 'hianime:show-1' };
+		expect(playedRecord(guessed, '42', true, { own_listing: false })).toEqual({
+			args: guessed,
+			mirror: false
+		});
+		expect(playedRecord(guessed, '42', true, {})).toEqual({ args: guessed, mirror: false });
+	});
+
+	it('records no id for an empty one', () => {
+		expect(playedRecord(args, '', false, {})).toEqual({ args, mirror: true });
 	});
 });
 
@@ -274,7 +356,6 @@ describe('playArgsFor — warms', () => {
 			title: 'Show',
 			episode: 3,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: '42',
 			prefetch: true
@@ -287,7 +368,6 @@ describe('playArgsFor — warms', () => {
 			title: 'Show',
 			episode: 3,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: '42'
 		});
@@ -295,20 +375,18 @@ describe('playArgsFor — warms', () => {
 	});
 });
 
-describe('playMode / playQuality', () => {
-	it('reads anything but dub as sub, and a missing quality as best', () => {
+describe('playMode', () => {
+	it('reads anything but dub as sub', () => {
 		expect(playMode({ mode: 'dub' })).toBe('dub');
 		expect(playMode({ mode: 'sub' })).toBe('sub');
 		expect(playMode({ mode: 'weird' })).toBe('sub');
 		expect(playMode(null)).toBe('sub');
-		expect(playQuality({ quality: '720' })).toBe('720');
-		expect(playQuality(null)).toBe('best');
 	});
 });
 
 describe('recordPlayed', () => {
-	const show = { episode_count: 12, status: 'finished' } as unknown as KitsuAnimeRef;
-	const args = { title: 'Show', episode: '5', mode: 'sub', quality: 'best' } as const;
+	const show = kitsuRefAnswer({ episode_count: 12, status: 'finished' });
+	const args = { title: 'Show', episode: '5', mode: 'sub' } as const;
 
 	it('stamps the watch and mirrors it to the trackers for the clicked show', async () => {
 		const markWatched = vi.fn(async () => {});

@@ -1,0 +1,413 @@
+{
+ "data": [
+  {
+   "id": "10879",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super",
+    "titles": {
+     "en": "Dragon Ball Super",
+     "en_jp": "Dragon Ball Super",
+     "en_us": "Dragon Ball Super",
+     "ja_jp": "ドラゴンボール超（スーパー）"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Chou",
+     "DB Super",
+     "DBS"
+    ],
+    "slug": "dragon-ball-super",
+    "startDate": "2015-07-05",
+    "endDate": "2018-03-25",
+    "episodeCount": 131,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41046",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super: Broly",
+    "titles": {
+     "en": "Dragon Ball Super: Broly",
+     "en_jp": "Dragon Ball Super: Broly",
+     "ja_jp": "ドラゴンボール超 ブロリー"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dragon-ball-super-broly",
+    "startDate": "2018-12-14",
+    "endDate": "2018-12-14",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41319",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Super Dragon Ball Heroes",
+    "titles": {
+     "en_jp": "Super Dragon Ball Heroes",
+     "ja_jp": "ドラゴンボールヒーローズ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "super-dragon-ball-heroes",
+    "startDate": "2018-07-01",
+    "endDate": "2024-08-08",
+    "episodeCount": 56,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "5997",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball: Super Saiya-jin Zetsumetsu Keikaku",
+    "titles": {
+     "en": "Dragon Ball Z: Plan to Eradicate the Super Saiyans",
+     "en_jp": "Dragon Ball: Super Saiya-jin Zetsumetsu Keikaku",
+     "ja_jp": "ドラゴンボール　超サイヤ人絶滅計画"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: Plan to Eradicate Super Saiyans OVA Remake"
+    ],
+    "slug": "dragon-ball-super-saiya-jin-zetsumetsu-keikaku",
+    "startDate": "2010-11-11",
+    "endDate": "2010-11-11",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "800",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 07: Kyokugen Battle!! Sandai Super Saiyajin",
+    "titles": {
+     "en": "Dragon Ball Z Movie 07: Super Android 13",
+     "en_jp": "Dragon Ball Z Movie 07: Kyokugen Battle!! Sandai Super Saiyajin",
+     "ja_jp": "ドラゴンボールＺ 極限バトル！三大超サイヤ人"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: Utmost Limits of Battle!! The Three Super Saiyajin",
+     "Dragon Ball Z: Super Battle of Three Super Saiyas"
+    ],
+    "slug": "dragon-ball-z-movie-07-kyokugen-battle-sandai-super-saiyajin",
+    "startDate": "1992-07-11",
+    "endDate": "1992-07-11",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "802",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 09: Ginga Girigiri!! Bucchigiri no Sugoi Yatsu",
+    "titles": {
+     "en": "Dragon Ball Z Movie 09: Bojack Unbound",
+     "en_jp": "Dragon Ball Z Movie 09: Ginga Girigiri!! Bucchigiri no Sugoi Yatsu",
+     "ja_jp": "ドラゴンボールZ 銀河ギリギリ!! ぶっちぎりの凄い奴"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: Super Guy in the Galaxy",
+     "Dragon Ball Z: The Galaxy is in Danger!! The Super Awesome Guy"
+    ],
+    "slug": "dragon-ball-z-movie-09-ginga-girigiri-bucchigiri-no-sugoi-yatsu",
+    "startDate": "1993-07-10",
+    "endDate": "1993-07-10",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44544",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super: Super Hero",
+    "titles": {
+     "en": "Dragon Ball Super: SUPER HERO",
+     "en_jp": "Dragon Ball Super: Super Hero",
+     "ja_jp": "ドラゴンボール超：スーパーヒーロー"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dragon-ball-super-super-hero",
+    "startDate": "2022-06-11",
+    "endDate": "2022-06-11",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42256",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super: Broly - Skytree Super",
+    "titles": {
+     "en_jp": "Dragon Ball Super: Broly - Skytree Super",
+     "ja_jp": "ドラゴンボール 超 スーパー ブロリー 超天空塔"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dragon-ball-super-broly-skytree-super",
+    "startDate": "2018-11-01",
+    "endDate": "2018-11-01",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "40582",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Turning Mecard",
+    "titles": {
+     "en": "Turning Mecard",
+     "en_jp": "Turning Mecard",
+     "ko_kr": "터닝메카드"
+    },
+    "abbreviatedTitles": [],
+    "slug": "turning-mecard",
+    "startDate": "2015-02-03",
+    "endDate": "2016-02-05",
+    "episodeCount": 52,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50497",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super: Beerus",
+    "titles": {
+     "en": "Dragon Ball Super: Beerus",
+     "en_jp": "Dragon Ball Super: Beerus",
+     "ja_jp": "ドラゴンボール超 ビルス"
+    },
+    "abbreviatedTitles": [
+     "DBS Beerus"
+    ],
+    "slug": "dragon-ball-super-beerus",
+    "startDate": "2026-10-11",
+    "endDate": "2027-02-14",
+    "episodeCount": 19,
+    "subtype": "TV",
+    "status": "current"
+   }
+  },
+  {
+   "id": "44794",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super - Annecy Festival 60th Anniversary",
+    "titles": {
+     "en": "Dragon Ball Super - Annecy Festival 60th Anniversary"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dragon-ball-super-annecy-festival-60th-anniversary",
+    "startDate": "2021-06-19",
+    "endDate": "2021-06-19",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50496",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super: Ginga Patrol",
+    "titles": {
+     "en": "Dragon Ball Super: The Galactic Patrol",
+     "en_jp": "Dragon Ball Super: Ginga Patrol",
+     "ja_jp": "ドラゴンボール超 銀河パトロール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dragon-ball-super-ginga-patrol",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "803",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 10: Kiken na Futari! Super Senshi wa Nemurenai",
+    "titles": {
+     "en": "Dragon Ball Z Movie 10: Broly - Second Coming",
+     "en_jp": "Dragon Ball Z Movie 10: Kiken na Futari! Super Senshi wa Nemurenai",
+     "ja_jp": "ドラゴンボールZ 危険なふたり! 超戦士はねむれない"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: Dangerous Rivals",
+     "Dragon Ball Z: Dangerous Partners! Super Warriors Never Rest",
+     "Dragon Ball Z: Kiken na Futari! Super Senshi wa Nemurenai"
+    ],
+    "slug": "dragon-ball-z-movie-10-kiken-na-futari-super-senshi-wa-nemurenai",
+    "startDate": "1994-03-12",
+    "endDate": "1994-03-12",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "797",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 04: Super Saiyajin da Son Gokuu",
+    "titles": {
+     "en": "Dragon Ball Z Movie 04: Lord Slug",
+     "en_jp": "Dragon Ball Z Movie 04: Super Saiyajin da Son Gokuu",
+     "ja_jp": "ドラゴンボールＺ 超サイヤ人だ孫悟空"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z Movie 04: Super Saiyajin da Son Gokuu"
+    ],
+    "slug": "dragon-ball-z-movie-04-super-saiyajin-da-son-goku",
+    "startDate": "1991-03-19",
+    "endDate": "1991-03-19",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "804",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 11: Super Senshi Gekiha!! Katsu no wa Ore da",
+    "titles": {
+     "en": "Dragon Ball Z Movie 11: Bio-Broly",
+     "en_jp": "Dragon Ball Z Movie 11: Super Senshi Gekiha!! Katsu no wa Ore da",
+     "ja_jp": "ドラゴンボールＺ 超戦士撃破!!勝のはオレだ"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: Attack Super Warrior",
+     "Dragon Ball Z: Crushing Super Warrior!! I Am the Winner",
+     "Super Fighter Shootout!! I'm the One Who Will Win"
+    ],
+    "slug": "dragon-ball-z-movie-11-super-senshi-gekiha-katsu-no-wa-ore-da",
+    "startDate": "1994-07-09",
+    "endDate": "1994-07-09",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7884",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dream 9 Toriko & One Piece & Dragon Ball Z Super Collaboration Special",
+    "titles": {
+     "en": "Dream 9 Toriko & One Piece & Dragon Ball Z Super Collaboration Special",
+     "en_jp": "Dream 9 Toriko & One Piece & Dragon Ball Z Chou Collaboration Special!!",
+     "ja_jp": "ドリーム9 トリコ&ワンピース&ドラゴンボールZ 超コラボスペシャル!!"
+    },
+    "abbreviatedTitles": [
+     "Dream 9 Toriko & One Piece & Dragon Ball Z Chō Collaboration Special!!"
+    ],
+    "slug": "dream-9-toriko-one-piece-dragon-ball-z-super-collaboration-special",
+    "startDate": "2013-04-07",
+    "endDate": "2013-04-07",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7176",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 14: Kami to Kami",
+    "titles": {
+     "en": "Dragon Ball Z: Battle of Gods",
+     "en_jp": "Dragon Ball Z Movie 14: Kami to Kami",
+     "en_us": "Dragon Ball Z: Battle of Gods",
+     "ja_jp": "ドラゴンボールZ: 神と神"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z 2013",
+     "DBZ (2013)",
+     "Saikyou Shidou"
+    ],
+    "slug": "dragon-ball-z-movie-14-kami-to-kami",
+    "startDate": "2013-03-30",
+    "endDate": "2013-03-30",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "801",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 08: Moetsukiro!! Nessen, Ressen, Chougekisen",
+    "titles": {
+     "en": "Dragon Ball Z Movie 08: Broly - The Legendary Super Saiyan",
+     "en_jp": "Dragon Ball Z Movie 08: Moetsukiro!! Nessen, Ressen, Chougekisen",
+     "ja_jp": "DRAGON BALL Z 燃えつきろ!! 熱戦・烈戦・超激戦"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z: The Burning Battles"
+    ],
+    "slug": "dragon-ball-z-movie-08-moetsukiro-nessen-ressen-chou-gekisen",
+    "startDate": "1993-03-06",
+    "endDate": "1993-03-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8833",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Galo Sengen",
+    "titles": {
+     "en_jp": "Galo Sengen",
+     "ja_jp": "GAL男宣言"
+    },
+    "abbreviatedTitles": [],
+    "slug": "galo-sengen",
+    "startDate": "2011-01-09",
+    "endDate": "2011-01-09",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44661",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai",
+    "titles": {
+     "en": "Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai",
+     "en_jp": "Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai",
+     "ja_jp": "ドラゴンボールZ ザ・リアル4-D at 超天下一武道会"
+    },
+    "abbreviatedTitles": [],
+    "slug": "dragon-ball-z-the-real-4-d-at-super-tenkaichi-budokai",
+    "startDate": "2017-06-30",
+    "endDate": "2017-06-30",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

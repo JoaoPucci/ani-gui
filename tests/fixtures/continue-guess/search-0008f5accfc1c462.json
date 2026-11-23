@@ -1,0 +1,126 @@
+{
+ "data": [
+  {
+   "id": "44973",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "BLUE LOCK",
+    "titles": {
+     "en": "BLUE LOCK",
+     "en_jp": "Blue Lock",
+     "ja_jp": "ブルーロック"
+    },
+    "abbreviatedTitles": [],
+    "slug": "blue-lock",
+    "startDate": "2022-10-08",
+    "endDate": "2023-03-25",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47245",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Blue Lock VS. U-20 JAPAN",
+    "titles": {
+     "en": "BLUE LOCK Season 2",
+     "en_jp": "Blue Lock VS. U-20 JAPAN",
+     "ja_jp": "ブルーロック VS. U-20 JAPAN"
+    },
+    "abbreviatedTitles": [
+     "ブルーロック第2期",
+     "Blue Lock 2nd Season"
+    ],
+    "slug": "Blue-Lock-VS-U20-JAPAN",
+    "startDate": "2024-10-05",
+    "endDate": "2024-12-29",
+    "episodeCount": 14,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47244",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Blue Lock: EPISODE Nagi",
+    "titles": {
+     "en": "Blue Lock the Movie -Episode Nagi-",
+     "en_jp": "Blue Lock: EPISODE Nagi",
+     "ja_jp": "ブルーロック-EPISODE 凪-"
+    },
+    "abbreviatedTitles": [
+     "BLUELOCK: EPISODE Nagi",
+     "劇場版 ブルーロック",
+     "BLUE LOCK THE MOVIE -EPISODE NAGI-",
+     "Blue Lock Movie"
+    ],
+    "slug": "blue-lock-episode-nagi",
+    "startDate": "2024-04-19",
+    "endDate": "2024-04-19",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46604",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Blue Lock: Additional Time!",
+    "titles": {
+     "en_jp": "Blue Lock: Additional Time!",
+     "ja_jp": "ブルーロック あでぃしょなる・たいむ！"
+    },
+    "abbreviatedTitles": [
+     "ブルーロック ミニアニメ",
+     "Blue Lock Mini Anime"
+    ],
+    "slug": "blue-lock-additional-time",
+    "startDate": "2022-10-08",
+    "endDate": "2023-03-18",
+    "episodeCount": 23,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49314",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Blue Lock: Episode Nagi - Additional Time!",
+    "titles": {
+     "en_jp": "Blue Lock: Episode Nagi - Additional Time!",
+     "ja_jp": "ブルーロック -EPISODE 凪- あでぃしょなる・たいむ！"
+    },
+    "abbreviatedTitles": [],
+    "slug": "blue-lock-episode-nagi-additional-time",
+    "startDate": "2024-04-19",
+    "endDate": "2024-05-10",
+    "episodeCount": 4,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50211",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Blue Lock (Zoku-hen)",
+    "titles": {
+     "en_jp": "Blue Lock (Zoku-hen)",
+     "ja_jp": "ブルーロック(続編)"
+    },
+    "abbreviatedTitles": [],
+    "slug": "blue-lock-zoku-hen",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "tba"
+   }
+  }
+ ]
+}

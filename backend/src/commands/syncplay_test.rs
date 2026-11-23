@@ -8,6 +8,7 @@ fn args(stream: &str, binary: &str) -> SyncplayLaunchArgs {
         player_kind: ExternalPlayerKind::Mpv,
         player_binary: String::new(),
         subtitle_urls: Vec::new(),
+        subtitles_off: false,
     }
 }
 
@@ -126,20 +127,6 @@ fn argv_emits_player_path_for_windows_style_path() {
 }
 
 #[test]
-fn launch_args_decode_without_player_binary_for_back_compat() {
-    // Old payloads (pre-player-path) don't include the field.
-    // They must decode and default to empty-string so build_argv
-    // skips the `--player-path=` emission.
-    let json = r#"{
-        "stream_url": "https://example.com/v.mp4",
-        "binary": "syncplay"
-    }"#;
-    let a: SyncplayLaunchArgs =
-        serde_json::from_str(json).expect("decodes with default player_binary");
-    assert!(a.player_binary.is_empty());
-}
-
-#[test]
 fn argv_with_no_referer_is_just_the_url() {
     // Bare URL is the no-referer baseline. Most catalogues work
     // this way; only referer-required CDNs (fast4speed.rsvp)
@@ -178,19 +165,6 @@ fn argv_drops_empty_referer() {
     a.referer = Some(String::new());
     let v = build_argv(&a);
     assert_eq!(v, vec!["https://example.com/v.mp4".to_string()]);
-}
-
-#[test]
-fn launch_args_decode_without_referer_for_back_compat() {
-    // Old client payloads (pre-referer-forwarding) don't include
-    // the `referer` field. They must still decode and default to
-    // None.
-    let json = r#"{
-        "stream_url": "https://example.com/v.mp4",
-        "binary": "syncplay"
-    }"#;
-    let a: SyncplayLaunchArgs = serde_json::from_str(json).expect("decodes with default referer");
-    assert!(a.referer.is_none());
 }
 
 #[test]
@@ -250,21 +224,6 @@ fn argv_for_custom_emits_no_player_specific_flags() {
 }
 
 #[test]
-fn launch_args_decode_without_player_kind_defaults_to_mpv() {
-    // Old payloads (pre-player-kind threading) don't include
-    // `player_kind`. They must still decode and default to Mpv
-    // — that's the upstream Syncplay default and matches the
-    // pre-merge syncplay path's behaviour.
-    let json = r#"{
-        "stream_url": "https://example.com/v.mp4",
-        "binary": "syncplay"
-    }"#;
-    let a: SyncplayLaunchArgs =
-        serde_json::from_str(json).expect("decodes with default player_kind");
-    assert_eq!(a.player_kind, ExternalPlayerKind::Mpv);
-}
-
-#[test]
 fn open_syncplay_with_blank_binary_returns_spawn_failed() {
     // Blank binary is a misconfigured-settings case; treat it the
     // same as "binary not found" so the frontend can surface the
@@ -306,6 +265,7 @@ fn with_tracks(kind: ExternalPlayerKind, referer: Option<&str>) -> SyncplayLaunc
             "https://cdn.example/x/subs/en.vtt".into(),
             "https://cdn.example/x/subs/es.vtt".into(),
         ],
+        subtitles_off: false,
     }
 }
 
@@ -354,4 +314,109 @@ fn vlc_gets_the_first_track_and_custom_gets_none() {
         !custom.iter().any(|a| a == "--"),
         "custom forwards nothing: {custom:?}"
     );
+}
+
+/// Through Syncplay the tracks sit past the separator on Syncplay's
+/// own command line, which Windows bounds the same way.
+#[test]
+fn syncplays_track_flags_fit_on_windows_command_line() {
+    let long: Vec<String> = (0..64)
+        .map(|i| format!("https://cdn.example/{i}/{}.vtt", "a".repeat(1000)))
+        .collect();
+    let mut launch = with_tracks(ExternalPlayerKind::Mpv, Some("https://embed.example/"));
+    launch.subtitle_urls = long.clone();
+    let argv = build_argv(&launch);
+    let line: usize = std::iter::once(launch.binary.as_str())
+        .chain(argv.iter().map(String::as_str))
+        .map(|a| 2 * a.len() + 3)
+        .sum();
+    assert!(line <= 32_766, "{line}");
+    let sep = argv.iter().position(|a| a == "--").expect("separator");
+    assert_eq!(argv[sep + 1], "--referrer=https://embed.example/");
+    let subs = argv.iter().filter(|a| a.starts_with("--sub-file=")).count();
+    assert!(subs > 0 && subs < long.len(), "{subs}");
+}
+
+/// Syncplay starts the player it wraps with the forwarded flags, so a
+/// player that is a batch file runs them through `cmd.exe`, whose
+/// bound is far shorter: the flags are fitted to the shorter of the
+/// two lines.
+#[test]
+fn a_batch_player_behind_syncplay_gets_cmds_bound() {
+    let long: Vec<String> = (0..64)
+        .map(|i| format!("https://cdn.example/{i}/{}.vtt", "a".repeat(200)))
+        .collect();
+    let mut launch = with_tracks(ExternalPlayerKind::Mpv, Some("https://embed.example/"));
+    launch.player_binary = r"C:\tools\mpv.bat".into();
+    launch.subtitle_urls = long.clone();
+    let argv = build_argv(&launch);
+    let sep = argv.iter().position(|a| a == "--").expect("separator");
+    let forwarded = &argv[sep + 1..];
+    // The player's line: cmd.exe's prefix, the script's path counted at
+    // no less than 260 units, then the forwarded flags at eight units a
+    // byte, each quoted and spaced.
+    let line: usize = 32
+        + launch.player_binary.len().max(260)
+        + 3
+        + forwarded.iter().map(|a| 8 * a.len() + 3).sum::<usize>();
+    assert!(line <= 8_191, "{line}");
+    let subs = forwarded
+        .iter()
+        .filter(|a| a.starts_with("--sub-file="))
+        .count();
+    assert!(subs > 0 && subs < long.len(), "{subs}");
+}
+
+/// Through Syncplay too, a show remembered Off starts the wrapped
+/// player with subtitles off: mpv and IINA get `--sid=no` among the
+/// forwarded flags beside every track; VLC, which takes one file,
+/// gets none.
+#[test]
+fn a_show_remembered_off_starts_the_wrapped_player_with_subtitles_off() {
+    let mut mpv = with_tracks(ExternalPlayerKind::Mpv, Some("https://embed.example/"));
+    mpv.subtitles_off = true;
+    let argv = build_argv(&mpv);
+    let sep = argv.iter().position(|a| a == "--").expect("separator");
+    assert!(
+        argv[sep + 1..].contains(&"--sid=no".to_string()),
+        "{argv:?}"
+    );
+    assert!(
+        argv[sep + 1..].iter().any(|a| a.starts_with("--sub-file=")),
+        "{argv:?}"
+    );
+    let mut iina = with_tracks(ExternalPlayerKind::Iina, None);
+    iina.subtitles_off = true;
+    let argv = build_argv(&iina);
+    assert!(argv.contains(&"--mpv-sid=no".to_string()), "{argv:?}");
+    let mut vlc = with_tracks(ExternalPlayerKind::Vlc, None);
+    vlc.subtitles_off = true;
+    let argv = build_argv(&vlc);
+    assert!(!argv.iter().any(|a| a.contains("sub-file")), "{argv:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_stream_url_that_is_not_one_is_refused_and_syncplay_never_starts() {
+    // The URL is Syncplay's positional file argument, ahead of the
+    // `--` separator: a value that is not an http(s) URL would read as
+    // one of Syncplay's own options.
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().expect("tmp");
+    let ran = dir.path().join("ran");
+    let binary = dir.path().join("syncplay");
+    std::fs::write(&binary, format!("#!/bin/sh\ntouch '{}'\n", ran.display()))
+        .expect("write syncplay");
+    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let a = args(
+        "--load-playlist-from-file=/tmp/x",
+        &binary.display().to_string(),
+    );
+    let r = open_syncplay(&a);
+    assert!(
+        matches!(r, Err(AniError::ParseFailed { .. })),
+        "expected a refusal, got {r:?}"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(!ran.exists(), "Syncplay must not have been started");
 }

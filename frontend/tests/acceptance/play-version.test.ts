@@ -37,7 +37,19 @@ vi.mock('$lib/account/push-watched', () => ({
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { applyChoice } from '../../src/lib/versions/version-choice';
+import { rememberAudio } from '../../src/lib/play/audio-choice';
+import { rememberCaption } from '../../src/lib/play/caption-choice';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -95,17 +107,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
@@ -115,28 +127,37 @@ type Posted = Record<string, unknown>;
  *  of each handoff. */
 function useHandlers(posted: { external: Posted[]; syncplay: Posted[]; watched: Posted[] }) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
 			posted.watched.push((await request.json()) as Posted);
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
 		http.post(`${API_BASE}/api/play/external`, async ({ request }) => {
 			posted.external.push((await request.json()) as Posted);
 			return new HttpResponse(null, { status: 202 });
@@ -154,11 +175,13 @@ async function mountPlaying() {
 	await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
 	FakeEventSource.instances[0].dispatch(
 		'done',
-		JSON.stringify({
-			session_id: 'session-1',
-			media_url: `${API_BASE}/s/session-1/file.mp4`,
-			media_kind: 'mp4'
-		})
+		wire<CreateSessionResponse>(
+			sessionAnswer({
+				session_id: 'session-1',
+				media_url: `${API_BASE}/s/session-1/file.mp4`,
+				media_kind: 'mp4'
+			})
+		)
 	);
 	// The page carries the session in the URL and gets there by
 	// `goto`, which this tier stubs out — so the stub is moved by
@@ -238,5 +261,89 @@ describe('play route — the version remembered for the show', () => {
 		await clickMenuItem(m.play_external_label());
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect('version' in posted.external[0]).toBe(false);
+	});
+});
+
+describe("play route — the show's remembered captions choice", () => {
+	// An external player starts on the track the built-in one would:
+	// the backend orders the tracks it hands off by the choice, and
+	// starts the player with its subtitles off when the choice is Off.
+	it('names it on both hand-offs', async () => {
+		rememberCaption(KITSU_ID, 'es-419');
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect(posted.external[0].caption).toBe('es-419');
+
+		await clickMenuItem(m.play_hamburger_syncplay_label());
+		await until(() => posted.syncplay.length === 1, 'the Syncplay request');
+		expect(posted.syncplay[0].caption).toBe('es-419');
+	});
+
+	// The backend keeps the tracks a long listing has room for by the
+	// choice, and the play cache does not key on it: a switch plays the
+	// session its warm resolved, so a warm that named no choice would
+	// hand the switch a session cut without the viewer's language.
+	it('names it on the warms, and a switch plays the session warmed with it', async () => {
+		rememberCaption(KITSU_ID, 'es-419');
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+
+		const episodeOf = (es: FakeEventSource) => new URL(es.url).searchParams.get('episode');
+		const captionOf = (es: FakeEventSource) => new URL(es.url).searchParams.get('caption');
+		await until(
+			() => FakeEventSource.instances.some((es) => episodeOf(es) === '4'),
+			'the warm of the next episode'
+		);
+		for (const es of FakeEventSource.instances) expect(captionOf(es)).toBe('es-419');
+
+		// That warm is the only stream the page opened, and
+		// `mountPlaying` has already answered it.
+		const opened = FakeEventSource.instances.length;
+		const next = () =>
+			target.querySelector(
+				`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+			) as HTMLButtonElement | null;
+		await until(() => next() !== null && !next()!.disabled, 'the next-episode button');
+		next()!.click();
+		await until(() => posted.watched.some((w) => w.episode === '4'), 'the switch watch');
+		// The switch asked for nothing new: it played the warm's session.
+		expect(FakeEventSource.instances.length).toBe(opened);
+	});
+
+	it('names none when nothing is remembered', async () => {
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect('caption' in posted.external[0]).toBe(false);
+		for (const es of FakeEventSource.instances) {
+			expect(new URL(es.url).searchParams.has('caption')).toBe(false);
+		}
+	});
+});
+
+describe("play route — the show's own audio", () => {
+	it('is asked for by the warms and both hand-offs, whatever the Settings default', async () => {
+		rememberAudio(KITSU_ID, 'dub');
+		const posted = fresh();
+		useHandlers(posted);
+		await mountPlaying();
+
+		for (const es of FakeEventSource.instances) {
+			expect(new URL(es.url).searchParams.get('mode')).toBe('dub');
+		}
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect(posted.external[0].mode).toBe('dub');
+
+		await clickMenuItem(m.play_hamburger_syncplay_label());
+		await until(() => posted.syncplay.length === 1, 'the Syncplay request');
+		expect(posted.syncplay[0].mode).toBe('dub');
 	});
 });

@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "42938",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!! TO THE TOP 2",
+    "titles": {
+     "en": "Haikyuu!!: To the Top Part 2",
+     "en_jp": "Haikyuu!! TO THE TOP 2",
+     "ja_jp": "ハイキュー!! TO THE TOP 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "haikyuu-to-the-top-2",
+    "startDate": "2020-10-03",
+    "endDate": "2020-12-19",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

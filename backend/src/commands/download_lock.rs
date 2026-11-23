@@ -1,8 +1,6 @@
 //! The lock a download takes on its destination file, held for the
 //! whole spawn, within the app and across instances.
 
-use crate::error::{AniError, Result};
-
 /// One lock per destination file, held for the whole spawn.
 ///
 /// Two downloads of the same episode resolve to the same path — the
@@ -76,73 +74,79 @@ pub(super) static TARGET_LOCKS: std::sync::Mutex<
 /// lock can alias differently — the consequence is now a wasted
 /// transfer rather than a deleted file.
 ///
-/// The cost the user sees is a directory in their download folder. It
-/// is dot-prefixed, so hidden on Linux and macOS and visible on
-/// Windows.
+/// The cost the user sees is a directory beside their episodes — in
+/// the show's folder, or in the download folder for an episode that
+/// goes there (one a version from before show folders saved there, or
+/// one whose title gives the show no folder name) — while a download
+/// runs: the lock file goes when its download ends and the directory
+/// when the last one does (see [`release::InstanceLock`]). A process
+/// that ends without unwinding — a crash, a kill, every quit on
+/// Windows — leaves its file until a later download in the same folder
+/// sweeps it, and a volume that cannot lock at all keeps every file,
+/// since nothing can prove one is unheld. It is dot-prefixed, which
+/// hides it on Linux and macOS, and carries the hidden attribute on
+/// Windows, where a dot hides nothing.
 pub(crate) fn target_lock_path(target: &std::path::Path) -> Option<std::path::PathBuf> {
     let parent = target.parent()?;
     Some(parent.join(".ani-gui-locks").join(target.file_name()?))
 }
 
-/// How often a download waiting on another instance re-tries the OS
-/// lock. Long enough that a queued download is not spinning, short
-/// enough that the handover is not what the user notices.
-pub(super) const INSTANCE_LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(50);
-
-/// Take the lock that crosses app instances for `target`, waiting for
-/// a holder until `deadline`.
+/// Sweep the lock directory in `folder` of the files nobody holds, once
+/// per run, without taking a lock there ([`release::sweep_leftovers_once`]).
 ///
-/// Polled rather than blocked. `flock` parks the thread that calls it,
-/// and a parked thread is not a future: cancelling the download drops
-/// the `JoinHandle` while the closure stays inside the call, so the
-/// dock reports a cancel that left a blocking-pool thread behind. Do
-/// that a few times and the pool starves every other blocking caller,
-/// invisibly. Waiting between polls on the async side means a
-/// cancelled download lands on an await point and is simply dropped.
-///
-/// Only the open runs on the blocking pool, where it cannot park
-/// indefinitely — it either finds the file or fails.
-///
-/// # Errors
-/// [`AniError::Timeout`] when the deadline passes with another
-/// instance still holding it — the transfer's own ceiling, since a
-/// download blocked on another instance is spending the wait the
-/// transfer was given. [`AniError::Io`] when the lock file cannot be
-/// created or opened at all; see [`target_lock_path`] for why that is
-/// worth refusing over.
-pub(crate) async fn acquire_instance_lock(
-    target: &std::path::Path,
-    deadline: tokio::time::Instant,
-) -> Result<std::fs::File> {
-    let path = target_lock_path(target).ok_or(AniError::Io)?;
-    let file = tokio::task::spawn_blocking(move || -> Result<std::fs::File> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|_| AniError::Io)?;
-        }
-        std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&path)
-            .map_err(|_| AniError::Io)
-    })
-    .await
-    .map_err(|_| AniError::Io)??;
-    loop {
-        match fs4::FileExt::try_lock(&file) {
-            Ok(()) => return Ok(file),
-            Err(fs4::TryLockError::WouldBlock) => {}
-            Err(fs4::TryLockError::Error(_)) => return Err(AniError::Io),
-        }
-        let now = tokio::time::Instant::now();
-        if now >= deadline {
-            return Err(AniError::Timeout);
-        }
-        tokio::time::sleep_until(deadline.min(now + INSTANCE_LOCK_POLL)).await;
-    }
+/// For the folder the user chose. Every version before show folders
+/// took its locks beside episodes saved straight into it, and left
+/// their files there; a download into a show's folder locks in that
+/// folder instead, so nothing else would ever sweep the chosen one.
+pub(crate) async fn sweep_lock_leftovers(folder: &std::path::Path) {
+    release::sweep_leftovers_once(&folder.join(".ani-gui-locks")).await;
 }
 
-pub(super) fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+// The lock file's life on disk — taking it, letting it go, and what
+// differs per platform — in files of their own, so each stays small
+// enough to read whole.
+#[path = "download_lock_acquire.rs"]
+mod acquire;
+#[path = "download_lock_open.rs"]
+mod open;
+#[path = "download_lock_os.rs"]
+// Shared with the download working folder, whose holds are opened,
+// hidden, checked and released exactly as lock files are.
+pub(super) mod os;
+#[path = "download_lock_release.rs"]
+mod release;
+#[path = "download_lock_remove.rs"]
+mod remove;
+#[path = "download_lock_waiting.rs"]
+mod waiting;
+pub(crate) use acquire::acquire_instance_lock;
+#[cfg(all(test, unix))]
+pub(crate) use remove::{remove_lock_file, remove_lock_file_with};
+
+/// Run a filesystem call on `path` on the blocking pool.
+async fn on_blocking_pool<T, F>(path: std::path::PathBuf, f: F) -> crate::error::Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&std::path::Path) -> T + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || f(&path))
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "download lock call ended without an answer");
+            crate::error::AniError::Io
+        })
+}
+
+/// Whether a download in this process has used the lock at
+/// `lock_path` this run — the map's entries are kept, see above.
+fn in_use_here(lock_path: &std::path::Path) -> bool {
+    let guard = TARGET_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .as_ref()
+        .is_some_and(|map| map.contains_key(lock_path))
+}
+
+pub(crate) fn target_lock(target: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
     // Keyed by the lock path, so this and the file lock share one
     // notion of identity rather than two that can disagree. It is the
     // weaker of the pair: two names a case-insensitive filesystem

@@ -5,7 +5,7 @@
 	"error_config_parse": "El archivo de configuración no se pudo leer o guardar. Reinicia la app o, si lo editaste, corrige el archivo a mano.",
 	"error_download_ffmpeg_missing": "Esta descarga necesita ffmpeg, y no está instalado.",
 	"error_download_tool_failed": "El programa de descarga se detuvo con un error antes de terminar el archivo. Inténtalo más tarde.",
-	"error_download_tool_spawn_failed": "No se pudo iniciar el programa de descarga. Si instalaste yt-dlp o ffmpeg por tu cuenta, revisa que se ejecute; si no, reinstala ani-gui.",
+	"error_download_tool_spawn_failed": "No se pudo iniciar el programa de descarga. Si instalaste yt-dlp o ffmpeg por tu cuenta, revisa que se ejecute. Si no los instalaste tú, reinstala ani-gui.",
 	"error_io_generic": "No se pudo leer o escribir un archivo en esta computadora. Revisa el espacio libre y los permisos e inténtalo de nuevo.",
 	"error_metadata_source": "El servicio de la cuenta no pudo completar esta solicitud. Inténtalo de nuevo o vuelve a conectar la cuenta en Ajustes.",
 	"error_network_rate_limited": "El servicio está ocupado ahora. Espera unos segundos e inténtalo de nuevo.",

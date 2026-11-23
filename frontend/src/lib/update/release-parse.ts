@@ -1,13 +1,16 @@
 /**
- * Normalises a GitHub `/releases/latest` response into the smaller
- * shape the update notifier consumes. Rejects drafts and malformed
- * payloads (missing tag_name / html_url) so the badge can never
- * point at a release that doesn't exist or shouldn't be visible.
+ * `ReleaseInfo` is the release shape the update notifier consumes:
+ * the backend's `/api/update-check` answers with it, having picked
+ * and normalised the release itself (`meta::github`).
  *
- * Pre-releases pass through — our releases are all marked
- * prerelease today; future stable cuts will flip the bit but the
- * notifier shouldn't gate on it either way (a user who has v0.4.0
- * installed wants to know about v0.5.0-rc1).
+ * `parseGitHubRelease` normalises a raw GitHub release object (the
+ * shape `/releases/latest` returns) into the same shape, rejecting
+ * drafts, payloads missing `tag_name`, and an `html_url` that is
+ * missing or not an https page, and passing pre-releases through.
+ * The notifier does not call it; only the type is imported from
+ * here. The https rule the update dialog relies on is enforced where
+ * the answer is built, in the backend's `normalise`
+ * (`meta/github_choice.rs`).
  */
 
 export interface ReleaseInfo {
@@ -26,12 +29,22 @@ function asString(v: unknown): string | null {
 	return typeof v === 'string' ? v : null;
 }
 
+/** Whether `url` is an absolute https URL with a host. */
+function isHttpsPage(url: string): boolean {
+	try {
+		const parsed = new URL(url);
+		return parsed.protocol === 'https:' && parsed.hostname !== '';
+	} catch {
+		return false;
+	}
+}
+
 export function parseGitHubRelease(payload: unknown): ReleaseInfo | null {
 	if (!isObject(payload)) return null;
 	if (payload.draft === true) return null;
 	const tag = asString(payload.tag_name);
 	const url = asString(payload.html_url);
-	if (!tag || !url) return null;
+	if (!tag || !url || !isHttpsPage(url)) return null;
 	const name = asString(payload.name) ?? tag;
 	const publishedAt = asString(payload.published_at) ?? '';
 	const body = asString(payload.body) ?? '';

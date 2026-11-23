@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "48639",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mato Seihei no Slave 2nd Season",
+    "titles": {
+     "en": "Chained Soldier Season 2",
+     "en_jp": "Mato Seihei no Slave 2nd Season",
+     "ja_jp": "魔都精兵のスレイブ 第２期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Mato-Seihei-no-Slave-2nd-Season",
+    "startDate": "2026-01-08",
+    "endDate": "2026-03-26",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

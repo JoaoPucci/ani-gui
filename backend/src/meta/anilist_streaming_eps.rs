@@ -20,6 +20,15 @@ use crate::meta::anilist_media::{media_is_absent, with_missing_retry, MediaRef};
 #[path = "anilist_streaming_eps_parse.rs"]
 mod parse;
 pub use parse::parse_streaming_episodes_response;
+#[path = "anilist_streaming_eps_batch.rs"]
+mod batch;
+pub use crate::meta::anilist_batch::Want;
+pub use batch::streaming_listings_batch;
+#[cfg(test)]
+pub(crate) use batch::Streaming;
+#[path = "anilist_streaming_eps_coalesce.rs"]
+mod coalesce;
+pub(crate) use coalesce::streaming_listing_coalesced;
 
 /// By-MAL-id query for AniList's `streamingEpisodes` — the
 /// Crunchyroll-style per-episode listing — with the media's own
@@ -71,7 +80,8 @@ async fn post_streaming_episodes(
     let url = base_override.unwrap_or(ANILIST_API);
     // The same transport, and so the same budget, as every other
     // public AniList request.
-    let bytes = crate::meta::anilist::post_graphql_public(client, url, body).await?;
+    let ask = crate::meta::anilist_gate::Ask::one(crate::meta::anilist_gate::Purpose::Stills);
+    let bytes = crate::meta::anilist::post_graphql_public(client, url, body, ask).await?;
     if media_is_absent(&bytes) {
         return Ok(None);
     }

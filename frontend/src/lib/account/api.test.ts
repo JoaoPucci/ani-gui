@@ -23,8 +23,10 @@ import {
 	readPersistedAccount,
 	updateProgress
 } from './api';
-import type { PersistedAccount, PkceWire } from './types';
+import type { ListEntry, PersistedAccount, PkceWire, Tokens, UserProfile } from './types';
+import type { AuthUrlResponse } from './api';
 
+import type { AniErrorPayload } from '../api';
 const PKCE: PkceWire = { verifier: 'v', challenge: 'c', method: 'plain' };
 
 beforeEach(() => {
@@ -38,9 +40,31 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-function mockFetchJson<T>(body: T, status = 200) {
+/** A `fetch` answering `body`, typed as the route answers:
+ *  `mockFetchJson<ListEntry[]>([...])`. */
+function mockFetchJson<T = never>(body: NoInfer<T>, status = 200) {
+	return mockFetchRaw(JSON.stringify(body), status);
+}
+
+/** A refusal: `status`, with an error envelope the backend sends. */
+function mockFetchFailure(status: number) {
+	return mockFetchJson<AniErrorPayload>({ kind: 'io', key: 'error.io.generic' }, status);
+}
+
+/** A route that answers nothing (204). */
+function mockFetchEmpty() {
+	return vi.spyOn(global, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+}
+
+/** For a test about the request, not the answer: a body read as no
+ *  route's type. */
+function mockFetchUnread(body: unknown) {
+	return mockFetchRaw(JSON.stringify(body), 200);
+}
+
+function mockFetchRaw(text: string, status: number) {
 	return vi.spyOn(global, 'fetch').mockResolvedValue(
-		new Response(JSON.stringify(body), {
+		new Response(text, {
 			status,
 			headers: { 'content-type': 'application/json' }
 		})
@@ -81,7 +105,7 @@ describe('AccountApiError', () => {
 
 describe('buildAuthUrl', () => {
 	it('POSTs to /api/account/auth-url/:provider and returns the URL', async () => {
-		const spy = mockFetchJson({ url: 'https://anilist.co/authorize?…' });
+		const spy = mockFetchJson<AuthUrlResponse>({ url: 'https://anilist.co/authorize?…' });
 		const r = await buildAuthUrl('anilist', { state: 's', pkce: PKCE });
 		expect(r.url).toContain('anilist.co/authorize');
 		const [url, init] = spy.mock.calls[0];
@@ -90,7 +114,7 @@ describe('buildAuthUrl', () => {
 	});
 
 	it('throws AccountApiError on non-2xx', async () => {
-		mockFetchJson({}, 500);
+		mockFetchFailure(500);
 		await expect(buildAuthUrl('anilist', { state: 's', pkce: PKCE })).rejects.toBeInstanceOf(
 			AccountApiError
 		);
@@ -99,7 +123,7 @@ describe('buildAuthUrl', () => {
 
 describe('exchangeCode', () => {
 	it('POSTs the code + pkce', async () => {
-		const spy = mockFetchJson({
+		const spy = mockFetchJson<Tokens>({
 			access_token: 'aaa',
 			refresh_token: null,
 			expires_at_epoch_s: 999
@@ -113,7 +137,7 @@ describe('exchangeCode', () => {
 
 describe('fetchMe', () => {
 	it('sends the bearer in the Authorization header', async () => {
-		const spy = mockFetchJson({
+		const spy = mockFetchJson<UserProfile>({
 			provider: 'anilist',
 			user_id: '7',
 			username: 'p',
@@ -129,7 +153,7 @@ describe('fetchMe', () => {
 
 describe('updateProgress', () => {
 	it('POSTs the body + bearer to /api/account/update/:provider and returns the entry', async () => {
-		const entry = {
+		const entry: ListEntry = {
 			provider: 'anilist',
 			media_id: 154587,
 			mal_id: 21,
@@ -139,7 +163,7 @@ describe('updateProgress', () => {
 			updated_at_epoch_s: 1,
 			title: 'One Piece'
 		};
-		const spy = mockFetchJson(entry);
+		const spy = mockFetchJson<ListEntry | null>(entry);
 		const r = await updateProgress('anilist', 'tok', {
 			kitsu_id: 'kitsu-12',
 			progress: 7,
@@ -158,7 +182,7 @@ describe('updateProgress', () => {
 	});
 
 	it('returns null when the show is unmappable (backend replies null)', async () => {
-		mockFetchJson(null);
+		mockFetchJson<ListEntry | null>(null);
 		const r = await updateProgress('mal', 'tok', {
 			kitsu_id: 'kitsu-999',
 			progress: 1,
@@ -168,7 +192,7 @@ describe('updateProgress', () => {
 	});
 
 	it('throws AccountApiError on non-2xx', async () => {
-		mockFetchJson({}, 500);
+		mockFetchFailure(500);
 		await expect(
 			updateProgress('anilist', 'tok', { kitsu_id: 'k', progress: 1, status: 'watching' })
 		).rejects.toBeInstanceOf(AccountApiError);
@@ -177,7 +201,7 @@ describe('updateProgress', () => {
 
 describe('fetchAndCacheList', () => {
 	it('POSTs an empty body + bearer (backend derives the owner from me())', async () => {
-		const spy = mockFetchJson([]);
+		const spy = mockFetchJson<ListEntry[]>([]);
 		await fetchAndCacheList('anilist', 'tok');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/list/anilist');
@@ -190,8 +214,15 @@ describe('fetchAndCacheList', () => {
 });
 
 describe('fetchCachedList', () => {
+	it("hands the visit's signal to the request, so the page that asked can cancel it", async () => {
+		const spy = mockFetchJson<ListEntry[]>([]);
+		const visit = new AbortController();
+		await fetchCachedList('anilist', 'tok', undefined, { signal: visit.signal });
+		expect((spy.mock.calls[0][1] as RequestInit).signal).toBe(visit.signal);
+	});
+
 	it('hits the cached endpoint with the bearer (no user_id when no fallback)', async () => {
-		const spy = mockFetchJson([]);
+		const spy = mockFetchJson<ListEntry[]>([]);
 		await fetchCachedList('anilist', 'tok');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/list/anilist/cached');
@@ -206,7 +237,7 @@ describe('fetchCachedList', () => {
 		(globalThis as { window?: unknown }).window = {
 			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'cafebabe' }
 		};
-		const spy = mockFetchJson([]);
+		const spy = mockFetchJson<ListEntry[]>([]);
 		await fetchCachedList('anilist', 'tok', 'u7');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/list/anilist/cached?fallback_user_id=u7');
@@ -216,14 +247,14 @@ describe('fetchCachedList', () => {
 	});
 
 	it('surfaces fetch failure as AccountApiError', async () => {
-		mockFetchJson({}, 404);
+		mockFetchFailure(404);
 		await expect(fetchCachedList('anilist', 'tok')).rejects.toBeInstanceOf(AccountApiError);
 	});
 });
 
 describe('dropListCache', () => {
 	it('DELETEs the cache scoped to the user', async () => {
-		const spy = mockFetchJson('');
+		const spy = mockFetchEmpty();
 		await dropListCache('anilist', 'tok');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/list/anilist/cache');
@@ -236,7 +267,7 @@ describe('dropListCache', () => {
 		// renderer hands the safeStorage-persisted user_id back as
 		// `?fallback_user_id=` so the backend can still clear the
 		// cache when me() 401s.
-		const spy = mockFetchJson('');
+		const spy = mockFetchEmpty();
 		await dropListCache('anilist', 'tok', 'u7');
 		const [url] = spy.mock.calls[0];
 		expect(String(url)).toContain('fallback_user_id=u7');
@@ -249,7 +280,7 @@ describe('dropListCache', () => {
 		(globalThis as { window?: unknown }).window = {
 			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'deadbeef' }
 		};
-		const spy = mockFetchJson('');
+		const spy = mockFetchEmpty();
 		await dropListCache('anilist', 'tok', 'u7');
 		const [, init] = spy.mock.calls[0];
 		const headers = (init as RequestInit).headers as Record<string, string>;
@@ -257,7 +288,7 @@ describe('dropListCache', () => {
 	});
 
 	it('omits the internal-secret header when window.aniGui has no secret', async () => {
-		const spy = mockFetchJson('');
+		const spy = mockFetchEmpty();
 		await dropListCache('anilist', 'tok');
 		const [, init] = spy.mock.calls[0];
 		const headers = (init as RequestInit).headers as Record<string, string>;
@@ -265,7 +296,7 @@ describe('dropListCache', () => {
 	});
 
 	it('throws AccountApiError on non-2xx', async () => {
-		mockFetchJson('boom', 500);
+		mockFetchFailure(500);
 		await expect(dropListCache('anilist', 'tok')).rejects.toBeInstanceOf(AccountApiError);
 	});
 });
@@ -278,7 +309,7 @@ describe('dropProviderCache', () => {
 		(globalThis as { window?: unknown }).window = {
 			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'cafebabe' }
 		};
-		const spy = mockFetchJson('');
+		const spy = mockFetchEmpty();
 		await dropProviderCache('anilist');
 		const [url, init] = spy.mock.calls[0];
 		expect(String(url)).toContain('/api/account/list/anilist/cache/all');
@@ -293,7 +324,7 @@ describe('dropProviderCache', () => {
 		// In dev without Electron the secret simply isn't on window;
 		// backend rejects, surfacing as AccountApiError. Not collapsed
 		// to a noop so dev-time misconfigs are visible.
-		const spy = mockFetchJson('');
+		const spy = mockFetchEmpty();
 		await dropProviderCache('anilist');
 		const [, init] = spy.mock.calls[0];
 		const headers = (init as RequestInit).headers as Record<string, string>;
@@ -301,7 +332,7 @@ describe('dropProviderCache', () => {
 	});
 
 	it('throws AccountApiError on non-2xx', async () => {
-		mockFetchJson('forbidden', 403);
+		mockFetchFailure(403);
 		await expect(dropProviderCache('anilist')).rejects.toBeInstanceOf(AccountApiError);
 	});
 });
@@ -326,37 +357,62 @@ function stubBridge(impl: Record<string, unknown>) {
 }
 
 describe('readPersistedAccount', () => {
-	it('returns ok+account when the bridge has one', () => {
-		stubBridge({ getToken: () => ({ ok: true, payload: payload() }) });
-		const r = readPersistedAccount('anilist');
+	it('returns ok+account when the bridge has one', async () => {
+		stubBridge({ getToken: async () => ({ ok: true, payload: payload() }) });
+		const r = await readPersistedAccount('anilist');
 		expect(r.ok).toBe(true);
 		if (r.ok) expect(r.account.username).toBe('p');
 	});
 
-	it('returns not_found when the bridge says no token on disk', () => {
-		stubBridge({ getToken: () => ({ ok: false, kind: 'not_found' }) });
-		const r = readPersistedAccount('anilist');
+	it('returns not_found when the bridge says no token on disk', async () => {
+		stubBridge({ getToken: async () => ({ ok: false, kind: 'not_found' }) });
+		const r = await readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'not_found' });
 	});
 
-	it('returns not_found when no bridge is wired (browser-only dev)', () => {
+	it('returns not_found when no bridge is wired (browser-only dev)', async () => {
 		(globalThis as { window?: unknown }).window = undefined;
-		const r = readPersistedAccount('anilist');
+		const r = await readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'not_found' });
 	});
 
-	it('returns unreadable when the bridge surfaces encryption_unavailable', () => {
+	it('returns unreadable when the bridge surfaces encryption_unavailable', async () => {
 		// Keychain outage → file is on disk but
 		// can't be decrypted. Callers must NOT collapse this to "no
 		// account" — the orphan file needs an in-app cleanup path.
-		stubBridge({ getToken: () => ({ ok: false, kind: 'encryption_unavailable' }) });
-		const r = readPersistedAccount('anilist');
+		stubBridge({ getToken: async () => ({ ok: false, kind: 'encryption_unavailable' }) });
+		const r = await readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'unreadable', detail: 'encryption_unavailable' });
 	});
 
-	it('returns unreadable when the bridge surfaces decrypt_error', () => {
-		stubBridge({ getToken: () => ({ ok: false, kind: 'decrypt_error' }) });
-		const r = readPersistedAccount('anilist');
+	it('waits for a read the keyring has not answered yet', async () => {
+		// A locked or unresponsive keyring holds the read; the caller
+		// gets a promise, not a blocked thread, and the answer when it
+		// comes.
+		let answer: (r: unknown) => void = () => {};
+		stubBridge({ getToken: () => new Promise((resolve) => (answer = resolve)) });
+		let settled = false;
+		const read = readPersistedAccount('anilist').then((r) => {
+			settled = true;
+			return r;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		answer({ ok: true, payload: payload() });
+		const r = await read;
+		expect(r.ok).toBe(true);
+	});
+
+	it('returns unreadable when the bridge call itself fails', async () => {
+		stubBridge({ getToken: async () => Promise.reject(new Error('ipc gone')) });
+		const r = await readPersistedAccount('anilist');
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.kind).toBe('unreadable');
+	});
+
+	it('returns unreadable when the bridge surfaces decrypt_error', async () => {
+		stubBridge({ getToken: async () => ({ ok: false, kind: 'decrypt_error' }) });
+		const r = await readPersistedAccount('anilist');
 		expect(r).toEqual({ ok: false, kind: 'unreadable', detail: 'decrypt_error' });
 	});
 });
@@ -491,5 +547,30 @@ describe('openExternal', () => {
 	it('returns false when the bridge is missing', async () => {
 		(globalThis as { window?: unknown }).window = undefined;
 		expect(await openExternal('https://x')).toBe(false);
+	});
+});
+
+describe('the launch secret reaches every account request', () => {
+	// The backend answers /api only to a request carrying the secret
+	// the preload bridge hands the renderer (`$lib/backend/secret`).
+	beforeEach(() => {
+		(globalThis as { window?: unknown }).window = {
+			aniGui: { apiBase: 'http://127.0.0.1:42337', internalSecret: 'c0ffee' }
+		};
+	});
+
+	const calls: Array<[string, () => Promise<unknown>]> = [
+		['a POST', () => buildAuthUrl('anilist', { state: 's', pkce: PKCE })],
+		['a POST with a bearer', () => fetchMe('anilist', 'tok')],
+		['a DELETE with a bearer', () => dropListCache('anilist', 'tok')],
+		['a GET of the cached list', () => fetchCachedList('anilist', 'tok')]
+	];
+
+	it.each(calls)('%s carries it as a header', async (_name, call) => {
+		const spy = mockFetchUnread({});
+		await call().catch(() => {});
+		const [, init] = spy.mock.calls[0];
+		const headers = (init as RequestInit).headers as Record<string, string>;
+		expect(headers['x-ani-gui-internal-secret']).toBe('c0ffee');
 	});
 });

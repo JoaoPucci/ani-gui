@@ -19,6 +19,10 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, rust_2018_idioms)]
 
+/// The log filter the backend runs under when `RUST_LOG` is unset: what
+/// "the app's default log" keeps.
+pub const DEFAULT_LOG_FILTER: &str = "ani_gui=info";
+
 pub mod account;
 pub mod api;
 pub mod app;
@@ -26,6 +30,7 @@ pub mod cache;
 pub mod commands;
 pub mod config;
 pub mod error;
+pub mod flags;
 #[cfg(test)]
 #[path = "held_test.rs"]
 pub(crate) mod held;
@@ -38,7 +43,13 @@ pub mod meta;
 pub mod parent_watch;
 pub mod provider_set;
 pub mod proxy;
+pub mod renderer_origin;
+pub mod retired_provider;
+pub mod retired_provider_plan;
 pub mod scraper;
+#[cfg(test)]
+#[path = "scratch_test.rs"]
+pub(crate) mod scratch;
 pub mod shutdown;
 pub mod spawn;
 #[cfg(all(test, unix))]

@@ -1,0 +1,107 @@
+{
+ "data": [
+  {
+   "id": "5971",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama'",
+    "titles": {
+     "en_jp": "Gintama'",
+     "en_us": "Gintama Season 2",
+     "ja_jp": "銀魂'"
+    },
+    "abbreviatedTitles": [
+     "Gintama (2011)"
+    ],
+    "slug": "gintama-2",
+    "startDate": "2011-04-04",
+    "endDate": "2012-03-26",
+    "episodeCount": 51,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41079",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama.: Shirogane no Tamashii-hen 2",
+    "titles": {
+     "en": "Gintama.: Silver Soul Arc 2",
+     "en_jp": "Gintama.: Shirogane no Tamashii-hen 2",
+     "ja_jp": "銀魂. 銀ノ魂篇 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "gintama-shirogane-no-tamashii-hen-2",
+    "startDate": "2018-07-09",
+    "endDate": "2018-10-08",
+    "episodeCount": 14,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "10083",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama°",
+    "titles": {
+     "en_jp": "Gintama°",
+     "en_us": "Gintama Season 4",
+     "ja_jp": "銀魂°"
+    },
+    "abbreviatedTitles": [
+     "Gintama' (2015)"
+    ],
+    "slug": "gintama-2015-tv",
+    "startDate": "2015-04-08",
+    "endDate": "2016-03-30",
+    "episodeCount": 51,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "14095",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama.: Shirogane no Tamashii-hen",
+    "titles": {
+     "en": "Gintama.: Silver Soul Arc",
+     "en_jp": "Gintama.: Shirogane no Tamashii-hen",
+     "ja_jp": "銀魂. 銀ノ魂篇"
+    },
+    "abbreviatedTitles": [
+     "Gintama. (2018)",
+     "Gintama.: Silver Soul Arc"
+    ],
+    "slug": "gintama-shirogane-no-tamashii-hen",
+    "startDate": "2018-01-08",
+    "endDate": "2018-03-25",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11545",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gintama°: Umai-mono wa Atomawashi ni Suru to Yokodorisareru kara Yappari Saki ni Kue",
+    "titles": {
+     "en_jp": "Gintama°: Umai-mono wa Atomawashi ni Suru to Yokodorisareru kara Yappari Saki ni Kue",
+     "ja_jp": "銀魂 〜美味いモノは後回しにすると横取りされるからやっぱり先に食え〜"
+    },
+    "abbreviatedTitles": [
+     "Gintama: Jump Festa 2015 Special"
+    ],
+    "slug": "gintama-jump-festa-2015-special",
+    "startDate": "2015-11-03",
+    "endDate": "2015-11-03",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

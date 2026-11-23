@@ -15,20 +15,13 @@ import type Hls from 'hls.js';
 import type { BufferedRanges } from './buffer-ahead';
 import { bufferAheadSeconds } from './buffer-ahead';
 import { QualityGovernor } from './quality-governor';
-import { parseQualitySetting } from './quality-ladder';
 import type { QualityView } from './quality-menu';
 import { qualityPin, rememberPick } from './quality-pin';
-import {
-	consoleQualityLog,
-	healthyMove,
-	pageNow,
-	reactTo,
-	readError,
-	readInitSegment
-} from './quality-report';
-import { pickMove } from './quality-choice';
-import { afterError, engineMover, levelsUpdated, whenSettled } from './quality-sink';
+import { consoleQualityLog, healthyMove, pageNow, reactTo, readError } from './quality-report';
+import { choosable, pickMove } from './quality-choice';
+import { afterError, engineMover, levelsUpdated, startEngine } from './quality-sink';
 import { RemapWindow } from './quality-remap';
+import { learnEncoded, learnPicture } from './quality-learn';
 import { QualityTrack } from './quality-track';
 
 export { qualityPin } from './quality-pin';
@@ -50,10 +43,8 @@ export interface QualityVideo extends EventTarget {
 	readonly buffered: BufferedRanges;
 	readonly currentTime: number;
 	readonly seeking: boolean;
+	readonly videoHeight: number;
 }
-
-/** The quality setting's value, unknown when the settings failed. */
-export type QualitySetting = string | null | undefined;
 
 export interface QualityControl {
 	/** The viewer chose a level, or "Auto", from the menu. */
@@ -66,13 +57,14 @@ export function armQuality(input: {
 	engine: Hls;
 	events: QualityEvents;
 	video: QualityVideo;
-	/** The quality setting, read when the master's levels arrive — or
-	 *  the settings still on their way, answering with it. */
-	setting: () => QualitySetting | Promise<QualitySetting>;
 	/** Whether the control starts the engine's loading once it has
 	 *  chosen the start level; the page then makes the engine with
 	 *  `autoStartLoad: false`. */
 	holdsStart?: boolean;
+	/** Where the started engine begins loading, with `holdsStart`: a
+	 *  resume point, so that no fragment before the point's is loaded.
+	 *  The engine's own start, the first fragment, when omitted. */
+	startAt?: number | null;
 	/** Told what the menu shows whenever it changes; null once the
 	 *  stream retires. */
 	onView: (view: QualityView | null) => void;
@@ -90,33 +82,35 @@ export function armQuality(input: {
 	const apply = engineMover(engine, track, log);
 	const publish = (g: QualityGovernor): void => onView(track.view(g));
 
-	// The start waits for the setting: a level chosen before it is known
-	// would be `best`'s. With `holdsStart` the engine waits too, and is
-	// started here once its start level is set.
-	const begin = (setting: QualitySetting): void => {
+	// The start is Auto at the highest level — or the level picked earlier
+	// in the player session — chosen as the levels arrive. With
+	// `holdsStart` the engine waits for it, and is started here once its
+	// start level is set.
+	const begin = (): void => {
 		const count = track.declared().length;
 		if (retired) return;
-		const g = new QualityGovernor(
-			track.declared(),
-			parseQualitySetting(setting),
-			qualityPin.choice()
-		);
+		const g = new QualityGovernor(track.declared(), { kind: 'best' }, qualityPin.choice());
 		governor = g;
 		const start = g.start();
 		if (start) {
 			engine.startLevel = start.level;
 			apply(start);
-			log(`setting ${setting ?? 'best'}, ${count} levels`);
+			const pinned = g.pinnedLevel;
+			log(
+				pinned === null
+					? `auto, ${count} levels`
+					: `pinned ${track.describe(pinned)}, ${count} levels`
+			);
 		} else if (count === 1) {
 			log(`one level, ${track.describe(0)}: nothing to choose`);
 		}
 		publish(g);
-		if (input.holdsStart) engine.startLoad();
+		if (input.holdsStart) startEngine(engine, input.startAt);
 	};
 
 	engine.on(events.MANIFEST_PARSED, (_event, data) => {
 		track.arrive(data.levels);
-		whenSettled(input.setting(), (setting) => begin(setting));
+		begin();
 	});
 
 	engine.on(events.ERROR, (_event, data) => {
@@ -150,23 +144,26 @@ export function armQuality(input: {
 		publish(governor);
 	});
 
-	engine.on(events.FRAG_PARSING_INIT_SEGMENT, (_event, data) => {
-		const g = governor;
-		if (!g) return;
-		const news = track.noteEncoded(readInitSegment(data));
-		if (!news) return;
-		if (news.listed > 0 && news.listed !== news.height) {
-			log(`level ${news.level} encodes ${news.height}p; its playlist says ${news.listed}p`);
-		}
-		publish(g);
-	});
+	// A level's height learned after its playlist reaches the menu.
+	const learned = (news: boolean): void => {
+		if (governor && news) publish(governor);
+	};
+
+	engine.on(events.FRAG_PARSING_INIT_SEGMENT, (_event, data) =>
+		learned(learnEncoded(track, data, log))
+	);
 
 	const onSeeking = () => governor?.seeking(now());
 	video.addEventListener('seeking', onSeeking);
+	// A lone level's height, which hls.js reads from no fMP4 segment:
+	// the picture's, once the element has loaded its metadata.
+	const onPicture = () => learned(learnPicture(track, video.videoHeight));
+	video.addEventListener('loadedmetadata', onPicture);
+	video.addEventListener('resize', onPicture);
 
 	return {
 		pick(choice) {
-			const g = governor;
+			const g = choosable(governor, track);
 			if (!g) return;
 			// A choice already in force still switches at once when the
 			// level playing is another — segments from before a climb.
@@ -178,6 +175,8 @@ export function armQuality(input: {
 		},
 		dispose() {
 			video.removeEventListener('seeking', onSeeking);
+			video.removeEventListener('loadedmetadata', onPicture);
+			video.removeEventListener('resize', onPicture);
 			retired = true;
 			removal.close();
 			governor = null;

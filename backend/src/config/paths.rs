@@ -7,6 +7,11 @@
 //! The watch history is the GUI's own, under its state dir. It used
 //! to be pinned to the path the CLI writes; see `gui_history` for why
 //! that stopped being worth doing.
+//!
+//! A test harness can root the whole profile in one folder of its own
+//! with [`TEST_PROFILE_ROOT_ENV`]; see [`test_profile_root`]. Nothing
+//! but the test harnesses sets it, and a launch without it resolves
+//! exactly as described here.
 
 use std::path::PathBuf;
 
@@ -21,6 +26,36 @@ use directories_next::ProjectDirs;
 fn home_dir_xplat() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
+/// Test harnesses only: when set to a non-empty value, every profile
+/// path the backend resolves lies under that folder, on every
+/// platform. `tests/arch/test_profile_root.sh` holds its name to the
+/// backend's own tests and this module.
+pub const TEST_PROFILE_ROOT_ENV: &str = "ANI_GUI_TEST_PROFILE_ROOT";
+
+/// The folder [`TEST_PROFILE_ROOT_ENV`] names, when it names one.
+///
+/// It exists because the integration tests that spawn the real binary
+/// could not otherwise keep it off the machine's own profile on
+/// Windows. On Linux the XDG variables and `HOME` redirect every
+/// folder, and on macOS `HOME` does, but Windows resolves them through
+/// the known-folder API, which no variable redirects — so a test run
+/// there read, migrated and swept the developer's dev profile, and a
+/// release-mode run would have done it to the installed app's. It
+/// also gives the tests one layout to find files by on every platform,
+/// where macOS otherwise keeps them under the home's `Library`.
+///
+/// Under the root the layout is fixed and carries no app name, the
+/// root being the test's own: `config/config.toml`, `cache/` (with
+/// `images/`, `metadata.sqlite`, `remote-flags.json`), `state/` (with
+/// `history`), `data/logs/`, and `downloads/` as the default download
+/// folder. It is consulted ahead of every other source, the XDG
+/// variables, `HOME` and the dev profile included.
+fn test_profile_root() -> Option<PathBuf> {
+    std::env::var_os(TEST_PROFILE_ROOT_ENV)
+        .filter(|v| !v.is_empty())
         .map(PathBuf::from)
 }
 
@@ -73,12 +108,18 @@ fn project_dirs() -> Option<ProjectDirs> {
 /// `$XDG_CONFIG_HOME/ani-gui/config.toml` (or platform-equivalent).
 #[must_use]
 pub fn config_file() -> Option<PathBuf> {
+    if let Some(root) = test_profile_root() {
+        return Some(root.join("config").join("config.toml"));
+    }
     project_dirs().map(|d| d.config_dir().join("config.toml"))
 }
 
 /// `$XDG_CACHE_HOME/ani-gui/`.
 #[must_use]
 pub fn cache_dir() -> Option<PathBuf> {
+    if let Some(root) = test_profile_root() {
+        return Some(root.join("cache"));
+    }
     project_dirs().map(|d| d.cache_dir().to_path_buf())
 }
 
@@ -87,6 +128,13 @@ pub fn cache_dir() -> Option<PathBuf> {
 #[must_use]
 pub fn image_cache_dir() -> Option<PathBuf> {
     cache_dir().map(|d| d.join("images"))
+}
+
+/// `$XDG_CACHE_HOME/ani-gui/remote-flags.json` — the last good remote
+/// flags file and when it was fetched (see `crate::flags::cache`).
+#[must_use]
+pub fn flags_cache() -> Option<PathBuf> {
+    cache_dir().map(|d| d.join("remote-flags.json"))
 }
 
 /// `$XDG_CACHE_HOME/ani-gui/metadata.sqlite` — SQLite metadata cache.
@@ -98,6 +146,9 @@ pub fn metadata_db() -> Option<PathBuf> {
 /// `$XDG_DATA_HOME/ani-gui/logs/`.
 #[must_use]
 pub fn logs_dir() -> Option<PathBuf> {
+    if let Some(root) = test_profile_root() {
+        return Some(root.join("data").join("logs"));
+    }
     project_dirs().map(|d| d.data_dir().join("logs"))
 }
 
@@ -111,6 +162,9 @@ pub fn logs_dir() -> Option<PathBuf> {
 /// account tokens.
 #[must_use]
 pub fn state_dir() -> Option<PathBuf> {
+    if let Some(root) = test_profile_root() {
+        return Some(root.join("state"));
+    }
     if let Ok(state) = std::env::var("XDG_STATE_HOME") {
         if !state.is_empty() {
             return Some(PathBuf::from(state).join(app_name()));
@@ -155,6 +209,9 @@ pub fn gui_history() -> Option<PathBuf> {
 /// before confirming — this is just the *default* the picker opens at.
 #[must_use]
 pub fn download_dir() -> Option<PathBuf> {
+    if let Some(root) = test_profile_root() {
+        return Some(root.join("downloads"));
+    }
     if let Ok(xdg) = std::env::var("XDG_DOWNLOAD_DIR") {
         if !xdg.is_empty() {
             return Some(PathBuf::from(xdg).join("ani-gui"));
@@ -173,10 +230,21 @@ pub fn download_dir() -> Option<PathBuf> {
 pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
+#[path = "paths_test.rs"]
+mod profile_root_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     use super::TEST_ENV_LOCK as ENV_LOCK;
+
+    #[test]
+    fn the_flags_cache_sits_in_the_cache_root() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let root = cache_dir().expect("cache dir");
+        assert_eq!(flags_cache(), Some(root.join("remote-flags.json")));
+    }
 
     /// The dev-profile policy, tested as a pure function so it's
     /// independent of *this* test binary's own (always-debug) build

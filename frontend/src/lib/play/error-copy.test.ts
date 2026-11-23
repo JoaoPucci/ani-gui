@@ -344,6 +344,72 @@ describe('describePlayFailure — a stream server that did not serve', () => {
 	});
 });
 
+describe('describePlayFailure — a source answer the resolver could not read', () => {
+	// The resolver's verdict when the provider answered with a page or
+	// payload that no longer has the shape this version reads: the
+	// provider changed, and the same build reads the same answer the
+	// same way. Shown as the generic retry, it sent the user to try
+	// again in a few minutes for a failure an update is what ends.
+	const unreadable = {
+		kind: 'parse_failed',
+		key: 'error.scraper.parse_failed',
+		detail: 'the page is not the search shape'
+	};
+
+	it('says the answer could not be read and that an update may fix it', () => {
+		const msg = describePlayFailure(unreadable, { otherAudio: null });
+		expect(msg).not.toBe(m.play_play_failure_generic());
+		expect(msg).toBe(m.play_play_failure_unreadable());
+		expect(msg).not.toContain('search shape');
+	});
+
+	it('reads the same on every play surface, the override point included', () => {
+		const msg = m.play_play_failure_unreadable();
+		expect(describeExternalLaunchFailure(unreadable, null)).toBe(msg);
+		expect(describeSyncplayLaunchFailure(unreadable, null)).toBe(msg);
+		expect(
+			describePlayFailure(unreadable, { otherAudio: true, noResults: () => 'NOT IN CATALOGUE' })
+		).toBe(msg);
+	});
+
+	it('is chosen by the kind, whatever words the log detail carries', () => {
+		// The detail is free text for the log. Words in it that name
+		// another branch (a timeout, the network, a missing episode)
+		// must not pick that branch's copy.
+		fc.assert(
+			fc.property(
+				fc.oneof(
+					fc.string(),
+					fc.constantFrom(
+						'timeout reading the payload',
+						'network marker missing',
+						'no_results shape',
+						'episode_unavailable tag',
+						'scraper said stream_server_failed'
+					)
+				),
+				(detail) => {
+					expect(
+						describePlayFailure(
+							{ kind: 'parse_failed', key: 'error.scraper.parse_failed', detail },
+							{ otherAudio: null }
+						)
+					).toBe(m.play_play_failure_unreadable());
+				}
+			)
+		);
+	});
+
+	it('has the message in every locale, without a semicolon joining sentences', () => {
+		for (const locale of ['en', 'pt-BR', 'es-419', 'ru'] as const) {
+			const text = m.play_play_failure_unreadable({}, { locale });
+			expect(text.length).toBeGreaterThan(0);
+			expect(text).not.toContain(';');
+			expect(text).not.toContain('—');
+		}
+	});
+});
+
 describe('describeSourceDown', () => {
 	it('is the shared first-chance branch every play surface calls', () => {
 		// The detail and home pages keep their own failure mappers;

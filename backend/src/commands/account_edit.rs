@@ -132,9 +132,9 @@ async fn set_entry_via(
     let _entry_guard = state.account_write_locks.hold_entry(kind, native).await;
     // Resolve the cache owner before the mutation: the write may spend
     // the last allowance, so a profile request afterwards can be refused.
-    let owner = super::account_owner::before_write(provider, tokens).await?;
+    let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
     let entry = provider.update_entry(tokens, native, update).await?;
-    let owner = super::account_owner::after_write(provider, tokens, owner).await;
+    let owner = super::account_owner::after_write(state, kind, provider, tokens, owner).await;
     // Force the explicit value into the local cache (overwrites a higher
     // progress, unlike the monotonic mark-watched write-through) so the
     // rail/editor reflect a downward correction immediately. Best-effort
@@ -185,14 +185,20 @@ async fn remove_entry_via(
     // read: if the show is no longer on the list the delete's goal is
     // already met (idempotent success, still drop the cache row); a
     // still-present show means the failure is real and propagates.
-    let owner = super::account_owner::before_write(provider, tokens).await?;
-    if let Err(e) = provider.delete_entry(tokens, native).await {
+    // The bearer's user (remembered once the tracker has named it): the
+    // delete and the cache row's drop both go by it.
+    let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
+    let deleted = match &owner {
+        Some(user) => provider.delete_entry_for(tokens, native, user).await,
+        None => provider.delete_entry(tokens, native).await,
+    };
+    if let Err(e) = deleted {
         match provider.current_entry(tokens, native).await {
             Ok(None) => {}
             _ => return Err(e),
         }
     }
-    let owner = super::account_owner::after_write(provider, tokens, owner).await;
+    let owner = super::account_owner::after_write(state, kind, provider, tokens, owner).await;
     // Drop the cache row (best-effort) so the rail stops showing it.
     super::account_owner::cache_row(state, kind, began, native.0, owner.as_deref(), |owner| {
         cache_upsert::delete_entry_row(&state.cache_pool, kind, owner, native.0)

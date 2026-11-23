@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "47232",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Boku no Hero Academia 7",
+    "titles": {
+     "en": "My Hero Academia Season 7",
+     "en_jp": "Boku no Hero Academia 7",
+     "ja_jp": "僕のヒーローアカデミア7"
+    },
+    "abbreviatedTitles": [],
+    "slug": "boku-no-hero-academia-7th-season",
+    "startDate": "2024-05-04",
+    "endDate": "2024-10-12",
+    "episodeCount": 21,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

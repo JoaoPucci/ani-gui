@@ -1,0 +1,26 @@
+{
+ "data": [
+  {
+   "id": "8674",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: No Regrets",
+    "titles": {
+     "en": "Attack on Titan: No Regrets",
+     "en_jp": "Shingeki no Kyojin: Kuinaki Sentaku",
+     "ja_jp": "進撃の巨人 悔いなき選択"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin: Birth of Levi",
+     "Attack on Titan: No Regrets"
+    ],
+    "slug": "shingeki-no-kyojin-kuinaki-sentaku",
+    "startDate": "2014-12-09",
+    "endDate": "2015-04-09",
+    "episodeCount": 2,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  }
+ ]
+}

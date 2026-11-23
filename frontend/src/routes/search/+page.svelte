@@ -4,15 +4,18 @@
   The motifs are restraint: serif voice, mono numerals, hairline rules.
 -->
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { beginVisit } from '$lib/navigation/visit';
 	import { SvelteSet } from 'svelte/reactivity';
+	import type { Snapshot } from '@sveltejs/kit';
 	import { page } from '$app/state';
+	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
 		imageProxyUrl,
 		kitsuSearchPage,
 		kitsuTopRated,
-		kitsuTrending,
+		kitsuTrendingAnilist,
 		settingsGet,
 		type Config,
 		type KitsuAnimeRef,
@@ -22,6 +25,7 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import SearchProgress from '$lib/components/SearchProgress.svelte';
 	import Strip from '$lib/components/Strip.svelte';
+	import SkeletonRow from '$lib/components/SkeletonRow.svelte';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
@@ -37,7 +41,18 @@
 	import { watchSentinel, type SentinelWatch } from '$lib/search/sentinel';
 	import { staggerSlots } from '$lib/search/stagger';
 	import { keepFocus } from '$lib/search/keep-focus';
+	import {
+		captureSearch,
+		readSnapshot,
+		type ScrollAnchor,
+		type SearchSnapshot
+	} from '$lib/search/snapshot';
+	import { cardPositions, scrollToAnchor } from '$lib/search/scroll-anchor';
+	import { followAddress } from '$lib/search/follow-address';
+	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
+	import { discoveryView, loadDiscoveryRows, LOADING, type RowLoad } from '$lib/rows/discovery';
 	import { subtypeLabel } from '$lib/search/subtype-label';
+	import { SEARCH_TYPE_FILTERS } from '$lib/search/type-filters';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
@@ -62,10 +77,17 @@
 		void tick().then(() => sentinelWatch?.remeasure());
 	}
 
-	// Discovery rows for the empty state — same data as the home page so
-	// users have something to browse when they arrive without a query.
-	let trending = $state<KitsuAnimeRef[] | null>(null);
-	let topRated = $state<KitsuAnimeRef[] | null>(null);
+	// Discovery rows for the empty state, so users have something to
+	// browse when they arrive without a query. Trending is the home
+	// page's AniList list (kitsuTrendingAnilist, cached by the backend
+	// for an hour) and is drawn first, Top rated below it; what each
+	// slot shows is decided in $lib/rows/discovery.ts.
+	let rowLoads = $state<[RowLoad<KitsuAnimeRef>, RowLoad<KitsuAnimeRef>]>([LOADING, LOADING]);
+	const discovery = $derived(discoveryView(rowLoads));
+	const trendingSlot = $derived(discovery.slots[0]);
+	const topRatedSlot = $derived(discovery.slots[1]);
+	// Both rows loading or shown: what the page caption names is there.
+	const bothRowsThere = $derived(discovery.slots.every((slot) => slot.kind !== 'absent'));
 
 	// User settings — only `mode` matters here, used to scope the
 	// availability filter to the user's sub/dub preference. Settings
@@ -87,7 +109,6 @@
 		year: m.search_sort_year,
 		rating: m.search_sort_rating
 	};
-	const SUBTYPES = ['TV', 'movie', 'special', 'OVA', 'ONA', 'music'];
 	let sortKey = $state<SortKey>('relevance');
 	const activeSubtypes = new SvelteSet<string>();
 
@@ -143,6 +164,10 @@
 	// focus moves to the folio's anchor rather than falling to the page
 	// body ($lib/search/keep-focus.ts).
 	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => focusAnchor);
+	// The same for the discovery notice's Try again, which leaves as the
+	// rows start loading again.
+	let discoveryAnchor = $state<HTMLElement | null>(null);
+	const keepFocusOnPage = (node: HTMLElement) => keepFocus(node, () => discoveryAnchor);
 
 	function sentinel(node: HTMLElement) {
 		const watch = watchSentinel(node, (inReach) => (reach = measured(inReach)));
@@ -156,39 +181,132 @@
 		};
 	}
 
-	onMount(async () => {
-		// Resolve settings before kicking off the discovery requests
-		// so the filter calls below see the user's actual mode. Naive
-		// parallel start would race — trending could resolve first
-		// and call filterAvailable(t, pickAvailabilityMode(null))
-		// which falls back to 'sub' and never reflects the real mode.
-		// settingsGet is a single fast IPC; awaiting once on mount is
-		// cheap.
-		try {
-			config = await settingsGet();
-		} catch {
-			// Settings fetch failed — fall through with config null;
-			// pickAvailabilityMode handles that with 'sub' default.
-		}
-		const mode = pickAvailabilityMode(config);
-		kitsuTrending()
-			.then((t) => filterAvailable(t, mode))
-			.then((t) => (trending = t))
-			.catch(() => (trending = []));
-		kitsuTopRated()
-			.then((t) => filterAvailable(t, mode))
-			.then((t) => (topRated = t))
-			.catch(() => (topRated = []));
+	// The page's own reads (the settings and the two discovery rows),
+	// cancelled when it goes, with the search the runner has out; what
+	// they answer after reaches nothing ($lib/navigation/visit).
+	const pageReads = beginVisit();
+	onDestroy(() => {
+		pageReads.end();
+		searchRunner.stop();
 	});
+
+	onMount(() => void loadDiscovery());
+
+	/** Ask for both discovery rows, each landing in its own slot
+	 *  ($lib/rows/discovery: loadDiscoveryRows). Also the notice's
+	 *  Try again. Every read goes through the page's visit, so none
+	 *  lands after the page has gone. */
+	function loadDiscovery() {
+		rowLoads = [LOADING, LOADING];
+		const signal = pageReads.signal;
+		return loadDiscoveryRows<KitsuAnimeRef, Config>({
+			config: () => config,
+			readConfig: () => pageReads.keep(settingsGet({ signal })),
+			keepConfig: (read) => (config = read),
+			pickMode: pickAvailabilityMode,
+			rows: [
+				(mode) =>
+					pageReads.keep(
+						kitsuTrendingAnilist({ signal }).then((t) => filterAvailable(t, mode, { signal }))
+					),
+				(mode) =>
+					pageReads.keep(
+						kitsuTopRated({ signal }).then((t) => filterAvailable(t, mode, { signal }))
+					)
+			],
+			onRow: (index, row) => (rowLoads[index] = row)
+		});
+	}
 
 	// Drive the search off the URL ?q=… param. The global topbar from
 	// +layout.svelte writes that param on submit; this page reacts to
 	// it. As a bonus, search history (browser back/forward) and deep
-	// links work for free.
+	// links work for free. A back or forward press is the exception:
+	// the entry it lands on may have a snapshot to restore, which
+	// SvelteKit hands over only after the page has updated, so the
+	// address is followed from `afterNavigate` instead (below).
+	const urlQuery = () => page.url.searchParams.get('q')?.trim() ?? '';
 	$effect(() => {
-		const q = page.url.searchParams.get('q')?.trim() ?? '';
-		if (q && q !== submitted) {
-			void runSearch(q);
+		const q = urlQuery();
+		const href = page.url.href;
+		untrack(() => {
+			if (href !== arriving) follow(q);
+		});
+	});
+
+	function follow(q: string) {
+		const step = followAddress(q, submitted);
+		if (step === 'search') void runSearch(q);
+		else if (step === 'clear') startOver();
+	}
+
+	/** The page as it opens with nothing asked ($lib/search/arrival). */
+	function startOver() {
+		searchRunner.stop();
+		results = null;
+		phase = { kind: 'loading' };
+		show(emptyView());
+	}
+
+	/** Show `view`: its query, order, filters, the card to land on and
+	 *  the cards that skip their entrance. */
+	function show(view: SearchView) {
+		submitted = view.q;
+		sortKey = view.order;
+		activeSubtypes.clear();
+		for (const t of view.subtypes) activeSubtypes.add(t);
+		anchor = view.anchor;
+		restoredIds = view.restoredIds;
+		error = null;
+		reach = UNMEASURED;
+	}
+
+	// Going back to the search page restores what the reader left: the
+	// query, order and type filters, the results already loaded, and
+	// the card at the top of the screen. SvelteKit keeps the snapshot
+	// with the history entry (https://svelte.dev/docs/kit/snapshots);
+	// what is kept, and when kept results may be shown again, is
+	// $lib/search/snapshot.ts.
+	let pageEl = $state<HTMLElement | null>(null);
+	/** The address a back or forward press is taking this page to. */
+	let arriving: string | null = null;
+	/** The snapshot SvelteKit restored, until the navigation lands. */
+	let saved: SearchSnapshot | null = null;
+	/** The card to put back at the top once the results are up. */
+	let anchor: ScrollAnchor | null = null;
+	/** Cards that do not rise in again ($lib/search/arrival). */
+	let restoredIds = $state.raw(new Set<string>());
+
+	export const snapshot: Snapshot<SearchSnapshot> = {
+		capture: () =>
+			captureSearch({
+				q: submitted,
+				order: sortKey,
+				subtypes: [...activeSubtypes],
+				checkpoint: searchRunner.checkpoint(),
+				cards: cardPositions(pageEl, window.scrollY),
+				now: Date.now()
+			}),
+		restore: (value) => {
+			saved = readSnapshot(value);
+		}
+	};
+
+	beforeNavigate(({ type, to }) => {
+		arriving = type === 'popstate' && to ? to.url.href : null;
+	});
+
+	// What the landing navigation asks is $lib/search/arrival's rule;
+	// this applies it.
+	afterNavigate(({ type }) => {
+		arriving = null;
+		const kept = saved;
+		saved = null;
+		const step = arrive(kept, type, urlQuery());
+		if (step.kind === 'follow') follow(step.q);
+		else if (step.kind === 'restore') {
+			show(step.view);
+			void searchRunner.resume(step.saved, { now: Date.now(), reload: step.reload });
 		}
 	});
 
@@ -200,13 +318,13 @@
 	// The closures below are the page-side adapter, one Svelte
 	// reassignment each.
 	const searchRunner = createSearchRunner({
-		searchPage: kitsuSearchPage,
+		searchPage: (q, offset, order, signal) => kitsuSearchPage(q, offset, order, { signal }),
 		getConfig: async () => {
-			// Same race as onMount: a fast ?q= deeplink can fire before
+			// Same race as loadDiscoveryRows: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
 			// the result so DUB users never search under the 'sub'
 			// fallback twice.
-			if (!config) config = await settingsGet();
+			if (!config) config = await settingsGet({ signal: pageReads.signal });
 			return config;
 		},
 		pickMode: pickAvailabilityMode,
@@ -218,6 +336,7 @@
 		onError: (e) => {
 			error = { headline: m.search_error_headline(), detail: describeError(e) };
 			results = null;
+			anchor = null;
 		},
 		onBusy: (b) => {
 			busy = b;
@@ -228,12 +347,21 @@
 			// Load more brought it back to idle). Only a measurement of
 			// the grid as it now stands may load the next page.
 			if (p.kind === 'idle') gridChanged();
+		},
+		// A resumed search is up: put the card the reader left back at
+		// the top of the screen, or open at the top when it is gone.
+		onReached: (found) => {
+			const card = found ? anchor : null;
+			anchor = null;
+			void tick().then(() => scrollToAnchor(pageEl, card, window));
 		}
 	});
 
 	async function runSearch(q: string) {
 		error = null;
 		submitted = q;
+		anchor = null;
+		restoredIds = new Set();
 		// The marker's last report belongs to the previous results; it
 		// unmounts while this search's first page loads, and the
 		// observer made when it mounts again reports its initial state.
@@ -277,7 +405,7 @@
 	<title>{m.app_page_title_search()}</title>
 </svelte:head>
 
-<div class="page">
+<div class="page" bind:this={pageEl}>
 	<SearchProgress {busy} />
 	<header class="page-header">
 		<h1 class="page-title">{m.search_title()}</h1>
@@ -308,7 +436,20 @@
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				<span class="eyebrow-value">{m.search_eyebrow_value_empty()}</span>
 			</p>
-			<p class="eyebrow-caption">{m.search_empty_caption()}</p>
+			<!-- Names both rows below, so it is hidden, from sight and from
+			     screen readers, when either is not there: dropped, or both
+			     gone behind the notice. It stays in the page with its words,
+			     so it keeps its height (wrapped or not) and a row already
+			     shown below never moves up, and the live region it sits in
+			     sees no change of text (it is announced again only when it
+			     returns, after a retry has loaded the rows). -->
+			<p
+				class="eyebrow-caption"
+				class:caption-hidden={!bothRowsThere}
+				aria-hidden={bothRowsThere ? undefined : 'true'}
+			>
+				{m.search_empty_caption()}
+			</p>
 		{/if}
 	</section>
 
@@ -341,7 +482,7 @@
 			<div class="control-group">
 				<span class="control-label">{m.search_control_type_label()}</span>
 				<div class="chips" role="group" aria-label={m.search_chips_type_aria_label()}>
-					{#each SUBTYPES as s (s)}
+					{#each SEARCH_TYPE_FILTERS as s (s)}
 						<button
 							type="button"
 							class="chip"
@@ -380,8 +521,8 @@
 			{#each Array.from({ length: 12 }, (_, k) => k) as i (i)}
 				<li class="card card-skeleton" style="--i: {i}">
 					<div class="poster poster-skeleton"></div>
-					<div class="line line-skeleton" style="inline-size: 70%"></div>
-					<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+					<div class="line line-skeleton w-70"></div>
+					<div class="line line-skeleton line-thin w-40"></div>
 				</li>
 			{/each}
 		</ul>
@@ -396,23 +537,57 @@
 			</p>
 		</div>
 	{:else if !submitted}
-		<!-- No query yet: surface the same discovery rows the home page uses. -->
-		{#if trending && trending.length > 0}
+		<!-- No query yet: the discovery rows. A row keeps a skeleton in
+		     its place until every row above it has settled, so a row on
+		     screen is never pushed down; a row that failed or came back
+		     empty is dropped ($lib/rows/discovery). -->
+		<!-- Mounted with the rows, so a notice that appears once the rows
+		     have been asked for lands in a live region already in place
+		     and is announced. Focus on its Try again, which leaves as the
+		     rows load again, moves to the silent anchor before it. -->
+		<span class="discovery-anchor" tabindex="-1" bind:this={discoveryAnchor}></span>
+		<div role="status">
+			{#if discovery.nothing}
+				<div class="state state-empty">
+					<p class="state-headline">{m.search_discovery_nothing_headline()}</p>
+					<p class="state-detail">{m.search_discovery_nothing_detail()}</p>
+					<button
+						type="button"
+						class="folio-action state-action"
+						use:keepFocusOnPage
+						onclick={() => loadDiscovery()}
+					>
+						{m.search_discovery_retry()}
+					</button>
+				</div>
+			{/if}
+		</div>
+		{#if trendingSlot.kind === 'skeleton'}
+			<SkeletonRow
+				eyebrow={m.search_discovery_trending_eyebrow()}
+				caption={m.search_discovery_trending_caption_loading()}
+			/>
+		{:else if trendingSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_trending_eyebrow()}
 				caption={m.search_discovery_trending_caption()}
 			>
-				{#each trending as hit (hit.id)}
+				{#each trendingSlot.items as hit (hit.id)}
 					<PosterCard anime={hit} />
 				{/each}
 			</Strip>
 		{/if}
-		{#if topRated && topRated.length > 0}
+		{#if topRatedSlot.kind === 'skeleton'}
+			<SkeletonRow
+				eyebrow={m.search_discovery_top_rated_eyebrow()}
+				caption={m.search_discovery_top_rated_caption_loading()}
+			/>
+		{:else if topRatedSlot.kind === 'shown'}
 			<Strip
 				eyebrow={m.search_discovery_top_rated_eyebrow()}
 				caption={m.search_discovery_top_rated_caption()}
 			>
-				{#each topRated as hit (hit.id)}
+				{#each topRatedSlot.items as hit (hit.id)}
 					<PosterCard anime={hit} />
 				{/each}
 			</Strip>
@@ -430,7 +605,12 @@
 				{@const accent = accentFor(hit.id)}
 				{@const year = yearOf(hit)}
 				{@const rating = ratingOf(hit)}
-				<li class="card" style="--i: {slotOf.get(hit.id) ?? i}; --accent: {accent};">
+				<li
+					class="card"
+					class:card-restored={restoredIds.has(hit.id)}
+					data-card-id={hit.id}
+					style="--i: {slotOf.get(hit.id) ?? i}; --accent: {accent};"
+				>
 					<a href={resolve('/anime/[id]', { id: hit.id })} class="card-link">
 						<span class="poster">
 							{#if poster}
@@ -483,8 +663,8 @@
 				{#each Array.from({ length: 12 }, (_, k) => k) as k (k)}
 					<li class="card card-skeleton" style="--i: {k}">
 						<div class="poster poster-skeleton"></div>
-						<div class="line line-skeleton" style="inline-size: 70%"></div>
-						<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+						<div class="line line-skeleton w-70"></div>
+						<div class="line line-skeleton line-thin w-40"></div>
 					</li>
 				{/each}
 			</ul>
@@ -626,6 +806,9 @@
 		font-size: var(--type-meta);
 		color: var(--bone-300);
 	}
+	.eyebrow-caption.caption-hidden {
+		visibility: hidden;
+	}
 
 	/* — Grid: dense, never centered, never gappy. */
 	.grid {
@@ -641,6 +824,10 @@
 		--i: 0;
 		animation: card-in var(--dur-med) var(--ease-out-soft) both;
 		animation-delay: calc(var(--i) * var(--dur-stagger));
+	}
+	/* A card that came back as the reader left it is already in place. */
+	.card.card-restored {
+		animation: none;
 	}
 	@keyframes card-in {
 		from {
@@ -960,13 +1147,7 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.card,
-		.card-skeleton .poster-skeleton,
-		.line {
-			animation: none;
-		}
 		.folio-rule-drawing::after {
-			animation: none;
 			opacity: 0.6;
 		}
 	}
@@ -1002,6 +1183,16 @@
 		font-size: var(--type-body);
 		color: var(--bone-300);
 		max-inline-size: 60ch;
+	}
+	.state-action {
+		margin-block-start: var(--space-4);
+	}
+	.discovery-anchor {
+		display: block;
+		block-size: 0;
+	}
+	.discovery-anchor:focus {
+		outline: none;
 	}
 
 	/* Sort + filter controls — match settings' .field grouping so
@@ -1062,5 +1253,15 @@
 	}
 	.chip-clear {
 		border-style: dashed;
+	}
+
+	/* Skeleton line sizes. Classes, not static style attributes: the
+	   renderer's content security policy refuses inline style attributes,
+	   and Svelte parses a static one as markup. */
+	.line.w-40 {
+		inline-size: 40%;
+	}
+	.line.w-70 {
+		inline-size: 70%;
 	}
 </style>

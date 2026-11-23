@@ -4,6 +4,7 @@ import {
 	isWatchLaterStale,
 	markRefreshed,
 	markRefreshedSince,
+	onWatchLaterInvalidated,
 	readLastRefreshed,
 	refreshStamp,
 	WATCH_LATER_TTL_MS
@@ -64,6 +65,16 @@ describe('watch-later refresh timestamps (localStorage)', () => {
 		invalidateWatchLater('mal');
 		expect(readLastRefreshed('mal')).toBeNull();
 		expect(isWatchLaterStale(readLastRefreshed('mal'), 9999)).toBe(true);
+	});
+
+	it('tells each listener which provider was invalidated, until it unsubscribes', () => {
+		const heard: string[] = [];
+		const stop = onWatchLaterInvalidated((p) => heard.push(p));
+		invalidateWatchLater('mal');
+		invalidateWatchLater('anilist');
+		stop();
+		invalidateWatchLater('mal');
+		expect(heard).toEqual(['mal', 'anilist']);
 	});
 
 	it('reads back null for a non-numeric stored value', () => {

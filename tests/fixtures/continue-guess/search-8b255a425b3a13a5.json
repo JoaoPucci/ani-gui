@@ -1,0 +1,73 @@
+{
+ "data": [
+  {
+   "id": "50497",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super: Beerus",
+    "titles": {
+     "en": "Dragon Ball Super: Beerus",
+     "en_jp": "Dragon Ball Super: Beerus",
+     "ja_jp": "ドラゴンボール超 ビルス"
+    },
+    "abbreviatedTitles": [
+     "DBS Beerus"
+    ],
+    "slug": "dragon-ball-super-beerus",
+    "startDate": "2026-10-11",
+    "endDate": "2027-02-14",
+    "episodeCount": 19,
+    "subtype": "TV",
+    "status": "current"
+   }
+  },
+  {
+   "id": "7176",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Z Movie 14: Kami to Kami",
+    "titles": {
+     "en": "Dragon Ball Z: Battle of Gods",
+     "en_jp": "Dragon Ball Z Movie 14: Kami to Kami",
+     "en_us": "Dragon Ball Z: Battle of Gods",
+     "ja_jp": "ドラゴンボールZ: 神と神"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Z 2013",
+     "DBZ (2013)",
+     "Saikyou Shidou"
+    ],
+    "slug": "dragon-ball-z-movie-14-kami-to-kami",
+    "startDate": "2013-03-30",
+    "endDate": "2013-03-30",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "10879",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Dragon Ball Super",
+    "titles": {
+     "en": "Dragon Ball Super",
+     "en_jp": "Dragon Ball Super",
+     "en_us": "Dragon Ball Super",
+     "ja_jp": "ドラゴンボール超（スーパー）"
+    },
+    "abbreviatedTitles": [
+     "Dragon Ball Chou",
+     "DB Super",
+     "DBS"
+    ],
+    "slug": "dragon-ball-super",
+    "startDate": "2015-07-05",
+    "endDate": "2018-03-25",
+    "episodeCount": 131,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

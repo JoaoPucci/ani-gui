@@ -1,0 +1,9 @@
+{
+  "linux": {
+    "AppImage": "-x86_64.AppImage",
+    "deb": "-amd64.deb"
+  },
+  "windows": {
+    "nsis": "-x64-setup.exe"
+  }
+}

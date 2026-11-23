@@ -17,16 +17,36 @@
 
 "use strict";
 
+// First, before anything can write to them: a stdout or stderr that has
+// gone away — the terminal the app was started from closed, a pipe's
+// reader exited — must not take the app down with it
+// (lib/stdio-guard.cjs).
+require("./lib/stdio-guard.cjs").guardStdio(process);
+
+// The AppImage's sandbox probe (lib/sandbox-probe.cjs): a run started
+// only to learn that Chromium's sandbox came up, which it has by the
+// time this file runs. Answered before anything but that guard, so a
+// probe never reaches the single-instance claim, the backend, a window
+// or the profile; its one write goes through the guard.
+if (
+  require("./lib/sandbox-probe.cjs").answerSandboxProbe(process.argv, process.stdout, (code) =>
+    process.exit(code),
+  )
+) {
+  return;
+}
+
 const {
   app,
   BrowserWindow,
   Menu,
   dialog,
-  ipcMain,
   net,
+  powerMonitor,
   protocol,
   safeStorage,
   screen,
+  session,
   shell,
 } = require("electron");
 const { spawn } = require("node:child_process");
@@ -47,18 +67,79 @@ const {
 const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
-const { resolveLocale } = require("./lib/main-messages.cjs");
+const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
+const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
+const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
+const { backendRelay, redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
+const { appDocumentFrom } = require("./lib/app-document.cjs");
+const { SECRET_CHANNEL, secretKeeper } = require("./lib/secret-handoff.cjs");
+const { backendOrigins, headerlessFilter, withLaunchSecret } = require("./lib/secret-header.cjs");
+const { revealMaximized, splashController, splashVersionLabel } = require("./lib/splash.cjs");
+const {
+  abortWhenLost,
+  appReadyBound,
+  appReadyWaiter,
+  appWindowOptions,
+  holdWindowIcon,
+  frameWake,
+  revealGate,
+  wakeHidden,
+} = require("./lib/app-window.cjs");
+const {
+  grantedSizeRecorder,
+  initialSize,
+  readGeometry,
+  remember,
+  writeGeometry,
+} = require("./lib/window-geometry.cjs");
+const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
+const { applyReducedMotion, execText, readerEnv } = require("./lib/reduced-motion.cjs");
+const { watchSessionEnd } = require("./lib/session-end.cjs");
+const {
+  blockFor,
+  installTerminationSignals,
+  persistStorage,
+} = require("./lib/termination-signals.cjs");
 const {
   bootApp,
   firstShowTimeoutMs,
   openFirstPage,
 } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
+const { guardedWindowMaker } = require("./lib/guarded-window.cjs");
+const { mainProcessIpc } = require("./lib/ipc-guard.cjs");
+const { isRevealableDirectory } = require("./lib/reveal-folder.cjs");
+const {
+  devOriginFrom,
+  policedResponse,
+  rendererPolicy,
+  withPolicyHeader,
+} = require("./lib/renderer-csp.cjs");
+const { bundleTarget } = require("./lib/bundle-path.cjs");
+const { KEYRING_HELPER_SWITCH, serveKeyring } = require("./lib/keyring-helper.cjs");
+const {
+  createHelperClient,
+  createKeyring,
+  helperCommand,
+  readToken,
+  writeToken,
+} = require("./lib/keyring.cjs");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
 const VITE_DEV_URL = process.env.VITE_DEV_URL || "http://localhost:5173";
+
+// The renderer's content security policy: the header half, written for
+// this launch from the backend's handshake (lib/renderer-csp.cjs); the
+// bundle's <meta> carries the script half. Until a window is created
+// against a handshake, the policy names no loopback origin at all —
+// fail closed, never a wildcard.
+const DEV_ORIGIN = IS_DEV ? devOriginFrom(VITE_DEV_URL) : null;
+let policyBackend = null;
+function rendererPolicyNow() {
+  return rendererPolicy({ backend: policyBackend, devOrigin: DEV_ORIGIN });
+}
 
 // Dev builds run against a separate data profile so they never read or
 // migrate the installed app's data. The backend resolves its config /
@@ -92,6 +173,27 @@ if (IS_DEV) {
 const APP_NAME = isDevProfile(process.env) ? "ani-gui-dev" : "ani-gui";
 app.setName(APP_NAME);
 process.title = APP_NAME;
+
+// The keyring helper (lib/keyring-helper.cjs): this binary started
+// again by lib/keyring.cjs to make the safeStorage calls the main
+// process must not wait on. After setName, which names the keyring
+// entry, so the helper reads the one the app wrote; before the
+// single-instance claim, the backend and every window, none of which
+// it has. Its Chromium profile is a directory of its own.
+if (process.argv.includes(KEYRING_HELPER_SWITCH)) {
+  // Named for what it is in a process list, where it sits beside the app.
+  process.title = `${APP_NAME}-keyring-helper`;
+  app.setPath("userData", path.join(app.getPath("userData"), "keyring-helper"));
+  app.whenReady().then(() =>
+    serveKeyring({
+      input: process.stdin,
+      write: (line) => process.stdout.write(line),
+      safeStorage,
+      onEnd: () => app.exit(0),
+    }),
+  );
+  return;
+}
 
 // One running instance per profile (see lib/single-instance.cjs). Taken
 // here — after setName, which places userData and with it the lock on
@@ -127,6 +229,41 @@ if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
 // other path to index.html.
 const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://localhost`;
+// The one document the window may hold (lib/app-document.cjs).
+const APP_DOCUMENT = appDocumentFrom({ isDev: IS_DEV, devUrl: VITE_DEV_URL });
+// Every IPC handler, and the waits for the renderer's app-mounted and
+// app-ready words, answer only the main frame holding that document
+// (lib/ipc-guard.cjs); tests/arch/ipc_sender.sh keeps them all
+// registered through it.
+// The guards name a refused page by its URL, which can carry a secret:
+// their lines are redacted in the shapes a secret travels in (a
+// `secret=` parameter, the header), as the handoff's refusal line is
+// below. They are built before the backend has a secret, so a URL that
+// carries one in any other shape is not caught by its value
+// (lib/log-redact.cjs).
+const loggedRedacted = (...parts) => console.error(redactSecrets(parts.join(" ")));
+const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: loggedRedacted });
+// Every window, the splash's and the app's, holds what the main process
+// loaded into it, and a page can take it only to the app's document:
+// navigations, redirects, subframes, webviews and new windows all pass
+// through one verdict, and web links go to the system browser.
+// Fullscreen and clipboard writes for the app's document; every other
+// permission denied (lib/guarded-window.cjs, tests/arch/window_guard.sh).
+const makeWindow = guardedWindowMaker({
+  BrowserWindow,
+  app: APP_DOCUMENT,
+  openExternal: (url) => shell.openExternal(url),
+  logError: loggedRedacted,
+});
+
+// The launch's secret, kept per window and handed to the app's own
+// page alone, over IPC, never on a command line (lib/secret-handoff.cjs).
+const secrets = secretKeeper({
+  app: APP_DOCUMENT,
+  // A refused page is named by its URL, redacted in the shapes a secret
+  // travels in, as the guards' lines are (lib/log-redact.cjs).
+  logError: (line) => console.error(redactSecrets(line)),
+});
 
 // Register the scheme as standard + secure BEFORE app.whenReady, so
 // fetch + service-worker-style guarantees apply to assets loaded
@@ -268,6 +405,10 @@ function readConfigLocale() {
  * see the module), so bootApp can end the boot.
  */
 async function spawnBackend() {
+  const relay = backendRelay({
+    stdout: (text) => process.stdout.write(text),
+    stderr: (text) => process.stderr.write(text),
+  });
   // A parent pipe on stdin, the flag to watch it, and its own process
   // group — see lib/backend-spawn.cjs. `child.stdin` is never written
   // to or closed: it stays open exactly as long as this process lives.
@@ -281,16 +422,21 @@ async function spawnBackend() {
       reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
     },
     handshake: (child) => {
-      child.stderr.on("data", (chunk) => {
-        process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
-      });
+      // The backend's output is relayed with any secret in it redacted
+      // (lib/log-redact.cjs): by shape from the start, and by value once
+      // the handshake has named the launch's secret.
+      child.stderr.setEncoding("utf-8");
+      child.stderr.on("data", (chunk) => relay.stderr(chunk));
+      child.stderr.on("end", () => relay.end());
       // After the handshake, downstream stdout becomes log output; it
       // is echoed through so we can see it in dev.
-      return awaitHandshake(child, {
+      const handshake = awaitHandshake(child, {
         timeoutMs: HANDSHAKE_TIMEOUT_MS,
         stopChild: killTree,
-        log: (line) => process.stdout.write(`${line}\n`),
+        log: (line) => relay.stdout(line),
       });
+      handshake.then((ready) => relay.learn(ready.internalSecret), () => {});
+      return handshake;
     },
   });
 }
@@ -357,100 +503,155 @@ function signalBackendGroup(pid) {
   }
 }
 
-async function createWindow(backend) {
-  // Pre-compute the work area so the window opens at the maximized
-  // size in one shot. Setting the constructor width/height to the
-  // work-area size avoids the "open at 1280×800, then animate to
-  // maximized" flash some WMs (mutter, kwin) animate when you call
-  // `win.maximize()` against a smaller initial size. After the
-  // window is up we still call `maximize()` so the WM tracks the
-  // maximized state — that lets the user un-maximize back to a
-  // sensible default and lets a snap shortcut work.
-  const { width: workW, height: workH } = screen.getPrimaryDisplay().workAreaSize;
-  const win = new BrowserWindow({
+/** The splash, while the backend starts and the launch's flags are
+ *  decided (lib/splash.cjs). */
+const splash = splashController({
+  createWindow: (options) => holdWindowIcon(makeWindow(options), options.icon, "splash"),
+  packaged: app.isPackaged,
+  logError: console.error,
+  // The user closed the splash (from the taskbar, say) before the
+  // app's window was revealed: they cancelled the launch. While that
+  // window loads hidden it is still open, so no window-all-closed
+  // would quit of itself.
+  onDismissed: () => app.quit(),
+  log: console.log,
+  // The line under the splash's rail when a step of the boot stalls,
+  // in the language the app's dialogs speak (read once the app is
+  // ready, when the splash opens).
+  stallTexts: () => stallTexts(messagesFor(mainLocale())),
+  stallGeneric: () => messagesFor(mainLocale()).splashStartingUp,
+  // The page's language, its name, and its stuck state's line and
+  // actions (lib/splash-stuck.cjs), in the same language.
+  pageWords: () => {
+    const locale = mainLocale();
+    return splashWords(locale, messagesFor(locale));
+  },
+  // Restart, from the stuck state: the whole app again, once this
+  // process has exited (lib/relaunch.cjs). The quit that follows is the
+  // one closing the splash starts (onDismissed above).
+  onRestart: () =>
+    relaunch(
+      relaunchPlan({
+        platform: process.platform,
+        env: process.env,
+        execPath: process.execPath,
+        argv: process.argv,
+        pid: process.pid,
+      }),
+      { app, spawn, logError: console.error },
+    ),
+  // Above the splash's title. A dev run is the one that loads the Vite
+  // dev server (IS_DEV), whose frontend labels the rail's version
+  // `-dev` (import.meta.env.DEV); the splash marks it the same.
+  version: splashVersionLabel(app.getVersion(), IS_DEV),
+});
+
+/** Set once the boot has failed (its splash put away, then the failure
+ *  reported): a window's pending wake is off. */
+let bootFailed = false;
+
+/** Where the window's remembered maximized size lives: beside the
+ *  app's other per-user state, under this profile's userData. */
+const geometryFile = () => path.join(app.getPath("userData"), "window-geometry.json");
+
+async function createWindow(backend, launchFlags = launchFlagsOf(backend)) {
+  // The page this window loads is policed against this backend's lanes.
+  policyBackend = backend;
+  // Pre-compute the maximized size so the window opens at it in one
+  // shot. Setting the constructor width/height to it avoids the "open
+  // at 1280×800, then animate to maximized" flash some WMs (mutter,
+  // kwin) animate when you call `win.maximize()` against a smaller
+  // initial size. The size is the one the desktop granted the last
+  // time this display maximized the window, else the work area
+  // (lib/window-geometry.cjs): native Wayland reports no work area, so
+  // there only the remembered size matches the maximized one, and the
+  // hidden page is painted at the size it will be revealed at. We
+  // still call `maximize()` so the WM tracks the maximized state —
+  // that lets the user un-maximize back to a sensible default and lets
+  // a snap shortcut work.
+  const display = screen.getPrimaryDisplay();
+  const { width: workW, height: workH } = initialSize(readGeometry(geometryFile(), fs), display);
+  // Made hidden on the app's own dark background (lib/app-window.cjs),
+  // so nothing white shows before the page paints. Frameless: the
+  // renderer draws its own titlebar and window controls, which keeps
+  // them where Linux users expect them under native Wayland, where
+  // GNOME gives Chromium no server-side decorations
+  // (electron/electron#48422). On Linux, and in a Windows dev session,
+  // it carries the app's icon (lib/app-window.cjs windowIcon): on Linux
+  // that is what the desktop shows where no installed .desktop file
+  // matches the window. The backend's
+  // origins, the configured locale and the launch's flags reach the
+  // preload as additional arguments (lib/window-args.cjs); the
+  // launch's secret does not, and is answered over IPC to the app's
+  // own page (lib/secret-handoff.cjs).
+  const options = appWindowOptions({
     width: workW,
     height: workH,
-    minWidth: 960,
-    minHeight: 600,
-    show: false,
-    // Window icon for the dev session — packaged builds get it
-    // from the .desktop file electron-builder generates from
-    // build-resources/icon.png. Without this, GNOME's window list
-    // shows the generic Electron logo while running unpackaged.
-    icon: path.join(__dirname, "build-resources", "icon.png"),
-    // Frameless: we draw our own titlebar + window controls in the
-    // renderer. Under native Wayland/Ozone (the relaunch above), GNOME
-    // gives Chromium no server-side decorations, so Chromium drew its
-    // own CSD with the window buttons on the LEFT, ignoring GNOME's
-    // button-layout (electron/electron#48422). Owning the chrome puts
-    // minimize/maximize/close back where Linux users expect them and
-    // keeps them consistent across platforms. `resizable` stays true so
-    // the OS resize edges still work on a frameless window.
-    frame: false,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      // Pass the backend's handshake + the user's configured locale
-      // into the preload via additional arguments. The preload reads
-      // them off process.argv. The locale flag is omitted entirely
-      // when config.toml is missing or has no locale key, so the
-      // preload falls through to Paraglide's preferredLanguage /
-      // baseLocale strategies instead of seeding garbage.
-      // The backend's lanes go the same way (lib/window-args.cjs).
-      additionalArguments: windowArguments(backend, readConfigLocale()),
-    },
+    preload: path.join(__dirname, "preload.js"),
+    additionalArguments: windowArguments(backend, readConfigLocale(), launchFlags),
+    packaged: app.isPackaged,
   });
-
-  // New-window requests come from three places:
-  //   1. `window.open(...)` or `<a target="_blank">` to an external
-  //      site (e.g. settings help links, ffmpeg.org from the error
-  //      overlay) — route through shell.openExternal so the user's
-  //      default browser opens it.
-  //   2. Middle-click / ctrl-click / shift-click on any in-app
-  //      `<a href="/route">` — Chromium would normally open a new
-  //      tab. Electron has no tabs and our renderer is a single-
-  //      window app, so allowing this either leaks the dev URL to
-  //      the system browser (dev) or spawns a preload-less, broken
-  //      BrowserWindow (packaged). Deny.
-  //   3. Anything we don't recognise — deny, never spawn windows
-  //      we didn't ask for.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    let target;
-    try {
-      target = new URL(url);
-    } catch {
-      return { action: "deny" };
-    }
-    if (target.protocol === "http:" || target.protocol === "https:") {
-      const currentUrl = win.webContents.getURL();
-      let currentOrigin = null;
+  // Set again once shown, where Wayland can take it (holdWindowIcon).
+  const win = holdWindowIcon(makeWindow(options), options.icon, "app");
+  secrets.hold(win.webContents, backend.internalSecret);
+  // An <img> or an EventSource cannot set the secret header, and a URL
+  // is no place for the secret (Chromium's disk cache, log lines): the
+  // header is added to those requests here, for the app's own page
+  // alone (lib/secret-header.cjs). One listener per session, so a later
+  // window's registration replaces this one with the same.
+  const origins = backendOrigins(backend);
+  win.webContents.session.webRequest.onBeforeSendHeaders(
+    headerlessFilter(backend),
+    (details, callback) => {
+      let requestHeaders = details.requestHeaders;
       try {
-        currentOrigin = new URL(currentUrl).origin;
+        requestHeaders = withLaunchSecret(details, {
+          origins,
+          secretFor: (request) => secrets.forRequest(request),
+        });
       } catch {
-        currentOrigin = null;
+        // Whatever went wrong, the request goes out as it came.
       }
-      // Same-origin http(s) is the dev server hosting our own
-      // routes (http://localhost:5173/...). Treat it as internal —
-      // a middle-click on a SvelteKit `<a href="/route">` link
-      // shouldn't bounce the URL into the user's system browser.
-      if (currentOrigin && target.origin === currentOrigin) {
-        return { action: "deny" };
-      }
-      shell.openExternal(url);
-    }
-    return { action: "deny" };
+      callback({ requestHeaders });
+    },
+  );
+  // Started now, so the renderer's word is not missed however early it
+  // comes; the reveal waits for it (bounded) as well as for the splash.
+  // While the boot's splash stands in for the window the wait has no
+  // bound: a late page leaves the splash stuck, offering Restart and
+  // Quit, and the window is revealed only once its page has rendered. A
+  // window with no splash (a later one) keeps the bound.
+  // Whether the reveal has put the window on screen. Not isVisible(): a
+  // wake (below) maps the window before its reveal.
+  let revealed = false;
+  const appReady = appReadyWaiter(win.webContents, ipc, {
+    isShown: () => revealed,
+    timeoutMs: appReadyBound(splash),
   });
+  appReady.ready.then((rendered) =>
+    console.log(
+      rendered
+        ? "[main] app's first page rendered"
+        : appReady.gone()
+          ? "[main] app's window went before its first page rendered"
+          : "[main] app's first page did not say it rendered in time; revealing it anyway",
+    ),
+  );
 
   // Renderer-side diagnostics surface in the main process log so we
   // can tell whether the page actually loaded and whether scripts
   // are throwing. Without this, a blank window looks identical to a
   // successful load from the outside.
+  // Both carry URLs, and the renderer's URLs can carry the launch's
+  // secret: it is redacted from every line (lib/log-redact.cjs).
+  const launchSecrets = [backend.internalSecret];
   win.webContents.on("did-fail-load", (_e, code, desc, url) => {
-    console.error(`[renderer] did-fail-load ${url}: ${code} ${desc}`);
+    console.error(
+      redactSecrets(`[renderer] did-fail-load ${url}: ${code} ${desc}`, launchSecrets),
+    );
   });
   win.webContents.on("console-message", (_e, level, msg, line, source) => {
-    console.log(rendererConsoleLine(level, msg, line, source));
+    console.log(rendererConsoleLine(level, msg, line, source, launchSecrets));
   });
 
   // "Open maximized" is a two-step belt-and-suspenders pattern.
@@ -460,6 +661,10 @@ async function createWindow(backend) {
   // hidden, so the underlying surface is created with the maximize
   // hint already set. Most launches end here — the WM honors the
   // hint at map time and the window appears maximized in one shot.
+  // That call is what maps the window, so it is made only when the
+  // window is revealed (revealMaximized, lib/splash.cjs): once its page
+  // has painted hidden and the splash has painted, so the splash is on
+  // screen first and alone.
   //
   // Step 2 — post-show fallback: ~1 launch in 5 mutter drops the
   // pre-show hint under load and the window comes up at workArea
@@ -475,18 +680,18 @@ async function createWindow(backend) {
   // on the bad path. We attempted to hide it behind setOpacity(0)
   // → setOpacity(1), but the maximize animation is on the window
   // frame (compositor-rendered), which Electron cannot suppress.
-  win.maximize();
-  // That call also puts the window on screen — maximizing a hidden
-  // window shows it — and emits a first `show` before the listener
-  // below exists. The `show` Step 2 waits for is the next one: the
-  // show() openFirstPage makes at ready-to-show, further down, where
-  // the first load and the first-show guard are held too. Until the
-  // renderer paints, what is on screen is blank and frameless: the
-  // titlebar and its close button are the renderer's to draw.
-  win.once("show", () => {
-    if (!win.isMaximized()) win.maximize();
-  });
-  win.once("show", () => keeper.shown(win));
+  //
+  // The maximize puts the window on screen — maximizing a hidden
+  // window shows it — and emits a first `show` before the listeners
+  // below exist. The `show` Step 2 waits for is the next one: the
+  // show() revealMaximized makes right after attaching them, in the
+  // reveal openFirstPage holds behind the first load's failure guard.
+  const mapped = () => {
+    win.once("show", () => {
+      if (!win.isMaximized()) win.maximize();
+    });
+    win.once("show", () => keeper.shown(win));
+  };
   win.on("closed", () => keeper.closed(win));
 
   // Catch the X-button / window-close path. The before-quit hook
@@ -504,7 +709,52 @@ async function createWindow(backend) {
     }
   };
   win.on("maximize", sendMaxState);
+  // Remember the size the desktop granted the maximized window, for
+  // the next launch's hidden window. Read on resize too: on Wayland
+  // the compositor's configure can land after the maximize event.
+  // Kept under the display the window was made for, and only for the
+  // size granted as the reveal maximizes it (lib/window-geometry.cjs):
+  // Wayland exposes no real window position, so a later maximize, or a
+  // maximized window moved by keyboard, could be on any monitor.
+  const granted = grantedSizeRecorder({
+    save: (size) => {
+      const stored = readGeometry(geometryFile(), fs);
+      const next = remember(stored, display, size);
+      if (next !== stored) writeGeometry(geometryFile(), next, fs);
+    },
+  });
+  const rememberMaximized = () => {
+    if (win.isDestroyed() || !win.isMaximized() || win.isFullScreen()) return;
+    granted.maximized(win.getBounds());
+  };
+  win.on("maximize", rememberMaximized);
+  win.on("resize", rememberMaximized);
   win.on("unmaximize", sendMaxState);
+
+  // A hidden window may get no frames at all — native Wayland with
+  // software compositing: a virtual machine, a GPU that failed or is
+  // blocklisted, --disable-gpu — and its page then never says it
+  // rendered. Its page says when it has mounted, which needs no frame;
+  // when the rendered word does not follow soon, the window is mapped
+  // without asking for the focus (and maximized, on Linux), its frames
+  // resume, and the reveal below goes as usual (lib/app-window.cjs
+  // frameWake, wakeHidden). Where the platform keeps the splash on top
+  // the woken window is hidden behind it; native Wayland does not, and
+  // the splash is mapped again whenever the woken window takes the
+  // focus, so it stays in front, with the window around it.
+  let unwake = null;
+  const wake = frameWake(win.webContents, ipc, {
+    ready: appReady.ready,
+    cancelled: () => win.isDestroyed() || splash.dismissed() || revealed || bootFailed,
+    wake: () => {
+      console.log("[main] app's page mounted and drew no frames in time: mapping its window, behind the splash where it stays on top");
+      unwake = wakeHidden(win, {
+        revealing: () => granted.revealing(),
+        restack: () => splash.restack(),
+      });
+    },
+  });
+  win.on("closed", () => wake.stop());
 
   // A window that never gets its first page — a load that fails, an
   // error page, a renderer gone, or, in a packaged build, no first
@@ -512,6 +762,56 @@ async function createWindow(backend) {
   const firstPage = {
     timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
     logError: console.error,
+    // The window loads hidden; at ready-to-show it waits for two
+    // things: the splash — up to a second for it to have rendered a
+    // frame, then what is left of its minimum time on screen — and its
+    // own renderer's word that the first page has rendered (however
+    // long, while the splash stands in; at most 15 seconds from the
+    // window's creation without one, lib/app-window.cjs). Only then
+    // is it mapped (maximized) and shown, and the splash put away. The
+    // two are never on screen competing where a hidden window gets
+    // frames; where it gets none, the wake above maps it behind the
+    // splash first. A later window finds no splash, and waits only for
+    // its renderer.
+    // The page's render is the last step of the boot the splash's rail
+    // shows (lib/splash-progress.cjs). The rail hears it, and its page
+    // has answered (about a millisecond; at most STEP_ANSWER_WAIT_MS),
+    // before the window replaces the splash; and when it lands too late
+    // for the minimum to show it, the splash holds until
+    // SPLASH_COMPLETE_HOLD_MS after it landed. A later window's wait
+    // that gave up on the render (it has no splash) is revealed anyway;
+    // a renderer gone before it rendered fails the boot.
+    beforeShow: () => revealGate(splash, appReady),
+    // While the splash stands in, the wait for the page has no bound and
+    // Restart and Quit are the way out. A splash that has lost its page
+    // (lib/splash.cjs lost: it failed to load, left, exited, crashed past
+    // its reloads, or has nothing to offer) offers neither: the page then
+    // gets the 15 s bound back, and one that has not rendered by then fails the boot with
+    // the failure dialog, rather than a launch waiting forever behind a
+    // dead splash or revealing a window that may be empty.
+    abort: abortWhenLost(splash.lost(), appReady.ready),
+    // The page's rendered word means a frame was drawn: it passes the
+    // first-show guard as ready-to-show does, which a window that was
+    // never on screen may never reach (lib/startup.cjs awaitFirstShow).
+    painted: appReady.ready,
+    // Map maximized, show, and put the splash away at that moment —
+    // not when the page later finishes loading. Never for a window
+    // whose first page failed (lib/startup.cjs).
+    // A launch the user cancelled by closing the splash is quitting,
+    // and reveals nothing.
+    reveal: () => {
+      wake.stop();
+      if (unwake) unwake();
+      granted.revealing();
+      revealed = true;
+      revealMaximized(win, {
+        cancelled: () => splash.dismissed(),
+        onMapped: mapped,
+        // A woken window is up already: what the show listeners would do.
+        onUp: () => keeper.shown(win),
+        afterShow: () => splash.close(),
+      });
+    },
   };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });
@@ -537,63 +837,81 @@ async function createWindow(backend) {
  * Resolution rules:
  *   - `/_app/...` and other extensioned paths → file in the bundle.
  *   - any extensionless path → `index.html` (SvelteKit SPA fallback).
- *   - 404 if the resolved path escapes the bundle dir (defence in
- *     depth — the URL parser shouldn't permit `..` traversal, but
- *     it's cheap to check).
+ *   - 403 if the resolved path escapes the bundle dir, 400 if it does
+ *     not decode (lib/bundle-path.cjs).
  */
 function registerAppProtocol() {
   const bundleDir = path.join(process.resourcesPath, "frontend", "build");
   protocol.handle(APP_SCHEME, async (request) => {
-    const url = new URL(request.url);
-    let pathname = decodeURIComponent(url.pathname);
-    if (!pathname || pathname === "/") pathname = "/index.html";
-    const target = path.normalize(path.join(bundleDir, pathname));
-    if (!target.startsWith(bundleDir)) {
-      return new Response("forbidden", { status: 403 });
-    }
-    try {
-      await fs.promises.access(target);
-      return net.fetch(pathToFileURL(target).toString());
-    } catch {
-      // SPA fallback — anything routerly (no file extension)
-      // hands back the index so SvelteKit's client router takes
-      // over. A real missing asset (image, css) returns 404.
-      if (!path.extname(pathname)) {
-        return net.fetch(
-          pathToFileURL(path.join(bundleDir, "index.html")).toString(),
-        );
-      }
-      return new Response("not found", { status: 404 });
-    }
+    // Every answer carries the renderer's policy — the index, the SPA
+    // fallback, every asset and every error — so no path, however
+    // spelled, serves a document without it (lib/renderer-csp.cjs).
+    const target = bundleTarget(bundleDir, new URL(request.url).pathname, path);
+    return policedResponse(await serveBundlePath(bundleDir, target), rendererPolicyNow());
   });
+}
+
+async function serveBundlePath(bundleDir, target) {
+  if (target.kind === "bad") return new Response("bad request", { status: 400 });
+  if (target.kind === "forbidden") return new Response("forbidden", { status: 403 });
+  try {
+    await fs.promises.access(target.file);
+    return await net.fetch(pathToFileURL(target.file).toString());
+  } catch {
+    // SPA fallback — anything routerly (no file extension)
+    // hands back the index so SvelteKit's client router takes
+    // over. A real missing asset (image, css) returns 404.
+    if (target.route) {
+      return net.fetch(pathToFileURL(path.join(bundleDir, "index.html")).toString());
+    }
+    return new Response("not found", { status: 404 });
+  }
+}
+
+/**
+ * Development: the Vite server's main-frame responses get the header
+ * half of the policy, appended to the policy SvelteKit's dev server
+ * sends itself. Electron keeps one onHeadersReceived listener per
+ * session; this is the default session's only one.
+ */
+function policeDevServer() {
+  if (!DEV_ORIGIN) {
+    console.error(`[main] VITE_DEV_URL ${VITE_DEV_URL} is not a plain http(s) origin; no policy header`);
+    return;
+  }
+  session.defaultSession.webRequest.onHeadersReceived(
+    { urls: [`${DEV_ORIGIN}/*`] },
+    (details, callback) =>
+      callback(withPolicyHeader(details, { devOrigin: DEV_ORIGIN, policy: rendererPolicyNow() })),
+  );
 }
 
 // Window controls for the renderer's custom (frameless) titlebar.
 // Each resolves the sender's own window, so they're correct even if a
 // second window ever exists. `close` goes through win.close() so the
 // existing close-prompt guard (win.on("close", …)) still fires.
-ipcMain.on("ani-gui:window:minimize", (event) => {
+ipc.on("ani-gui:window:minimize", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.minimize();
 });
-ipcMain.on("ani-gui:window:toggle-maximize", (event) => {
+ipc.on("ani-gui:window:toggle-maximize", (event) => {
   const w = BrowserWindow.fromWebContents(event.sender);
   if (!w) return;
   if (w.isMaximized()) w.unmaximize();
   else w.maximize();
 });
-ipcMain.on("ani-gui:window:close", (event) => {
+ipc.on("ani-gui:window:close", (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
 });
 // Synchronous so the titlebar can paint the correct maximize/restore
 // icon on first render without a flash; the maximize-changed event keeps
 // it live afterwards.
-ipcMain.on("ani-gui:window:is-maximized", (event) => {
+ipc.onSync("ani-gui:window:is-maximized", (event) => {
   event.returnValue = Boolean(BrowserWindow.fromWebContents(event.sender)?.isMaximized());
-});
+}, false);
 
 // IPC handlers for the renderer's preload bridge. Exposed as
 // window.aniGui.pickDirectory() / .pickFile() / .revealInFolder(path).
-ipcMain.handle("ani-gui:pick-directory", async (_event, options) => {
+ipc.handle("ani-gui:pick-directory", async (_event, options) => {
   const result = await dialog.showOpenDialog({
     properties: ["openDirectory", "createDirectory"],
     title: options?.title || "Choose download folder",
@@ -608,7 +926,7 @@ ipcMain.handle("ani-gui:pick-directory", async (_event, options) => {
 // on Windows where mpv.exe is often installed under
 // `C:\Program Files\mpv\` outside the system PATH). Mirrors
 // pick-directory: returns the absolute path or null on cancel.
-ipcMain.handle("ani-gui:pick-file", async (_event, options) => {
+ipc.handle("ani-gui:pick-file", async (_event, options) => {
   const filters = Array.isArray(options?.filters) ? options.filters : undefined;
   const result = await dialog.showOpenDialog({
     properties: ["openFile"],
@@ -620,11 +938,12 @@ ipcMain.handle("ani-gui:pick-file", async (_event, options) => {
   return result.filePaths[0];
 });
 
-ipcMain.handle("ani-gui:reveal-in-folder", async (_event, dirPath) => {
-  if (typeof dirPath !== "string" || !dirPath) return false;
+ipc.handle("ani-gui:reveal-in-folder", async (_event, dirPath) => {
+  // An existing absolute directory and nothing else: openPath opens a
+  // file in its application and runs an executable (lib/reveal-folder.cjs).
+  if (!isRevealableDirectory(dirPath, { pathModule: path, statSync: fs.statSync })) return false;
   // Use openPath for directories (showItemInFolder targets a file
-  // and selects it; for our case the renderer always passes a
-  // directory). Returns '' on success per Electron docs.
+  // and selects it). Returns '' on success per Electron docs.
   const err = await shell.openPath(dirPath);
   return err === "";
 });
@@ -638,7 +957,7 @@ let activeDownloadCount = 0;
 // prompt. Without this we'd recurse.
 let confirmedQuit = false;
 
-ipcMain.on("ani-gui:active-downloads", (_event, count) => {
+ipc.on("ani-gui:active-downloads", (_event, count) => {
   if (typeof count !== "number" || !Number.isFinite(count) || count < 0) return;
   activeDownloadCount = Math.floor(count);
 });
@@ -651,9 +970,16 @@ ipcMain.on("ani-gui:active-downloads", (_event, count) => {
 // frozen at whatever config.toml held when Electron first started.
 // Re-reading the file here is cheap (config is a handful of KB) and
 // happens once per renderer load.
-ipcMain.on("ani-gui:read-config-locale", (event) => {
+ipc.onSync("ani-gui:read-config-locale", (event) => {
   event.returnValue = readConfigLocale();
-});
+}, null);
+
+// The preload's one synchronous ask for the launch's secret, answered
+// only to the app's own page in a window it was handed to; anything
+// else gets null (lib/secret-handoff.cjs).
+ipc.onSync(SECRET_CHANNEL, (event) => {
+  event.returnValue = secrets.answer(event);
+}, null);
 
 // ─── Account integration IPC handlers ──────────────────────────────
 //
@@ -691,7 +1017,7 @@ let activeOAuth = null;
  * Renderer gets `{ code, state }` back when the user approves, or an
  * error with one of the documented `kind`s.
  */
-ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
+ipc.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   if (typeof authUrl !== "string" || !authUrl.startsWith("https://")) {
     return { ok: false, kind: "bad_request" };
   }
@@ -774,7 +1100,7 @@ ipcMain.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
 });
 
 /** Cancel the active OAuth attempt (renderer pressed cancel). */
-ipcMain.handle("ani-gui:account:cancel-oauth", () => {
+ipc.handle("ani-gui:account:cancel-oauth", () => {
   if (activeOAuth) {
     try {
       activeOAuth.stop();
@@ -787,84 +1113,55 @@ ipcMain.handle("ani-gui:account:cancel-oauth", () => {
   return false;
 });
 
+// The OS keyring, asked asynchronously and, on Linux, from the keyring
+// helper rather than this process (see lib/keyring.cjs): its first
+// answer can wait on an unlock prompt or an unresponsive secret
+// service, and this process's thread is the one the windows run on.
+const keyringHelper = createHelperClient({
+  spawn,
+  ...helperCommand({
+    execPath: process.execPath,
+    isPackaged: app.isPackaged,
+    appPath: app.getAppPath(),
+    env: process.env,
+  }),
+});
+const keyring = createKeyring({
+  platform: process.platform,
+  safeStorage,
+  helper: keyringHelper,
+});
+// However this process exits; a helper waiting on the keyring answers
+// no signal but SIGKILL, and would outlive the app otherwise. A main
+// process that is killed or crashes runs no exit handler: its helper
+// ends when it next reads its closed input.
+process.on("exit", () => keyringHelper.stop());
+
 /**
  * Encrypt + persist tokens for the given provider. The JSON body
  * (`{access_token, refresh_token, expires_at_epoch_s, user_id}`) is
- * encrypted via safeStorage and written to a per-provider file.
- *
- * Returns true on success. The renderer should treat any false /
- * thrown result as "fall back to disconnected and tell the user".
+ * encrypted with the OS keyring and written to a per-provider file.
+ * Refused as `encryption_unavailable` when the keyring would only
+ * obfuscate it (see `isRealEncryption` in lib/keyring.cjs), so the
+ * renderer can point the user at the missing keyring.
  */
-/**
- * `safeStorage.isEncryptionAvailable()` returns
- * true even when Electron falls back to its hardcoded `basic_text`
- * backend on Linux installs without libsecret/kwallet/gnome-keyring
- * (or in headless test environments). That backend XORs the payload
- * with a fixed string — recoverable by anyone with read access to the
- * token file — and contradicts the privacy promise that OAuth tokens
- * are encrypted by the OS keychain. Reject persistence in that mode
- * so the renderer surfaces `keychain_unavailable` and the user can
- * install the missing keyring before connecting.
- */
-function isRealEncryptionBackend() {
-  if (!safeStorage.isEncryptionAvailable()) return false;
-  // getSelectedStorageBackend exists on Linux only — on macOS/Windows
-  // there's no plaintext fallback to worry about. When the method is
-  // absent (other platforms, older Electron), treat encryption as
-  // legit because isEncryptionAvailable() already gates it.
-  if (typeof safeStorage.getSelectedStorageBackend !== "function") return true;
-  const backend = safeStorage.getSelectedStorageBackend();
-  return backend !== "basic_text" && backend !== "unknown";
-}
-
-ipcMain.handle("ani-gui:account:set-token", async (_event, { provider, payload }) => {
-  if (!isRealEncryptionBackend()) {
-    return { ok: false, kind: "encryption_unavailable" };
-  }
-  if (typeof payload !== "object" || payload == null) {
-    return { ok: false, kind: "bad_request" };
-  }
-  try {
-    const encrypted = safeStorage.encryptString(JSON.stringify(payload));
-    fs.writeFileSync(tokenPathFor(provider), encrypted);
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, kind: "io_error", message: String(err.message || err) };
-  }
-});
+ipc.handle("ani-gui:account:set-token", (_event, { provider, payload }) =>
+  writeToken({ file: () => tokenPathFor(provider), fs, keyring, payload }),
+);
 
 /**
  * Decrypt + return the persisted token payload for the given
- * provider. Returns `{ ok: true, payload }` on success, or an
- * `{ ok: false, kind }` for absent file / decryption failure / etc.
- *
- * Synchronous IPC because the renderer calls this on EVERY backend
- * request that needs a bearer; the round-trip cost matters.
+ * provider: `{ ok: true, payload }`, or `{ ok: false, kind }` for an
+ * absent file / unusable keyring / failed decryption. Asynchronous: a
+ * keyring that is locked or not answering holds this call, not the
+ * renderer and not this process.
  */
-ipcMain.on("ani-gui:account:get-token", (event, provider) => {
-  try {
-    const p = tokenPathFor(provider);
-    if (!fs.existsSync(p)) {
-      event.returnValue = { ok: false, kind: "not_found" };
-      return;
-    }
-    if (!isRealEncryptionBackend()) {
-      // The token file exists but the OS keychain that wrote it is no
-      // longer reachable (or never was). Refuse to decrypt rather than
-      // surfacing a plaintext-fallback token.
-      event.returnValue = { ok: false, kind: "encryption_unavailable" };
-      return;
-    }
-    const encrypted = fs.readFileSync(p);
-    const plain = safeStorage.decryptString(encrypted);
-    event.returnValue = { ok: true, payload: JSON.parse(plain) };
-  } catch (err) {
-    event.returnValue = { ok: false, kind: "decrypt_error", message: String(err.message || err) };
-  }
-});
+ipc.handle("ani-gui:account:get-token", (_event, provider) =>
+  readToken({ file: () => tokenPathFor(provider), fs, keyring }),
+);
 
 /** Delete the persisted token file for the given provider. */
-ipcMain.handle("ani-gui:account:clear-token", async (_event, provider) => {
+ipc.handle("ani-gui:account:clear-token", async (_event, provider) => {
   try {
     const p = tokenPathFor(provider);
     if (fs.existsSync(p)) {
@@ -881,7 +1178,7 @@ ipcMain.handle("ani-gui:account:clear-token", async (_event, provider) => {
  * Privacy Policy link. Only allows https / http schemes — a renderer
  * compromise can't redirect this to a file:// path.
  */
-ipcMain.handle("ani-gui:open-external", async (_event, url) => {
+ipc.handle("ani-gui:open-external", async (_event, url) => {
   if (typeof url !== "string") return false;
   if (!/^https?:\/\//.test(url)) return false;
   await shell.openExternal(url);
@@ -936,11 +1233,15 @@ function mainLocale() {
  */
 function reportBootFailure(err) {
   // A failed boot has no window worth bringing forward: a later launch
-  // that arrives while this one says why must not re-show it.
+  // that arrives while this one says why must not re-show it. Nor may a
+  // wake still pending map it again (createWindow, frameWake).
+  bootFailed = true;
   keeper.failed();
-  // What is on screen, if anything, is the window that failed: blank
-  // and frameless. Hidden, not closed — closing the last window would
-  // start a quit of its own, and that one exits with code 0.
+  // A failed boot's window is normally never revealed; what is on
+  // screen is the splash (put away by the boot) and, rarely, a window
+  // that failed after it was revealed. Hidden, not closed — closing the
+  // last window would start a quit of its own, and that one exits with
+  // code 0.
   for (const win of BrowserWindow.getAllWindows()) win.hide();
   return showBounded(
     bootFailureDialog({
@@ -953,22 +1254,76 @@ function reportBootFailure(err) {
   );
 }
 
-app.whenReady().then(() =>
-  bootApp({
+app.whenReady().then(() => {
+  // How the app ends when the session ends, or when a stop signal
+  // arrives (Linux). At ready, not before: see lib/termination-signals.cjs.
+  const stopSignals = takeOverStopSignals();
+  const sessionEnd = watchSessionEnd({
+    platform: process.platform,
+    powerMonitor,
+    spawn,
+    env: readerEnv(process.env),
+    onEnding: (reason) => {
+      stopSignals.sessionEnding();
+      console.log(`[main] the session is ending (${reason}); quitting`);
+      quitUnattended();
+    },
+    logError: console.error,
+  });
+  app.on("will-quit", () => sessionEnd.stop());
+  // GNOME's Reduced Motion switch never reaches Chromium on its own
+  // (see lib/reduced-motion.cjs). The read runs beside the backend's
+  // start and settles within its own short budget; the first window
+  // waits for it, because a window takes the preference it opens with.
+  // Appending after ready is not the Ozone case above: Chromium reads
+  // this switch each time a window's preferences are computed, not once
+  // at process start.
+  const reducedMotion = applyReducedMotion({
+    platform: process.platform,
+    exec: execText,
+    appendSwitch: (name) => app.commandLine.appendSwitch(name),
+  });
+  return bootApp({
     spawnBackend: async () => {
       // Drop Electron's default app menu (File / Edit / View / Window /
       // Help) — the in-window topbar + rail are the navigation surface;
       // the platform menu was just adding a strip of system chrome the
       // app doesn't use.
       Menu.setApplicationMenu(null);
-      if (!IS_DEV) registerAppProtocol();
+      if (IS_DEV) policeDevServer();
+      else registerAppProtocol();
       return spawnBackend();
     },
-    createWindow: async (backend) => {
-      await createWindow(backend);
+    // The splash opens at once, before the desktop's reduced-motion
+    // setting is read; it holds its first frame until the read settles
+    // and is then told to move or to rest on its still frame
+    // (lib/splash.cjs), so a reduced-motion user never sees motion.
+    showSplash: () => {
+      splash.show();
+      reducedMotion.then((reduced) => splash.motionPreference(reduced === true));
+    },
+    suppressSplash: () => {
+      bootFailed = true;
+      splash.suppress();
+    },
+    // The launch's remote flags, decided by the backend within its
+    // two-second cap; the window opens with them, so the renderer has
+    // them before its first page (lib/launch-flags.cjs).
+    fetchFlags: (backend) =>
+      waitForLaunchFlags(backend.apiBase, { fetch, secret: backend.internalSecret }),
+    // The backend's handshake and the flags' decision, each lighting a
+    // stretch of the splash's rail as it lands.
+    stepDone: (step) => {
+      splash.progress(step);
+    },
+    closeSplash: () => splash.close(),
+    createWindow: async (backend, launchFlags) => {
+      await reducedMotion;
+      await createWindow(backend, launchFlags);
       // The boot's window is open: what it was opened against is what
-      // a later window needs (see windowKeeper) — its lanes included.
-      keeper.booted(backend);
+      // a later window needs (see windowKeeper) — its lanes included,
+      // and the launch's flags, which stay the session's.
+      keeper.booted(bootedWith(backend, launchFlags));
     },
     stopBackend: killBackendTree,
     reportFailure: reportBootFailure,
@@ -983,8 +1338,62 @@ app.whenReady().then(() =>
     quitting: () => quitGoingAhead,
     exit: (code) => app.exit(code),
     logError: console.error,
-  }),
-);
+  });
+});
+
+/**
+ * Quit without the downloads prompt: nobody is there to answer it.
+ * The session is ending, or a stop signal asked, and a modal prompt
+ * would only hold the quit until the stop turns into a kill.
+ */
+function quitUnattended() {
+  confirmedQuit = true;
+  app.quit();
+}
+
+/**
+ * Linux: answer SIGTERM, SIGINT and SIGHUP so that a signal sent to
+ * every process of the app, or any after the session's end is announced
+ * (`sessionEnding()`), ends it by that signal, its storage written out,
+ * instead of the abort Chromium falls into (lib/termination-signals.cjs).
+ * Returns the takeover.
+ */
+function takeOverStopSignals() {
+  const takeover = installTerminationSignals({
+    platform: process.platform,
+    source: process,
+    mainPid: process.pid,
+    listHelpers: () => app.getAppMetrics(),
+    readProcStat: (pid) => {
+      try {
+        return fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      } catch {
+        return null;
+      }
+    },
+    requestQuit: () => quitUnattended(),
+    beforeEnd: (signal, reason) => {
+      // The terminal this was launched from may be gone (SIGHUP):
+      // a failed write must not stop the ending.
+      try {
+        console.warn(`[main] ${signal}: ${reason}; ending by it`);
+      } catch {
+        // Nowhere to report it.
+      }
+      killBackendTree();
+      persistStorage({
+        flush: () => session.defaultSession.flushStorageData(),
+        block: blockFor,
+      });
+    },
+    raise: (signal) => process.kill(process.pid, signal),
+    setInterval: (fn, ms) => setInterval(fn, ms),
+    clearInterval: (id) => clearInterval(id),
+    now: () => Date.now(),
+  });
+  app.on("child-process-gone", (_event, details) => takeover.childProcessGone(details));
+  return takeover;
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

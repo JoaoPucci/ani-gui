@@ -16,7 +16,10 @@ use crate::history::guard::epoch;
 const SHOW: &str = "the-show-77";
 const KEY: &str = "play:v14:The Show:sub:best:1:::";
 
-fn state_in(dir: &std::path::Path) -> AppState {
+fn state_in(dir: &std::path::Path) -> crate::scratch::Scratch<AppState> {
+    // These cases store resolutions under a fixed key from an earlier
+    // version; which version is beside the point here.
+    crate::cache::families::allow_undeclared_on_this_thread();
     let mut state = state_with_proxy_origin();
     state.history_path = dir.join("history");
     state
@@ -74,17 +77,22 @@ fn cached() -> CachedResolution {
 
 fn args() -> PlayArgs {
     PlayArgs {
+        locale: None,
         title: "The Show".into(),
         episode: "2".into(),
         mode: "sub".into(),
-        quality: None,
         subtype: None,
         episode_count: None,
         year: None,
         alt_titles: vec![],
         prefetch: false,
+        record_later: false,
         kitsu_id: None,
         version: None,
+        guess_row: None,
+        card_row: None,
+        guess_id: None,
+        caption: None,
     }
 }
 
@@ -97,7 +105,7 @@ fn finish_play(state: &AppState, begun: crate::history::guard::Epoch) {
 
 /// [`finish_play`] for a play asked for from a Kitsu page.
 fn finish_asked(state: &AppState, asked: crate::history::guard::Asked<'_>) {
-    write_history(state, &native(), "2", asked);
+    write_history(state, &native(), "2", asked, None);
     write_history_on_cache_hit(state, &args(), &cached(), asked);
     stamp_numbering(state, &native(), asked);
     play_resolution_cache::store(state, asked, KEY, &cached());
@@ -261,6 +269,7 @@ fn a_row_that_failed_to_write_leaves_no_page_behind() {
         &native(),
         "2",
         crate::history::guard::Asked::now(&state.history_path, Some("77")),
+        None,
     );
     std::fs::remove_dir(tmp.path().join("history.new")).unwrap();
     write_history(
@@ -268,6 +277,7 @@ fn a_row_that_failed_to_write_leaves_no_page_behind() {
         &native(),
         "2",
         crate::history::guard::Asked::now(&state.history_path, None),
+        None,
     );
     crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:77:5:2", "[]", 3600).unwrap();
 
@@ -378,7 +388,10 @@ fn a_resolution_row_with_no_page_is_no_removed_shows() {
     seed_row(&state, "hianime:the-show-100");
     crate::cache::meta_cache_put(
         &state.cache_pool,
-        "title-match:v3:hianime:the show:c1",
+        &format!(
+            "{}hianime:the show:c1",
+            crate::cache::families::title_match()
+        ),
         "",
         3600,
     )
@@ -424,7 +437,7 @@ fn delete_show(state: &AppState) {
 fn the_fresh_rows_page_is_known_to_its_removal() {
     let tmp = tempfile::tempdir().unwrap();
     let state = state_in(tmp.path());
-    write_history(&state, &native(), "2", page_77(&state));
+    write_history(&state, &native(), "2", page_77(&state), None);
     seed_skips(&state);
 
     delete_show(&state);
@@ -453,10 +466,10 @@ fn the_cached_rows_page_is_known_to_its_removal() {
 fn a_page_noted_for_a_remaining_row_keeps_its_skip_times() {
     let tmp = tempfile::tempdir().unwrap();
     let state = state_in(tmp.path());
-    write_history(&state, &native(), "2", page_77(&state));
+    write_history(&state, &native(), "2", page_77(&state), None);
     let mut other_key = native();
     other_key.slug = "hianime:the-show-100".into();
-    write_history(&state, &other_key, "2", page_77(&state));
+    write_history(&state, &other_key, "2", page_77(&state), None);
     seed_skips(&state);
 
     delete_show(&state);
@@ -470,9 +483,9 @@ fn a_page_noted_for_a_remaining_row_keeps_its_skip_times() {
 fn a_removed_rows_page_does_not_outlive_it() {
     let tmp = tempfile::tempdir().unwrap();
     let state = state_in(tmp.path());
-    write_history(&state, &native(), "2", page_77(&state));
+    write_history(&state, &native(), "2", page_77(&state), None);
     delete_show(&state);
-    write_history(&state, &native(), "2", no_page(&state));
+    write_history(&state, &native(), "2", no_page(&state), None);
     seed_skips(&state);
 
     delete_show(&state);
@@ -485,9 +498,9 @@ fn a_removed_rows_page_does_not_outlive_it() {
 fn a_clear_forgets_the_noted_pages() {
     let tmp = tempfile::tempdir().unwrap();
     let state = state_in(tmp.path());
-    write_history(&state, &native(), "2", page_77(&state));
+    write_history(&state, &native(), "2", page_77(&state), None);
     crate::commands::history::history_clear(&state).unwrap();
-    write_history(&state, &native(), "2", no_page(&state));
+    write_history(&state, &native(), "2", no_page(&state), None);
     seed_skips(&state);
 
     delete_show(&state);
@@ -799,6 +812,7 @@ fn a_play_begun_before_a_watch_leaves_the_watchs_row() {
         &native(),
         "2",
         crate::history::guard::Asked { begun, page: None },
+        None,
     );
     write_history_on_cache_hit(
         &state,
@@ -843,7 +857,7 @@ fn a_watched_episode_reads_back_as_itself_after_any_later_resolve() {
     let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     let watch = displaced(9, "8");
     stamp_numbering(&state, &watch, play);
-    write_history(&state, &watch, "8", play);
+    write_history(&state, &watch, "8", play, None);
     for (slot, tag) in [(10, "9"), (8, "7.5")] {
         let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
         stamp_numbering(&state, &displaced(slot, tag), warm);
@@ -865,7 +879,7 @@ fn a_watched_recap_reads_back_as_itself() {
     let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     let recap = displaced(8, "7.5");
     stamp_numbering(&state, &recap, play);
-    write_history(&state, &recap, "7.5", play);
+    write_history(&state, &recap, "7.5", play, None);
     let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     stamp_numbering(&state, &displaced(9, "8"), warm);
     assert_eq!(listed_episode(&state), "7.5");
@@ -976,7 +990,7 @@ fn a_watch_records_the_episode_the_resolve_matched() {
     let state = state_in(tmp.path());
     let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     let recap = displaced(13, "12.5");
-    write_history(&state, &recap, "24.5", play);
+    write_history(&state, &recap, "24.5", play, None);
     assert_eq!(listed_episode(&state), "12.5");
     let watch = crate::commands::play_native_record::Watch::of(&recap, "24.5");
     assert_eq!(watch.ep_no, "12.5");
@@ -990,7 +1004,7 @@ fn a_continuations_watch_records_the_entrys_own_number() {
     let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     let mut first = displaced(1, "41");
     first.numbering_offset = 40;
-    write_history(&state, &first, "1", play);
+    write_history(&state, &first, "1", play, None);
     assert_eq!(listed_episode(&state), "1");
     let mut untagged = native();
     untagged.numbering_offset = 0;
@@ -1018,7 +1032,7 @@ fn an_integer_valued_tag_records_the_whole_number() {
     let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     let mut first = displaced(1, "41.0");
     first.numbering_offset = 40;
-    write_history(&state, &first, "1", play);
+    write_history(&state, &first, "1", play, None);
     assert_eq!(listed_episode(&state), "1");
     let three = displaced(3, "3.0");
     assert_eq!(
@@ -1060,7 +1074,7 @@ fn a_former_tag_in_the_sidecar_gives_way_to_the_rows_tag_on_its_next_watch() {
     let again = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     recap.resolved_tag = Some("12.5".into());
     stamp_numbering(&state, &recap, again);
-    write_history(&state, &recap, "24.5", again);
+    write_history(&state, &recap, "24.5", again, None);
     assert_eq!(listed(), "12.5");
 }
 
@@ -1103,7 +1117,7 @@ async fn a_former_tag_repair_survives_the_players_mark_watched() {
     let again = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     recap.resolved_tag = Some("12.5".into());
     stamp_numbering(&state, &recap, again);
-    write_history(&state, &recap, "24.5", again);
+    write_history(&state, &recap, "24.5", again, None);
     let cached = crate::commands::play::cached_resolution_for(&recap);
     let watch = crate::commands::play_cache::cached_watch(&cached, "24.5");
     crate::commands::play_native_record::record_watch(&state, &watch, None).await;
@@ -1125,4 +1139,124 @@ fn seed_former_recap_row(state: &AppState) {
         .expect("a row");
     crate::history::upsert_and_write(&state.history_path, row).expect("write");
     crate::commands::numbering_offset::put_display(state, SHOW, 0, 13, "24.5");
+}
+
+/// The note of which Continue card a row's play came from
+/// (`guessed_from`) is settled with the row's write, under the same
+/// guard: a write the guard turns away — a play begun before a newer
+/// watch of the listing — settles no note, and the newer guessed play's
+/// note stands, so Home's card stands for the line the user clicked.
+mod card_note_follows_the_row {
+    use super::*;
+    use crate::commands::play_native_record::{
+        record_fresh_watch, record_watch_requested_at, Watch,
+    };
+
+    /// A guessed card of another listing whose play landed on `SHOW`.
+    const CARD: &str = "hianime:another-listing-5182";
+
+    fn note(state: &AppState) -> Option<String> {
+        crate::commands::guessed_from::all(state)
+            .unwrap()
+            .remove(SHOW)
+    }
+
+    fn watch() -> Watch {
+        Watch {
+            show_id: SHOW.into(),
+            title: "The Show".into(),
+            ep_no: "3".into(),
+        }
+    }
+
+    /// The newer play: the guessed card's, its watch recorded on `SHOW`.
+    async fn newer_guessed_watch(state: &AppState) {
+        let now = epoch(&state.history_path);
+        record_watch_requested_at(state, &watch(), None, now, Some(CARD)).await;
+        assert_eq!(note(state).as_deref(), Some(CARD));
+    }
+
+    #[tokio::test]
+    async fn an_older_fresh_resolve_turned_away_keeps_the_newer_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let older = no_page(&state);
+        newer_guessed_watch(&state).await;
+        record_fresh_watch(&state, &native(), "2", older, None, None);
+        assert_eq!(note(&state).as_deref(), Some(CARD));
+    }
+
+    #[tokio::test]
+    async fn an_older_cache_hit_turned_away_keeps_the_newer_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let older = no_page(&state);
+        newer_guessed_watch(&state).await;
+        write_history_on_cache_hit(&state, &args(), &cached(), older);
+        assert_eq!(note(&state).as_deref(), Some(CARD));
+    }
+
+    #[tokio::test]
+    async fn an_older_watch_turned_away_keeps_the_newer_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let older = epoch(&state.history_path);
+        newer_guessed_watch(&state).await;
+        record_watch_requested_at(&state, &watch(), None, older, None).await;
+        assert_eq!(note(&state).as_deref(), Some(CARD));
+    }
+
+    #[tokio::test]
+    async fn an_older_guessed_play_turned_away_sets_no_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let older = no_page(&state);
+        let now = epoch(&state.history_path);
+        record_watch_requested_at(&state, &watch(), None, now, None).await;
+        record_fresh_watch(&state, &native(), "2", older, None, Some(CARD));
+        assert_eq!(note(&state), None);
+    }
+
+    #[tokio::test]
+    async fn a_guessed_play_of_a_removed_show_sets_no_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        seed_row(&state, SHOW);
+        let older = no_page(&state);
+        delete_show(&state);
+        record_fresh_watch(&state, &native(), "2", older, None, Some(CARD));
+        assert_eq!(note(&state), None);
+    }
+
+    #[tokio::test]
+    async fn an_older_guessed_watch_turned_away_sets_no_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let older = epoch(&state.history_path);
+        let now = epoch(&state.history_path);
+        record_watch_requested_at(&state, &watch(), None, now, None).await;
+        record_watch_requested_at(&state, &watch(), None, older, Some(CARD)).await;
+        assert_eq!(note(&state), None);
+    }
+
+    #[tokio::test]
+    async fn a_guessed_watch_of_a_removed_show_sets_no_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        seed_row(&state, SHOW);
+        let older = epoch(&state.history_path);
+        delete_show(&state);
+        record_watch_requested_at(&state, &watch(), None, older, Some(CARD)).await;
+        assert_eq!(note(&state), None);
+    }
+
+    #[tokio::test]
+    async fn an_accepted_play_of_the_row_itself_clears_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        newer_guessed_watch(&state).await;
+        let later = no_page(&state);
+        record_fresh_watch(&state, &native(), "2", later, None, None);
+        assert_eq!(note(&state), None);
+    }
 }

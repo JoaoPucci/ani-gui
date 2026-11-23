@@ -1,0 +1,28 @@
+{
+ "data": [
+  {
+   "id": "45619",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "SPY x FAMILY Part 2",
+    "titles": {
+     "en": "SPY x FAMILY Part 2",
+     "en_jp": "SPY x FAMILY Part 2",
+     "ja_jp": "SPY×FAMILY 2クール"
+    },
+    "abbreviatedTitles": [
+     "SxF",
+     "Spy x Family",
+     "스파이 패밀리",
+     "间谍过家家"
+    ],
+    "slug": "spy-x-family-part-2",
+    "startDate": "2022-10-01",
+    "endDate": "2022-12-24",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

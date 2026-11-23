@@ -32,6 +32,18 @@ import HomePage from '../../src/routes/+page.svelte';
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
+import type {
+	AiringStatus,
+	AniErrorPayload,
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	HistoryEntry,
+	HistoryNumber,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { availabilityAnswer, wire } from '../answers';
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
 	static instances: FakeEventSource[] = [];
@@ -83,7 +95,7 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-const UPSTREAM_503 = JSON.stringify({
+const UPSTREAM_503 = wire<AniErrorPayload>({
 	kind: 'upstream',
 	status: 503,
 	key: 'error.network.upstream'
@@ -92,32 +104,40 @@ const UPSTREAM_503 = JSON.stringify({
 describe('home — a resume failure renders the shared copy', () => {
 	it('a provider 503 names the source as down', async () => {
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/history`, () =>
-				HttpResponse.json([{ ep_no: '3', id: 'provider-1', title: 'Cowboy Bebop' }])
+				HttpResponse.json<HistoryEntry[]>([{ ep_no: '3', id: 'provider-1', title: 'Cowboy Bebop' }])
 			),
 			// The row read again before it resumes reads as it did.
 			http.get(`${API_BASE}/api/history/provider-1/number`, () =>
-				HttpResponse.json({ ep_no: '3' })
+				HttpResponse.json<HistoryNumber | null>({ ep_no: '3' })
 			),
 			http.post(`${API_BASE}/api/kitsu/search`, () =>
-				HttpResponse.json([{ ...kitsuRef('1', 'Cowboy Bebop', 26), status: 'finished' }])
+				HttpResponse.json<KitsuAnimeRef[]>([
+					{ ...kitsuRef('1', 'Cowboy Bebop', 26), status: 'finished' }
+				])
 			),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 26,
-					extra_episodes: [],
-					episode_count_approximate: false
-				})
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 26,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
 			),
-			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
-			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([])
+			),
+			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({})),
+			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () =>
+				HttpResponse.json<string | null>(null)
+			),
+			http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json<string | null>(null)),
 			http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([]))
 		);
 
 		app = mount(HomePage, { target });
@@ -147,44 +167,51 @@ describe('detail — play failures render the shared copy with the override', ()
 
 	function useDetailHandlers() {
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+				HttpResponse.json<AiringStatus>({
+					aired: 12,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
+				})
 			),
 			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
-				HttpResponse.json(
+				HttpResponse.json<KitsuEpisode[]>(
 					Array.from({ length: 12 }, (_, i) => ({
 						id: `ep-${i + 1}`,
 						number: i + 1,
 						relative_number: i + 1,
 						canonical_title: `Episode ${i + 1}`,
-						titles: {},
+						season_number: null,
 						synopsis: null,
 						thumbnail: null,
-						length_minutes: 24,
-						air_date: '2019-01-01'
+						length: 24,
+						airdate: '2019-01-01'
 					}))
 				)
 			),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 12,
-					extra_episodes: [],
-					episode_count_approximate: false
-				})
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 12,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
 			),
 			// The episode verdict asks the availability cache about the
 			// other audio; here it holds no answer.
 			http.post(`${API_BASE}/api/availability/batch`, () =>
-				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+				HttpResponse.json<AvailabilityBatchResponse>({ cached: {}, playable_episode_counts: {} })
 			),
-			http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
+			http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([])),
+			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 		);
 	}
 
@@ -224,7 +251,7 @@ describe('detail — play failures render the shared copy with the override', ()
 		useDetailHandlers();
 		await mountAndFailEpisode(
 			5,
-			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+			wire<AniErrorPayload>({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
 		);
 		await until(
 			() => (target.textContent ?? '').includes(m.play_play_failure_episode_unavailable()),
@@ -241,7 +268,7 @@ describe('detail — play failures render the shared copy with the override', ()
 		useDetailHandlers();
 		await mountAndFailEpisode(
 			6,
-			JSON.stringify({
+			wire<AniErrorPayload>({
 				kind: 'stream_server_failed',
 				key: 'error.play.stream_server_failed',
 				stage: 'embed',
@@ -256,6 +283,27 @@ describe('detail — play failures render the shared copy with the override', ()
 		expect(target.textContent).not.toContain(m.play_play_failure_network());
 	});
 
+	it('a source answer the resolver could not read says so, and that an update may fix it', async () => {
+		// The provider answered with a page this version no longer
+		// reads. The detail is for the backend log; the overlay says
+		// what happened instead of the generic try-again-later.
+		useDetailHandlers();
+		await mountAndFailEpisode(
+			7,
+			wire<AniErrorPayload>({
+				kind: 'parse_failed',
+				key: 'error.scraper.parse_failed',
+				detail: 'the page is not the search shape'
+			})
+		);
+		await until(
+			() => (target.textContent ?? '').includes(m.play_play_failure_unreadable()),
+			'the unreadable-answer copy on the play failure overlay'
+		);
+		expect(target.textContent).not.toContain(m.play_play_failure_generic());
+		expect(target.textContent).not.toContain('search shape');
+	});
+
 	it("a catalogue miss keeps this surface's definitive phrasing", async () => {
 		// The one per-surface override the unification preserved: the
 		// detail page states the miss definitively instead of the
@@ -263,7 +311,7 @@ describe('detail — play failures render the shared copy with the override', ()
 		useDetailHandlers();
 		await mountAndFailEpisode(
 			4,
-			JSON.stringify({ kind: 'no_results', key: 'error.search.no_results' })
+			wire<AniErrorPayload>({ kind: 'no_results', key: 'error.search.no_results' })
 		);
 		await until(
 			() => (target.textContent ?? '').includes(m.detail_error_play_no_results()),

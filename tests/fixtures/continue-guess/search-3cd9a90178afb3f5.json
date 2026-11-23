@@ -1,0 +1,47 @@
+{
+ "data": [
+  {
+   "id": "2748",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tetsuwan Atom (1980)",
+    "titles": {
+     "en": "Astro Boy (1980)",
+     "en_jp": "Tetsuwan Atom (1980)",
+     "en_us": "Astro Boy (1980)",
+     "ja_jp": "鉄腕アトム"
+    },
+    "abbreviatedTitles": [
+     "Astro Boy",
+     "Astroboy"
+    ],
+    "slug": "astro-boy-1980",
+    "startDate": "1980-10-01",
+    "endDate": "1981-12-23",
+    "episodeCount": 52,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8938",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tetsuwan Atom: Ao Kishi no Kan",
+    "titles": {
+     "en_jp": "Tetsuwan Atom: Ao Kishi no Kan",
+     "ja_jp": "鉄腕アトム ~青騎士の巻~"
+    },
+    "abbreviatedTitles": [
+     "Astro Boy: Volume of the Blue Knight"
+    ],
+    "slug": "tetsuwan-atom-ao-kishi-no-kan",
+    "startDate": "1999-07-20",
+    "endDate": "1999-07-20",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

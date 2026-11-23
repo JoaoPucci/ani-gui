@@ -1,0 +1,26 @@
+{
+ "data": [
+  {
+   "id": "7658",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Fate/Zero 2nd Season",
+    "titles": {
+     "en": "Fate/Zero Season 2",
+     "en_jp": "Fate/Zero 2nd Season",
+     "en_us": "Fate/Zero Season 2",
+     "ja_jp": "フェイト/ゼロ 2ndシーズン"
+    },
+    "abbreviatedTitles": [
+     "Fate/Zero Second Season"
+    ],
+    "slug": "fate-zero-2nd-season",
+    "startDate": "2012-04-08",
+    "endDate": "2012-06-24",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

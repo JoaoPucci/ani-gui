@@ -24,11 +24,12 @@ fn state_for(td: &tempfile::TempDir, provider: &std::sync::Arc<TableProvider>) -
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: td.path().join("config.toml"),
-        state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: td.path().join("state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 
@@ -215,10 +216,11 @@ fn launch_args_carry_the_resolves_referer() {
 }
 
 /// A player that takes one subtitle file takes the first listed, so
-/// the track the provider flagged default leads the list; the
-/// provider's order stands otherwise.
+/// the list leads with the track the built-in player starts on: the
+/// show's remembered language, else the user's, else the provider's
+/// default; the provider's order stands otherwise.
 #[test]
-fn launch_args_lead_with_the_providers_default_track() {
+fn launch_args_lead_with_the_track_the_built_in_player_starts_on() {
     use crate::scraper::provider::SubtitleTrack;
     let track = |lang: &str, default: bool| SubtitleTrack {
         lang: lang.into(),
@@ -247,7 +249,7 @@ fn launch_args_lead_with_the_providers_default_track() {
         unread_past: None,
         heard: None,
     };
-    let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
+    let launch = super::play_handoff::launch_args_for(native.clone(), &args_for(), &cfg);
     assert_eq!(
         launch.subtitle_urls,
         vec![
@@ -256,10 +258,58 @@ fn launch_args_lead_with_the_providers_default_track() {
             "https://cdn.example/x/subs/es.vtt".to_string(),
         ]
     );
+    // The user's language leads the default, as the built-in player
+    // starts: a player that takes one track, or a command line that
+    // cannot carry them all, reaches it first.
+    let cfg = crate::config::Config {
+        locale: "es-419".into(),
+        ..crate::config::Config::default()
+    };
+    let launch = super::play_handoff::launch_args_for(native.clone(), &args_for(), &cfg);
+    assert_eq!(
+        launch.subtitle_urls,
+        vec![
+            "https://cdn.example/x/subs/es.vtt".to_string(),
+            "https://cdn.example/x/subs/en.vtt".to_string(),
+            "https://cdn.example/x/subs/ar.vtt".to_string(),
+        ]
+    );
+    assert!(!launch.subtitles_off);
+    // The language last picked on the show leads the locale's.
+    let mut remembered = args_for();
+    remembered.caption = Some("ar".into());
+    let launch = super::play_handoff::launch_args_for(native.clone(), &remembered, &cfg);
+    assert_eq!(
+        launch.subtitle_urls,
+        vec![
+            "https://cdn.example/x/subs/ar.vtt".to_string(),
+            "https://cdn.example/x/subs/es.vtt".to_string(),
+            "https://cdn.example/x/subs/en.vtt".to_string(),
+        ]
+    );
+    // Nothing in the user's language and no default: the built-in
+    // player starts with none, so the external one starts with its
+    // subtitles off too.
+    let mut no_start = native.clone();
+    no_start.subtitles = vec![track("ar", false), track("es", false)];
+    let pt = crate::config::Config {
+        locale: "pt-BR".into(),
+        ..crate::config::Config::default()
+    };
+    let launch = super::play_handoff::launch_args_for(no_start.clone(), &args_for(), &pt);
+    assert!(launch.subtitles_off, "no track to start on");
+    let launch = super::play_handoff::launch_args_for(no_start, &args_for(), &cfg);
+    assert!(!launch.subtitles_off, "the user's language is there");
+    // Off remembered: the same order, the player's subtitles off.
+    let mut off = args_for();
+    off.caption = Some("off".into());
+    let launch = super::play_handoff::launch_args_for(native, &off, &cfg);
+    assert_eq!(launch.subtitle_urls[0], "https://cdn.example/x/subs/es.vtt");
+    assert!(launch.subtitles_off);
 }
 
 mod default_first_props {
-    use super::super::play_handoff::subtitle_urls_default_first;
+    use super::super::play_handoff::subtitle_urls_preferred;
     use crate::scraper::provider::SubtitleTrack;
     use proptest::prelude::*;
 
@@ -281,30 +331,42 @@ mod default_first_props {
     }
 
     proptest! {
-        /// Every URL survives, exactly once, and a default track — when
-        /// there is one — comes first.
+        /// Every URL survives, exactly once, and the first is the track
+        /// the built-in player starts on: one in the user's language
+        /// when the listing has one, else a default when it has one.
         #[test]
-        fn the_urls_are_a_permutation_led_by_a_default(tracks in tracks()) {
-            let urls = subtitle_urls_default_first(&tracks);
+        fn the_urls_are_a_permutation_led_by_the_start(tracks in tracks()) {
+            let urls = subtitle_urls_preferred(&tracks, crate::scraper::track_preference::Wanted::locale("en"));
             let mut expected: Vec<String> = tracks.iter().map(|t| t.url.clone()).collect();
             let mut got = urls.clone();
             expected.sort();
             got.sort();
             prop_assert_eq!(got, expected);
             if let Some(first) = urls.first() {
-                let first_is_default = tracks.iter().any(|t| t.default && &t.url == first);
-                let any_default = tracks.iter().any(|t| t.default);
-                prop_assert!(first_is_default || !any_default);
+                let first = tracks.iter().find(|t| &t.url == first).expect("listed");
+                if tracks.iter().any(|t| t.lang == "en") {
+                    prop_assert_eq!(first.lang.as_str(), "en");
+                } else if tracks.iter().any(|t| t.default) {
+                    prop_assert!(first.default);
+                }
             }
         }
 
-        /// Relative order among the rest is the provider's.
+        /// The URLs follow the preference order, the user's locale
+        /// deciding it: the user's own language, then the default, then
+        /// English, then the provider's order.
         #[test]
-        fn the_non_default_order_is_the_providers(tracks in tracks()) {
-            let urls = subtitle_urls_default_first(&tracks);
-            let rest: Vec<&String> = tracks.iter().filter(|t| !t.default).map(|t| &t.url).collect();
-            let kept: Vec<&String> = urls.iter().filter(|u| rest.contains(u)).collect();
-            prop_assert_eq!(kept, rest);
+        fn the_urls_follow_the_preference_order(
+            tracks in tracks(),
+            locale in "(en|pt-BR|es-419|ru|[a-z]{2})",
+        ) {
+            let urls = subtitle_urls_preferred(&tracks, crate::scraper::track_preference::Wanted::locale(&locale));
+            let expected: Vec<String> =
+                crate::scraper::track_preference::preference_order(&tracks, crate::scraper::track_preference::Wanted::locale(&locale))
+                    .into_iter()
+                    .map(|i| tracks[i].url.clone())
+                    .collect();
+            prop_assert_eq!(urls, expected);
         }
     }
 }
@@ -331,4 +393,92 @@ async fn the_resolve_records_no_watch_before_the_spawn() {
         None,
         "no watched-at stamp before the player has started"
     );
+}
+
+// ── every play gets the master ──────────────────────────────────────
+
+const OP_MASTER: &str = "https://cdn.example/op/master.m3u8";
+const OP_720: &str = "https://cdn.example/op/720/index.m3u8";
+
+/// One show whose episode streams from a master listing a 1080 and a
+/// 720 rendition, both of which answer.
+fn ladder_provider() -> std::sync::Arc<TableProvider> {
+    let master = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("tests/fixtures/hls/master_op.m3u8"),
+    )
+    .expect("fixture");
+    std::sync::Arc::new(
+        TableProvider::one_show(
+            "",
+            ("handoff-show-7", "Handoff Show"),
+            &[(71, 1)],
+            &[71],
+            OP_MASTER,
+        )
+        .playlist(OP_MASTER, master)
+        .playlist(OP_720, "#EXTM3U\n".to_string())
+        .playlist(
+            "https://cdn.example/op/1080/index.m3u8",
+            "#EXTM3U\n".to_string(),
+        ),
+    )
+}
+
+/// A request that still names a quality, as a renderer from before
+/// this change sends one: the field is not read.
+fn asked_at_720() -> PlayArgs {
+    serde_json::from_value(serde_json::json!({
+        "title": "Handoff Show",
+        "episode": "1",
+        "mode": "sub",
+        "quality": "720",
+    }))
+    .expect("args")
+}
+
+fn fetched_a_rendition(provider: &TableProvider) -> bool {
+    provider.count(
+        |a| matches!(a, crate::scraper::table_provider::Asked::Playlist(url) if url != OP_MASTER),
+    ) > 0
+}
+
+#[tokio::test]
+async fn a_handoff_gets_the_master_whatever_quality_is_asked() {
+    // mpv, VLC, IINA and Syncplay all adapt to the master themselves,
+    // so a hand-off gets the master and fetches no rendition.
+    let provider = ladder_provider();
+    let td = tempfile::tempdir().expect("td");
+    let state = state_for(&td, &provider);
+    let (launch, _watch) =
+        super::play_handoff::resolve_launch_args(&state, &asked_at_720(), asked_now(&state))
+            .await
+            .expect("resolves");
+    assert_eq!(launch.stream_url, OP_MASTER);
+    assert!(!fetched_a_rendition(&provider), "{:?}", provider.asked());
+}
+
+#[tokio::test]
+async fn the_built_in_player_gets_the_master_whatever_quality_is_asked() {
+    // The player starts on Auto with every level the master lists; a
+    // pick in its Quality menu then chooses among them.
+    let provider = ladder_provider();
+    let td = tempfile::tempdir().expect("td");
+    let state = state_for(&td, &provider);
+    let session = super::play::play(&state, &asked_at_720())
+        .await
+        .expect("resolves");
+    let id = crate::proxy::SessionId::parse(&session.session_id).expect("an id");
+    assert_eq!(
+        state
+            .sessions
+            .get(&id)
+            .expect("the session is open")
+            .upstream_url
+            .as_str(),
+        OP_MASTER
+    );
+    assert!(!fetched_a_rendition(&provider), "{:?}", provider.asked());
 }

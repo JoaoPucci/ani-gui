@@ -5,7 +5,7 @@
   retires the glow for the seen tag.
 -->
 <script lang="ts">
-	import { fly } from 'svelte/transition';
+	import { fly } from '$lib/motion/transitions';
 	import { cubicOut } from 'svelte/easing';
 	import Icon from '$lib/components/Icon.svelte';
 	import { m } from '$lib/paraglide/messages';
@@ -129,14 +129,6 @@
 				0 0 0 2px var(--ink-100, var(--ink-050)),
 				0 0 8px var(--brand),
 				0 0 16px color-mix(in oklab, var(--brand) 75%, transparent);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.update-badge {
-			animation: none;
-		}
-		.update-badge-led {
-			animation: none;
 		}
 	}
 </style>

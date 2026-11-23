@@ -14,7 +14,6 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { readPosition, savePosition } from '../../src/lib/play/watch-position';
 import { watchPageFetches } from './page-fetches';
-import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -31,27 +30,51 @@ vi.mock('$app/navigation', () => ({
 vi.mock('hls.js', () => {
 	class FakeHls {
 		static instances: FakeHls[] = [];
-		static Events = { ERROR: 'hlsError', FRAG_LOADED: 'hlsFragLoaded' };
+		static Events = {
+			ERROR: 'hlsError',
+			FRAG_LOADED: 'hlsFragLoaded',
+			MANIFEST_PARSED: 'hlsManifestParsed'
+		};
 		static isSupported() {
 			return true;
 		}
+		handlers = new Map<string, ((event: string, data: unknown) => void)[]>();
+		/** Where each start asked the engine to load from. */
+		startsAt: unknown[][] = [];
 		constructor() {
 			FakeHls.instances.push(this);
 		}
 		loadSource() {}
 		attachMedia() {}
-		on() {}
-		startLoad() {}
+		on(event: string, handler: (event: string, data: unknown) => void) {
+			this.handlers.set(event, [...(this.handlers.get(event) ?? []), handler]);
+		}
+		emit(event: string, data: unknown) {
+			for (const h of this.handlers.get(event) ?? []) h(event, data);
+		}
+		startLoad(...args: unknown[]) {
+			this.startsAt.push(args);
+		}
 		stopLoad() {}
 		destroy() {}
 	}
 	return { default: FakeHls };
 });
 
+import Hls from 'hls.js';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -81,17 +104,17 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
@@ -104,39 +127,51 @@ function useShowHandlers(
 ) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({
+			HttpResponse.json<Config>({
 				...appConfig(),
 				auto_skip_op: opts.autoSkipOp === true,
 				use_custom_player_controls: opts.nativeControls !== true
 			})
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(opts.skips ?? []))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () =>
+			HttpResponse.json<SkipInterval[]>(opts.skips ?? [])
+		)
 	);
 }
 
 const frame = () => target.querySelector('section.player-frame') as HTMLElement;
+// The custom controls' play / pause button, found by place: from the
+// attach to the first frame it reads Pause, the viewer's intent, and
+// Play only once the viewer has paused ($lib/play/start-state).
 const playButton = () =>
-	target.querySelector(
-		`button[aria-label="${m.play_controls_play_aria_label()}"]`
-	) as HTMLButtonElement | null;
+	target.querySelector('.pc-buttons-row .pc-btn') as HTMLButtonElement | null;
 const busy = () => frame()?.getAttribute('aria-busy') === 'true';
 const inert = (el: Element | null) => el?.closest('[inert]') != null;
 
@@ -163,6 +198,21 @@ async function openEpisode(
 	return { video, play };
 }
 
+/** The engine the page made for the stream it attached last. */
+function lastEngine() {
+	const engines = (
+		Hls as unknown as {
+			instances: {
+				startsAt: unknown[][];
+				emit(event: string, data: unknown): void;
+			}[];
+		}
+	).instances;
+	const engine = engines.at(-1);
+	if (!engine) throw new Error('no engine was made');
+	return engine;
+}
+
 function press(key: string) {
 	const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
 	document.body.dispatchEvent(ev);
@@ -177,7 +227,7 @@ describe('play route — a resumed episode opens at its point', () => {
 			// Opening: busy, the picture hidden, nothing to press.
 			await until(() => busy(), 'the frame to hold');
 			expect(frame().classList.contains('player-resuming')).toBe(true);
-			expect(target.querySelector('.player-spinner.player-spinner-on')).not.toBeNull();
+			expect(frame().getAttribute('data-start-veil')).toBe('start');
 			expect(inert(playButton())).toBe(true);
 			expect(video.autoplay).toBe(false);
 			// Neither the shortcut nor a click on the picture starts
@@ -197,11 +247,65 @@ describe('play route — a resumed episode opens at its point', () => {
 			expect(play).toHaveBeenCalledTimes(1);
 			await until(() => !busy(), 'the frame to reveal');
 			expect(frame().classList.contains('player-resuming')).toBe(false);
-			expect(target.querySelector('.player-spinner.player-spinner-on')).toBeNull();
+			expect(frame().getAttribute('data-start-veil')).toBe('off');
 			expect(inert(target.querySelector('.player-controls'))).toBe(false);
 			expect(video.currentTime).toBe(612.5);
 		});
 	}
+
+	// The page's CSS hides the picture during the hold, but
+	// picture-in-picture and a <video> that is itself fullscreen show
+	// the element directly. So an hls stream is not only hidden until
+	// the point: its engine starts loading there, and the first frame
+	// is never decoded. (An mp4 stream has no such start: see
+	// docs/deferred-work.md.)
+	it('starts the engine loading at the point, not at the first fragment (hls)', async () => {
+		savePosition(KITSU_ID, 1, 612.5, 1420);
+		await openEpisode('hls');
+		const engine = lastEngine();
+		engine.emit('hlsManifestParsed', { levels: [{ height: 720, bitrate: 2_500_000 }] });
+		await until(() => engine.startsAt.length > 0, 'the engine to start loading');
+		expect(engine.startsAt).toEqual([[612.5]]);
+	});
+
+	it('an episode with no point starts the engine where it chooses (hls)', async () => {
+		await openEpisode('hls');
+		const engine = lastEngine();
+		engine.emit('hlsManifestParsed', { levels: [{ height: 720, bitrate: 2_500_000 }] });
+		await until(() => engine.startsAt.length > 0, 'the engine to start loading');
+		expect(engine.startsAt).toEqual([[]]);
+	});
+
+	it('a point in the last 90 seconds is sought back from before the reveal (hls)', async () => {
+		// The engine started loading at the point, so the stream is
+		// sought to its start and revealed once that seek lands.
+		savePosition(KITSU_ID, 1, 1400, Number.NaN);
+		const { video, play } = await openEpisode('hls');
+		await until(() => busy(), 'the frame to hold');
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(readPosition(KITSU_ID, 1)).toBeNull();
+		await new Promise((r) => setTimeout(r, 20));
+		expect(busy()).toBe(true);
+		expect(play).not.toHaveBeenCalled();
+		video.dispatchEvent(new Event('seeked'));
+		await until(() => !busy(), 'the frame to reveal');
+		expect(video.currentTime).toBe(0);
+	});
+
+	it('a point in the last 90 seconds reveals from the start at once (mp4)', async () => {
+		// An mp4 element opens at its start whatever the point, so there
+		// is no seek back to wait for.
+		savePosition(KITSU_ID, 1, 1400, Number.NaN);
+		const { video, play } = await openEpisode('mp4');
+		await until(() => busy(), 'the frame to hold');
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		expect(readPosition(KITSU_ID, 1)).toBeNull();
+		await until(() => !busy(), 'the frame to reveal');
+		expect(play).toHaveBeenCalledTimes(1);
+		expect(video.currentTime).toBe(0);
+	});
 
 	it('an episode with no point opens without holding', async () => {
 		const { video } = await openEpisode('hls');
@@ -210,10 +314,15 @@ describe('play route — a resumed episode opens at its point', () => {
 		// turn then puts whatever that call decided on the page.
 		await until(() => readPosition(KITSU_ID, 1) === 0, 'the source to attach');
 		await new Promise((r) => setTimeout(r, 0));
-		expect(busy()).toBe(false);
+		// No hold: the picture shows and the controls answer. The frame
+		// is busy all the same — the stream is on its way until its
+		// first frame — but that is the start, not a resume.
 		expect(frame().classList.contains('player-resuming')).toBe(false);
 		expect(inert(playButton())).toBe(false);
 		expect(video.autoplay).toBe(true);
+		expect(busy()).toBe(true);
+		video.dispatchEvent(new Event('playing'));
+		await until(() => !busy(), 'the start to end at the first frame');
 	});
 
 	it('a point inside an auto-skipped opening is not skipped from under the hold', async () => {

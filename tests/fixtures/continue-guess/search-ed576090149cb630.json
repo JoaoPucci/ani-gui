@@ -1,0 +1,27 @@
+{
+ "data": [
+  {
+   "id": "49877",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Seitokai ni mo Ana wa Aru!",
+    "titles": {
+     "en": "Even the Student Council Has Its Holes!",
+     "en_jp": "Seitokai ni mo Ana wa Aru!",
+     "ja_jp": "生徒会にも穴はある！"
+    },
+    "abbreviatedTitles": [
+     "生穴る",
+     "NamaAnaru",
+     "There Is Also a Hole in the Student Organization!"
+    ],
+    "slug": "seitokai-ni-mo-ana-wa-aru",
+    "startDate": "2026-10-04",
+    "endDate": null,
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "current"
+   }
+  }
+ ]
+}

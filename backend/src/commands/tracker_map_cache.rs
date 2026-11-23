@@ -38,7 +38,11 @@ pub(crate) fn map_key(
         ),
         None => "unresolved".to_string(),
     };
-    format!("tracker-map:v3:{}:k{kitsu_id}:{place}", kind.slug())
+    format!(
+        "{}{}:k{kitsu_id}:{place}",
+        crate::cache::families::TRACKER_MAP,
+        kind.slug()
+    )
 }
 
 /// How long `map` is served from its row: the long window only for a

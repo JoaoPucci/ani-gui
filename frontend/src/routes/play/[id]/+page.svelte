@@ -28,12 +28,14 @@
   hls.js fails to load the master playlist.
 -->
 <script lang="ts">
-	import { onDestroy, onMount, untrack } from 'svelte';
+	import { flushSync, onDestroy, onMount, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
-	import { settle } from '$lib/transitions/settle';
+	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
+	import { settle } from '$lib/motion/settle';
+	import { fade } from '$lib/motion/transitions';
 	import {
 		altTitlesFromKitsu,
 		yearFromKitsuRef,
@@ -59,7 +61,8 @@
 		type KitsuAnimeRef,
 		type KitsuEpisode,
 		type MediaKind,
-		type SkipInterval
+		type SkipInterval,
+		historySwitchEpisode
 	} from '$lib/api';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
@@ -75,30 +78,44 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import { captionChoiceOf, storedCaption } from '$lib/play/caption-choice';
+	import { audioFor, storedAudio } from '$lib/play/audio-choice';
+	import { carrySwitchAudio, takeSwitchAudio } from '$lib/play/switch-audio';
+	import { rememberPickMoved } from '$lib/play/caption-repick';
+	import { expectCaptions, noteCaptionChange, showingCaption } from '$lib/play/caption-watch';
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
+	import { downloadQuality } from '$lib/download/download-quality';
 	import { buildMediaUrl } from '$lib/play/media-url';
+	import { applyCaptionPick, type CaptionTarget } from '$lib/play/caption-pick';
+	import { captionEntries } from '$lib/play/caption-label';
+	import { captionOrder } from '$lib/play/caption-order';
+	import { menuHeight, menuKeyStep, revealScroll } from '$lib/play/caption-menu-fit';
 	import { handoffArgs } from '$lib/play/handoff-args';
 	import { storedChoice } from '$lib/versions/version-choice';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { followPlayed } from '$lib/play/played-episode';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
-	import { createAniskipFetchTrigger } from '$lib/play/aniskip-fetch-trigger';
+	import { createAniskipFetchTrigger, lengthReady } from '$lib/play/aniskip-fetch-trigger';
 	import { shouldShowSkipButton } from '$lib/play/skip-button-window';
 	import { decidePlayerKeyAction } from '$lib/play/keyboard';
+	import { isModalOpen } from '$lib/components/modal-layer';
 	import { createVolumeReveal } from '$lib/play/volume-reveal';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import {
 		shouldHideControlsInFullscreen,
 		FULLSCREEN_IDLE_HIDE_MS
 	} from '$lib/play/fullscreen-idle';
-	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
+	import { clearBackgroundForShow, clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
 	import { createNavigationClaims } from '$lib/navigation/claims';
+	import { beginVisit, visitSeries, type Visit } from '$lib/navigation/visit';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
-	import { markStarted } from '$lib/play/watch-position';
+	import { keptEpisodes, markStarted } from '$lib/play/watch-position';
+	import { SwitchPreview } from '$lib/play/switch-preview.svelte';
+	import { switchEpisodeAsk } from '$lib/play/switch-plan';
 	import { armSidecarTracks } from '$lib/play/sidecar-tracks';
 	import { StripPager } from '$lib/play/strip-pager';
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
@@ -115,12 +132,26 @@
 	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
+	import { HLS_BUFFER_POLICY } from '$lib/play/hls-buffer-policy';
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
-	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
+	import { moreMenuQuality } from '$lib/play/more-menu-quality';
+	import {
+		closedDrill,
+		drillArrow,
+		drillStep,
+		type DrillEvent,
+		type DrillFocus,
+		type DrillMenu
+	} from '$lib/play/drill-menu';
+	import { plainKey } from '$lib/play/menu-arrow';
+	import { onMenuTabOrType, stepMenuFocus } from '$lib/menu/menu-dom';
+	import { playerSession } from '$lib/play/quality-session';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
+	import { refillEpisodes } from '$lib/refill/apply';
+	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import { formatTime, progressLabel, skipLabel } from '$lib/play/format';
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
@@ -149,8 +180,8 @@
 	import {
 		claimPlay,
 		playArgsFor,
+		playedRecord,
 		playMode,
-		playQuality,
 		recordPlayed,
 		runOwnedPlay
 	} from '$lib/play/owned-play';
@@ -169,12 +200,22 @@
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
-	import { breadcrumb } from '$lib/breadcrumb';
+	import { pageTrail } from '$lib/page-trail';
 	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/availability/row';
 	import { m } from '$lib/paraglide/messages';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
+	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
+	import { watchStart, type StartWatch } from '$lib/play/start-watch';
+	import StartVeil from '$lib/play/StartVeil.svelte';
+	import StartAnnounce from '$lib/play/StartAnnounce.svelte';
+	import { episodeInPages, veilMode } from '$lib/play/start-veil';
+	import { loadStartLook } from '$lib/play/start-look';
+	import { browserStorage } from '$lib/hero/prefs';
+	import { HandoffGate } from '$lib/play/handoff-gate';
+	import { keepingSidecarCues } from '$lib/play/sidecar-cues';
+	import { startEngine } from '$lib/play/quality-sink';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import {
@@ -184,18 +225,97 @@
 		withGuess,
 		withRow
 	} from '$lib/play/play-origin';
+	import { guessedQuery } from '$lib/history/guessed-context';
+	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
+	import { noteSwitch } from '$lib/history/guess-slip';
+	import { appLinkDeps } from '$lib/history/link-deps';
+	import { switchShow, type SwitchRequest, type SwitchShowDeps } from '$lib/play/switch-show';
+	import { switchToPick as runPickSwitch } from '$lib/play/pick-switch';
+	import { sessionShow } from '$lib/play/session-show';
+	import { applyCarriedRate, carryRate, takeRate } from '$lib/play/rate-carry';
+	import { takeSwitch } from '$lib/history/guess-slip';
+	import { holdPlayback } from '$lib/play/hold-playback';
+	import GuessSlip from '$lib/components/GuessSlip.svelte';
+	import GuessMark from '$lib/components/GuessMark.svelte';
+	import LinkShowDialog from '$lib/components/LinkShowDialog.svelte';
 
 	const id = $derived(page.params.id ?? '');
-	// A session opened from a guessed Continue match records the guess
-	// nowhere — not on the history row, not on tracker accounts
-	// ($lib/play/play-origin.ts). The flag is in the URL, and every URL
-	// this page builds for itself carries it on.
+	// A session opened from a guessed Continue match records the guess —
+	// on the history row, on tracker accounts — only for a play that
+	// landed on the card's own listing ($lib/play/play-origin.ts). The
+	// flag is in the URL, and every URL this page builds for itself
+	// carries it on.
 	const fromGuess = $derived(openedFromGuess(page.url.searchParams));
 	// A session a Continue card opened writes its positions for the
 	// card's history row, so removing the card forgets them whatever
 	// show it names by then; every URL this page builds carries it on.
 	const fromRow = $derived(openedFromRow(page.url.searchParams));
+	/** Where "Switch to it now" opens `to` from the card's row, as the
+	 *  backend decides it from the history and the pick's kept positions
+	 *  ($lib/play/switch-show). */
+	const switchEpisodeOf = (to: KitsuAnimeRef, episode: number): Promise<number | null> =>
+		switchEpisodeAsk(
+			{ ask: historySwitchEpisode, airing: (id) => airingGet(id), kept: keptEpisodes },
+			to,
+			episode,
+			fromRow
+		);
+	// What the switch step says of the pick chosen, for the episode
+	// playing ($lib/play/switch-preview).
+	const switchKey = (to: KitsuAnimeRef) => `${to.id}@${episodeNum}`;
+	const switchPreview = new SwitchPreview((key) => {
+		const to = playLink.chosen?.ref;
+		return to && switchKey(to) === key ? switchEpisodeOf(to, episodeNum) : Promise.resolve(null);
+	});
+	$effect(() => {
+		const chosen = playLink.chosen;
+		if (chosen && !chosen.current) switchPreview.ask(switchKey(chosen.ref));
+	});
+	// The show page a guessed card's session goes up to says which
+	// history title the card was matched from ($lib/history/guessed-context).
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
+	// A guessed session's slip, its ⋯ entry and the picker they open
+	// ($lib/history/in-place-link.svelte.ts): "Is this the show you
+	// meant?". The player stays where it is through a pick until the
+	// viewer switches to it (switchToPick); the picker holds playback
+	// while it is open ($lib/play/hold-playback). What a pick did is
+	// said in the slip, not a toast, unless the pick is saved after the
+	// viewer left, when a toast says it. A session a switch opened, or one
+	// of a row picked for here since the app started, keeps the ⋯ entry
+	// to change the show again ($lib/history/guess-slip.ts).
+	const playLink = new InPlaceLinkSession({
+		...appLinkDeps(),
+		notify: (notice) => toastStore.push(notice),
+		// The shown show's own Sub or Dub, else the one this session was
+		// switched in, else Settings — asked of the show the link was made
+		// for, whichever page is on screen when it answers.
+		audioInForce: (shown) => audioFor(shown, switchedAudio ?? playMode(config)),
+		inPlayer: true,
+		// A pick a correction made elsewhere overtook: read the line again,
+		// so the slip shows the answer that stands.
+		reread: () => void playLink.arrive(fromRow, id, fromGuess)
+	});
+	// A pick saved after the viewer left is still saved, and switches to
+	// nothing.
+	onDestroy(() => playLink.leave());
+	// Every session of a card's line arrives with it: its offer decides
+	// whether the line is asked about (a guess) or can be changed again
+	// (a line the user named a show for, $lib/history/picked-offer).
+	$effect(() => void playLink.arrive(fromRow, id, fromGuess));
+	// The line goes up with the link while the session can ask about it:
+	// a guess, or a line the user named a show for ($lib/history/picked-offer).
+	const showHref = $derived(
+		resolve('/anime/[id]', { id }) + guessedQuery(fromGuess || playLink.offer !== null, fromRow)
+	);
+	// What the session's plays name as their show: its page's, its guess
+	// named apart, or once the card was linked from here, the link
+	// ($lib/play/play-origin).
+	const playingAs = $derived(
+		sessionShow({ id, guess: fromGuess, row: fromRow, linked: playLink.linked?.id ?? null })
+	);
+	$effect(() => {
+		if (playLink.open) return holdPlayback(untrack(() => videoEl));
+	});
 	// A fractional extra (a 7.5 recap) stays itself: see
 	// $lib/play/episode-number.
 	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
@@ -240,14 +360,22 @@
 	const UI_PAGE_SIZE = 5;
 	const KITSU_PAGE_SIZE = 20;
 	// Per-show — the id-change $effect below drops it on /play/A →
-	// /play/B (defensive: no in-app path triggers that today, but
-	// browser back/forward + URL-bar edits can, and a stale page-1
-	// would serve A's thumbnails for B's first paint). See
-	// lib/detail/episode-page-cache.
+	// /play/B (defensive: the route mounts a new page for another show,
+	// ./+layout.svelte, so only a page mounted without that layout
+	// would see the id change, and a stale page-1 would serve A's
+	// thumbnails for B's first paint). See lib/detail/episode-page-cache.
 	const kitsuPageCache = createEpisodePageCache();
 	let theaterMode = $state(false);
 	let similar = $state<KitsuAnimeRef[] | null>(null);
 	let config = $state<Config | null>(null);
+	// The show's own Sub or Dub, read whenever the page turns to a show
+	// ($lib/play/audio-choice); a show never chosen on plays the
+	// Settings value, which is only the default.
+	let chosenAudio = $derived<'sub' | 'dub' | undefined>(storedAudio(id));
+	// The audio a switch to this show carried, kept for the session when
+	// the storage refused it as the show's choice ($lib/play/switch-audio).
+	const switchedAudio = takeSwitchAudio(untrack(() => id));
+	const audio = $derived(chosenAudio ?? switchedAudio ?? playMode(config));
 	let detailError = $state<string | null>(null);
 	let playerError = $state<string | null>(null);
 	let switchBusy = $state(false);
@@ -273,13 +401,19 @@
 	// The URL the element's stream was attached from; hls.js gives the
 	// element a blob: URL of its own, so the element cannot say.
 	let attachedUrl: string | null = null;
+	// The session whose stream `duration` describes, set as one
+	// attaches: across a switch the URL names the new session before
+	// its stream is on the element.
+	let lengthFor = $state<string | null>(null);
 
 	// Settings-driven: whether to use our custom controls bar in
 	// place of Chromium's native one. Custom gives the timeline
 	// the per-show accent color and lets fullscreen target
 	// .player-frame (so the Skip OP/Outro overlay stays visible
 	// in fullscreen). Native is more battle-tested for PiP,
-	// caption picker, and the like. Default is native.
+	// caption picker, and the like. The setting defaults to custom
+	// (`Config::default`, backend/src/config/mod.rs); until the
+	// settings answer, the page reads it as off.
 	const USE_CUSTOM_PLAYER_CONTROLS = $derived(config?.use_custom_player_controls === true);
 
 	// Custom controls — Chromium's native media controls don't
@@ -287,15 +421,105 @@
 	// our own progress bar / play / volume / fullscreen UI on top
 	// of the video. Bindings keep the bar in sync with the video
 	// element's actual state without polling.
-	let isPaused = $state(true);
+	//
+	// Where the stream stands ($lib/play/start-state), not the element's
+	// `paused`: an autoplaying element reads paused from the attach to
+	// its first frame, and offering Play over a stream on its way is
+	// what makes a viewer press it. The button and the fullscreen
+	// keep-alive read the viewer's intent from here, and the loading
+	// indicator shows through a start and a stall.
+	let startPhase = $state<StartPhase>('idle');
+	// The episode a switch is on its way to, which the veil shows in
+	// fullscreen; and where the attached stream resumes, which it names.
+	let switchTarget = $state<number | null>(null);
+	let startResumeAt = $state<number | null>(null);
+	// Watches the page's own video for as long as the page has it, not
+	// the slot the video sits in: a stream can attach while the error
+	// panel stands in for the slot.
+	// Ends the attached stream's resume hold, if it has one.
+	let endResumeHold: () => void = () => {};
+	// Whether the episode went to another player ($lib/play/handoff-gate).
+	// Until the viewer comes back to the embedded player nothing starts
+	// it again by itself: the engine is stopped, the element does not
+	// autoplay, a stream attaching meanwhile does not load, and the
+	// recoveries, retries and auto-play stand down. Coming back is the
+	// element's own `play` (its button, Space, a click, a media key,
+	// picture-in-picture), picking an episode, or Reload.
+	// The handoff's state ($lib/play/handoff-gate): the episode handed
+	// off, a start held for the viewer, a pick waiting for its stream,
+	// and whether the attached engine was started. The page only wires
+	// it to the element and the engine.
+	const handoff = new HandoffGate(
+		() => hls?.startLoad(),
+		// A manifest the handoff cut off is asked for again; the engine,
+		// its listeners and the fragment-loop guard stay as they are,
+		// and so do the sidecar tracks' cues ($lib/play/sidecar-cues).
+		() => {
+			const engine = hls;
+			const url = attachedUrl;
+			if (engine && url) keepingSidecarCues(ownVideo, () => engine.loadSource(url));
+		}
+	);
+	// Bumped when the viewer comes back, so the attach runs again for a
+	// src stream the handoff let go of (the gate holds which, and where).
+	let handoffReturns = $state(0);
+	/** The episode went to another player: a hold ends without
+	 *  starting anything, a start stops, the engine stops loading, and
+	 *  the element no longer starts on its own. A stream the element
+	 *  plays from its `src` (mp4, or HLS without hls.js), which has no
+	 *  engine to stop, is unloaded, and attached again on the viewer's
+	 *  return, exactly where it was. */
+	function stopForHandoff() {
+		endResumeHold();
+		ownVideo.autoplay = false;
+		startWatch.cancel();
+		hls?.stopLoad();
+		handoff.handOff();
+		// A stream the element plays from its src has no engine to stop,
+		// and paused, the browser may go on buffering it: it is let go of
+		// as a switch lets go of one. The flush keeps where it was (its
+		// listeners write the playhead while the stream is still open)
+		// and retires them, so nothing the unload reports is written;
+		// the teardown then unloads it. The attach waits while its URL
+		// is the one let go of, and the viewer's return attaches it
+		// again as a resume: at its kept point, with its subtitles.
+		if (hls === null && attachedUrl !== null) {
+			// The return goes back to the playhead itself: the kept
+			// position reads the first seconds as the start and the last
+			// stretch as finished. Kept with the page's gate, so leaving
+			// the page or picking another episode forgets it.
+			handoff.letGo(attachedUrl, videoEl?.currentTime ?? 0);
+			sourceScope.flush();
+			teardown();
+		}
+	}
+	/** The viewer picked another stream from here (an episode, Reload). */
+	function comeBackWith() {
+		handoff.picked();
+	}
+	/** The viewer is back on the embedded player. */
+	function comeBack() {
+		if (handoff.handedOff) ownVideo.autoplay = true;
+		// A stream the handoff let go of attaches again, at its playhead,
+		// as a recovery's stream does.
+		const point = handoff.comeBack();
+		if (point !== null) recoveryResume.capture(id, episodeNum, point);
+		handoffReturns += 1;
+	}
+	ownVideo.addEventListener('play', comeBack);
+	const startWatch: StartWatch = watchStart(ownVideo, (phase) => {
+		startPhase = phase;
+	});
+	const isPaused = $derived(!chromeReadsPlaying(startPhase));
+	const streamLoading = $derived(startPhase === 'starting' || startPhase === 'stalled');
 	let currentTime = $state(0);
 	let duration = $state(0);
 	let videoVolume = $state(1);
 	let isMuted = $state(false);
 	// Captions selector for the custom controls. Reads the live
 	// TextTrackList off the page's video so the menu reflects
-	// whatever the current session has attached (today: 0 or 1
-	// track; multi-language sessions land later). `textTracksTick`
+	// whatever the current session has attached — none, one, or one
+	// per language the provider lists. `textTracksTick`
 	// is the reactivity dependency — every addtrack / removetrack /
 	// individual `change` event bumps it so `availableTracks` and
 	// `captionsOn` re-derive.
@@ -305,20 +529,31 @@
 	const availableTracks = $derived.by(() => {
 		void textTracksTick; // reactivity dep — re-derive on each tick
 		if (!videoEl) return [];
-		const out: Array<{ index: number; label: string; showing: boolean }> = [];
+		const out: Array<{ index: number; lang: string; label: string; showing: boolean }> = [];
 		for (let i = 0; i < videoEl.textTracks.length; i++) {
 			const t = videoEl.textTracks[i];
 			if (t.kind !== 'subtitles' && t.kind !== 'captions') continue;
-			out.push({
-				index: i,
-				label: t.label || t.language || m.play_track_fallback_label({ number: String(i + 1) }),
-				showing: t.mode === 'showing'
-			});
+			out.push({ index: i, lang: t.language, label: t.label, showing: t.mode === 'showing' });
 		}
 		return out;
 	});
 	const captionsOn = $derived(availableTracks.some((t) => t.showing));
 	const showCcButton = $derived(availableTracks.length > 0);
+	// The show's remembered captions choice as the menu opened, so the
+	// order it lists the viewer's languages in holds while it is open.
+	let ccRemembered = $state<string | undefined>(undefined);
+	// The menu's entries: named from each track's language tag in the
+	// app's language, the viewer's languages first, then the rest by
+	// name ($lib/play/caption-label, $lib/play/caption-order).
+	const ccMenu = $derived.by(() => {
+		const locale = uiLocale();
+		const entries = captionEntries(availableTracks, locale, {
+			qualified: (name, detail) => m.play_controls_cc_qualified({ name, detail }),
+			numbered: (name, n) => m.play_controls_cc_numbered({ name, number: String(n) }),
+			untitled: (position) => m.play_track_fallback_label({ number: String(position) })
+		});
+		return captionOrder(entries, { locale, remembered: ccRemembered });
+	});
 	let scrubberHover = $state(false);
 	// Furthest end of the contiguous buffered range that contains
 	// currentTime — feeds the dimmer "preloaded" segment of the
@@ -345,8 +580,9 @@
 	}
 
 	// aniskip skip-times for the current (kitsu_id, episode). Fetched
-	// once `duration` becomes finite (we need the value to disambig
-	// movie-cut vs TV-broadcast runtimes against aniskip's catalog).
+	// once the stream on screen has a usable length of its own (we need
+	// the value to disambig movie-cut vs TV-broadcast runtimes against
+	// aniskip's catalog).
 	// `activeSkip` is the interval the playhead is currently inside;
 	// the Skip OP / Skip Outro overlay binds to it.
 	let skipIntervals = $state<SkipInterval[]>([]);
@@ -390,35 +626,52 @@
 	// value is read once at fetch time via `untrack` so its sub-µs
 	// tick stream stays off the effect's dependency set.
 	const aniskipFetchKey = $derived(id && episodeNum > 0 ? `${id}|${episodeNum}` : null);
-	const aniskipDurationReady = $derived(Number.isFinite(duration) && duration > 0);
+	// Across a switch the length still holds the last stream's until the
+	// new one attaches and reports its own: aniskip is asked with the
+	// length of the stream on screen ($lib/play/aniskip-fetch-trigger).
+	const aniskipDurationReady = $derived(lengthReady(lengthFor, sessionId, duration));
 	const aniskipTrigger = createAniskipFetchTrigger();
+	// Each ask for skip times, cancelled by the next ask, a clear, or
+	// the page going ($lib/navigation/visit).
+	const aniskipReads = visitSeries();
+	onDestroy(aniskipReads.end);
 	$effect(() => {
 		// Subscribing to the fetch-key derived re-runs the effect on
 		// episode boundaries; subscribing to the readiness boolean
-		// re-runs it the moment duration first becomes usable, then
-		// stops propagating since `true === true`. The captured `key`
-		// is reused below to detect an episode change between issuing
-		// and resolving the request.
+		// re-runs it the moment the stream on screen has a usable
+		// length, then stops propagating since `true === true`. The
+		// captured `key` is reused below to detect an episode change
+		// between issuing and resolving the request. A clear comes as
+		// soon as the episode changes, while the new one's times wait
+		// for its stream's length: the last episode's are not this one's.
 		const key = aniskipFetchKey;
 		const decision = aniskipTrigger.step(id, episodeNum, aniskipDurationReady);
 		if (decision.kind === 'clear') {
+			aniskipReads.end();
 			skipIntervals = [];
 			return;
 		}
 		if (decision.kind !== 'fetch') return;
 		const len = untrack(() => duration);
+		const ask = aniskipTrigger.asked();
 		// Clear stale data before the fetch so a previous episode's
 		// intervals can't briefly drive `activeSkip` against the new
 		// episode's currentTime.
 		skipIntervals = [];
-		void aniskipGet(decision.showId, decision.episode, len)
+		// An answer counts only for the episode on screen, and only while
+		// no later request or clear has happened: the same episode asked
+		// again, after a switch away and back, with its stream's length.
+		// The ask before is cancelled: its answer would be dropped.
+		const reads = aniskipReads.next();
+		void reads
+			.keep(aniskipGet(decision.showId, decision.episode, len, { signal: reads.signal }))
 			.then((v) => {
-				if (aniskipFetchKey === key) {
+				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = v;
 				}
 			})
 			.catch(() => {
-				if (aniskipFetchKey === key) {
+				if (aniskipFetchKey === key && aniskipTrigger.answers(ask)) {
 					skipIntervals = [];
 				}
 			});
@@ -479,6 +732,11 @@
 	function togglePlay() {
 		// The resume starts playback itself once its seek lands.
 		if (!videoEl || resumeHolding) return;
+		// A start on its way reads as playing, so the button stops it.
+		if (startPhase === 'starting') {
+			startWatch.cancel();
+			return;
+		}
 		if (videoEl.paused) {
 			// `play()` returns a promise that can reject with AbortError
 			// when a pause() lands on top of an in-flight play() — the
@@ -500,18 +758,124 @@
 	}
 
 	function toggleCcMenu() {
+		if (!ccMenuOpen) ccRemembered = storedCaption(id);
 		ccMenuOpen = !ccMenuOpen;
 	}
 
+	/** Scroll the captions menu just far enough to show `item`, and
+	 *  focus it ($lib/play/caption-menu-fit). */
+	function revealCcItem(menu: HTMLElement, item: HTMLElement) {
+		menu.scrollTop = revealScroll({
+			scrollTop: menu.scrollTop,
+			viewHeight: menu.clientHeight,
+			itemTop: item.offsetTop,
+			itemHeight: item.offsetHeight
+		});
+		item.focus({ preventScroll: true });
+	}
+
+	/** The captions menu, as it mounts: capped at the room above the
+	 *  captions button inside the player and below the app's top bar,
+	 *  and at half the player's height — again on every resize while it
+	 *  is open — and opened on the selected entry. */
+	function fitCcMenu(menu: HTMLElement) {
+		const fit = () => {
+			const frame = ccMenuAnchor?.closest('.player-frame');
+			if (!ccMenuAnchor || !frame) return;
+			// In fullscreen the player covers the top bar.
+			const topbar = document.fullscreenElement ? null : document.querySelector('.topbar');
+			const frameBox = frame.getBoundingClientRect();
+			const height = menuHeight({
+				frameTop: frameBox.top,
+				frameHeight: frameBox.height,
+				ceiling: topbar?.getBoundingClientRect().bottom,
+				anchorTop: ccMenuAnchor.getBoundingClientRect().top,
+				gap: 8, // the menu's 0.5rem offset above the button
+				margin: 8,
+				floor: 96 // about two entries and the heading
+			});
+			menu.style.setProperty('max-block-size', `${height}px`);
+		};
+		fit();
+		const checked = menu.querySelector<HTMLElement>('[aria-checked="true"]');
+		if (checked) revealCcItem(menu, checked);
+		window.addEventListener('resize', fit);
+		return { destroy: () => window.removeEventListener('resize', fit) };
+	}
+
+	/** ArrowUp, ArrowDown, Home and End move through the menu's
+	 *  entries, and the player's volume shortcuts on the up and down
+	 *  arrows do not see them. */
+	function onCcMenuKey(e: KeyboardEvent) {
+		if (plainKey(e) === null) return;
+		// Tab and Shift+Tab close it, and a typed character stays in it
+		// rather than reach the player's keys ($lib/menu/menu-keys).
+		const close = () => flushSync(() => (ccMenuOpen = false));
+		if (onMenuTabOrType(e, { anchor: ccMenuAnchor, close })) return;
+		const menu = e.currentTarget as HTMLElement;
+		const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'));
+		const at = items.indexOf(document.activeElement as HTMLElement);
+		// The horizontal arrows stay in the menu rather than seek.
+		if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
+		const next = menuKeyStep(e.key, at, items.length);
+		if (next === null) return;
+		e.preventDefault();
+		e.stopPropagation();
+		revealCcItem(menu, items[next]);
+	}
+
+	/** A captions pick the browser's own menu made — with the custom
+	 *  controls off — remembered for the show as the app's own menu's
+	 *  are ($lib/play/caption-watch). */
+	function rememberViewerPick(video: HTMLVideoElement) {
+		// With the app's own controls on there is no browser menu: a
+		// change the app did not make is hls.js's, not the viewer's.
+		if (USE_CUSTOM_PLAYER_CONTROLS) return;
+		const pick = noteCaptionChange(video, video.textTracks);
+		if (pick === null) return;
+		const choice = captionChoiceOf(video.textTracks, pick);
+		if (choice !== undefined) rememberPick(choice);
+	}
+
+	/** Captions picks on this page that moved the show's remembered
+	 *  choice. The page's warms read the choice, so each such pick runs
+	 *  them again. */
+	let captionPicks = $state(0);
+
+	/** Remember a captions pick for the show — under its id, unless the
+	 *  session was opened from a guessed match — and, when it moved the
+	 *  choice, drop the show's running warms and warm again
+	 *  ($lib/play/caption-repick). */
+	function rememberPick(choice: string) {
+		if (!rememberPickMoved(recordableId(id, fromGuess) ?? '', choice)) return;
+		clearBackgroundForShow(id);
+		captionPicks += 1;
+	}
+
+	/** The UI locale, which the subtitle track a session starts on
+	 *  follows; empty when Paraglide has none resolved. */
+	function uiLocale(): string {
+		try {
+			return getLocale();
+		} catch {
+			return '';
+		}
+	}
+
 	/** Pick a subtitle track by its index in the TextTrackList, or
-	 *  'off' to hide every track. The chosen one becomes `showing`,
-	 *  everything else `hidden`. */
-	function pickCcTrack(target: number | 'off') {
+	 *  'off' for none. Only the track shown is loaded; the rule is
+	 *  $lib/play/caption-pick's. */
+	function pickCcTrack(target: CaptionTarget) {
 		ccMenuOpen = false;
 		if (!videoEl) return;
-		for (let i = 0; i < videoEl.textTracks.length; i++) {
-			videoEl.textTracks[i].mode = target === i ? 'showing' : 'hidden';
-		}
+		applyCaptionPick(videoEl.textTracks, target);
+		expectCaptions(videoEl, showingCaption(videoEl.textTracks));
+		const choice = captionChoiceOf(videoEl.textTracks, target);
+		if (choice !== undefined) rememberPick(choice);
 	}
 
 	function setVolume(v: number) {
@@ -555,37 +919,72 @@
 	// bar. Mirrors Chromium's native pattern: Download, Playback
 	// speed, Picture in picture. Open state is component-local;
 	// closes on outside click or Escape.
-	let pcMenuOpen = $state(false);
+	// Its state and focus moves are $lib/play/drill-menu's; this is the
+	// glue that applies them.
+	type PcList = 'speed' | 'quality';
+	let pcMenu = $state.raw<DrillMenu<PcList>>(closedDrill());
+	const pcMenuOpen = $derived(pcMenu.open);
+	const pcSpeedExpanded = $derived(pcMenu.list === 'speed');
+	const pcQualityExpanded = $derived(pcMenu.list === 'quality');
 	let pcMenuAnchor = $state<HTMLButtonElement | null>(null);
-	let pcSpeedExpanded = $state(false);
-	let pcQualityExpanded = $state(false);
 	let playbackRate = $state(1);
 	const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+	function pcDo(event: DrillEvent<PcList>) {
+		const step = drillStep(pcMenu, event);
+		pcMenu = step.menu;
+		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
+	}
 	function togglePcMenu() {
-		pcMenuOpen = !pcMenuOpen;
-		if (!pcMenuOpen) {
-			pcSpeedExpanded = false;
-			pcQualityExpanded = false;
-		}
+		pcDo({ type: 'toggle' });
+	}
+	function openPcList(list: PcList) {
+		pcDo({ type: 'openList', list, choosable: pcListChoosable(list), width: null });
+	}
+	function closePcList() {
+		pcDo({ type: 'back' });
 	}
 	function closePcMenu() {
-		pcMenuOpen = false;
-		pcSpeedExpanded = false;
-		pcQualityExpanded = false;
+		pcDo({ type: 'close' });
+	}
+	/** Whether the in-player menu's list has something to choose: the
+	 *  speeds always, the levels while their model shows any. */
+	function pcListChoosable(list: PcList): boolean {
+		return list === 'speed' || qualityMenuModel !== null;
+	}
+	// The Quality list closes once its model has nothing to show — the
+	// stream retired, or a lone level nothing names or the engine could
+	// not load.
+	$effect(() => {
+		pcDo({ type: 'models', choosable: pcListChoosable });
+	});
+	/** Applies a drill-down menu's focus target ($lib/play/drill-menu)
+	 *  once the menu has redrawn; the menu's own button at once. */
+	function applyDrillFocus<L extends string>(
+		focus: DrillFocus<L> | null,
+		menuId: string,
+		anchor: HTMLElement | null
+	) {
+		if (!focus) return;
+		if (focus.kind === 'anchor') {
+			anchor?.focus();
+			return;
+		}
+		void tick().then(() => {
+			const menu = document.getElementById(menuId);
+			if (focus.kind === 'opener') {
+				menu?.querySelector<HTMLElement>(`[data-opens="${focus.list}"]`)?.focus();
+				return;
+			}
+			const first = menu?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)');
+			if (first) first.focus();
+			else if (focus.kind === 'first-or-anchor') anchor?.focus();
+		});
 	}
 	// The stream's levels and the choice in force, as the attached
 	// stream's quality control publishes them ($lib/play/arm-quality);
 	// the menu is its pure model ($lib/play/quality-menu).
 	let qualityView = $state<QualityView | null>(null);
-	// The quality setting as the settings answer it, once: a stream's
-	// start level waits for it rather than reading a setting not yet
-	// loaded as `best`. Failing settings answer `undefined`, read as
-	// `best` like everywhere else.
-	let answerQualitySetting: (quality: string | undefined) => void = () => {};
-	const qualitySetting = new Promise<string | undefined>((resolve) => {
-		answerQualitySetting = resolve;
-	});
 	let qualityControl: QualityControl | null = null;
 	const qualityMenuModel = $derived(qualityMenu(qualityView));
 	function pickQuality(choice: 'auto' | number) {
@@ -603,10 +1002,7 @@
 			closePcMenu();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				closePcMenu();
-				pcMenuAnchor?.focus();
-			}
+			if (e.key === 'Escape') pcDo({ type: 'dismiss' });
 		};
 		document.addEventListener('pointerdown', onPointerDown);
 		document.addEventListener('keydown', onKey);
@@ -715,10 +1111,25 @@
 	// black screen with nothing to explain it.
 	let videoFullscreen = $state(false);
 	let mouseIdle = $state(false);
-	// `isPaused` already declared above (driven by the video's
-	// play/pause events) — reuse it as a keep-alive input.
+	// `isPaused` already declared above (the viewer's intent, from the
+	// start phase) — reuse it as a keep-alive input.
 	let controlsFocusWithin = $state(false);
 	let idleTimer: ReturnType<typeof setTimeout> | null = null;
+	// What the frame shows over the picture from a stream attaching to
+	// its first frame, and in a stall ($lib/play/start-veil), in the
+	// look the Diagnostics page picked ($lib/play/start-look).
+	const startLook = loadStartLook(browserStorage());
+	const startVeil = $derived(
+		veilMode({
+			phase: startPhase,
+			resumeHolding,
+			switchBusy,
+			fullscreen: isFullscreen,
+			videoFullscreen,
+			playerError: playerError !== null,
+			customControls: USE_CUSTOM_PLAYER_CONTROLS
+		})
+	);
 	const fullscreenControlsHidden = $derived(
 		isFullscreen &&
 			shouldHideControlsInFullscreen({
@@ -928,7 +1339,7 @@
 	// ($lib/availability/row), which every accepted answer writes
 	// and which is read for the show and audio on screen.
 	let availabilityRow = $state<AvailabilityRow | null>(null);
-	const rowKey = $derived(audioKey(detail?.id, playMode(config)));
+	const rowKey = $derived(audioKey(detail?.id, audio));
 	const knownRow = $derived(rowFor(availabilityRow, rowKey));
 	const playableEpisodeCount = $derived(knownRow.count);
 	/**
@@ -951,7 +1362,7 @@
 	 * the page does, so a click in that gap asks with the fallback and
 	 * the real mode can arrive while the answer is out.
 	 */
-	const capGateMode = (): 'sub' | 'dub' => playMode(config);
+	const capGateMode = (): 'sub' | 'dub' => audio;
 	/**
 	 * The context once this page is gone.
 	 *
@@ -968,10 +1379,12 @@
 	 * Which visit to this route the answer belongs to.
 	 *
 	 * The show and the mode describe the ROW being asked about, and
-	 * both come back when the user does. SvelteKit reuses this
-	 * component across an A→B→A round trip, so nothing is destroyed
-	 * and a click abandoned two navigations ago finds the context it
-	 * left behind and acts on it. This advances on every id
+	 * both come back when the user does. The route mounts a new page
+	 * for another show (./+layout.svelte), but this guard predates that
+	 * and still holds for any page that sees the id change: one reused
+	 * across an A→B→A round trip destroys nothing, and a click
+	 * abandoned two navigations ago would find the context it left
+	 * behind and act on it. This advances on every id
 	 * transition, so a question can only be answered to the page that
 	 * asked it.
 	 *
@@ -1079,6 +1492,7 @@
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			switchBusy = false;
+			comeBackWith();
 			void switchToEpisode(episode);
 		},
 		onStillGated: (_episode, refresh) => {
@@ -1144,7 +1558,10 @@
 			isAired: () => !epAirState(n, airing).unaired,
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
 			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
-			play: () => void switchToEpisode(n),
+			play: () => {
+				comeBackWith();
+				void switchToEpisode(n);
+			},
 			recheckProvider: () => onRecheckEpisode(n),
 			notifyStillUnaired: () =>
 				toastStore.push({ kind: 'info', message: m.detail_ep_unaired_still() }),
@@ -1200,7 +1617,7 @@
 	// unchanged, and a derived that compares equal does not wake its
 	// dependents — so the common case costs one lookup, not two
 	// identical ones against a source that rate-limits.
-	const availabilityMode = $derived(playMode(config));
+	const availabilityMode = $derived(audio);
 
 	$effect(() => {
 		const d = detail;
@@ -1256,20 +1673,21 @@
 			airingResolved = true;
 			return;
 		}
-		let cancelled = false;
-		void airingGet(currentId)
+		// Asked again for another show or status: the read before is
+		// cancelled, and nothing of it is applied ($lib/navigation/visit).
+		const reads = beginVisit();
+		void reads
+			.keep(airingGet(currentId, { signal: reads.signal }))
 			.then((a) => {
-				if (!cancelled) airingSchedule = a;
+				airingSchedule = a;
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */
 			})
 			.finally(() => {
-				if (!cancelled) airingResolved = true;
+				airingResolved = true;
 			});
-		return () => {
-			cancelled = true;
-		};
+		return reads.end;
 	});
 	const airingIsPending = $derived(airingPending(airingResolved, detail?.status));
 	/** What the page knows about episode `n`, for the plays it refuses
@@ -1390,13 +1808,11 @@
 
 	// Scan every cached page so the meta resolves even when the user
 	// has paginated away from the page that contains their current ep.
-	const currentEpisodeMeta = $derived.by(() => {
-		for (const eps of kitsuPageCache.values()) {
-			const found = eps.find((e) => (e.number ?? e.relative_number ?? -1) === episodeNum);
-			if (found) return found;
-		}
-		return null;
-	});
+	// The episode the start veil shows: a switch's target while it is on
+	// its way, else the one playing.
+	const veilEpisode = $derived(switchBusy && switchTarget !== null ? switchTarget : episodeNum);
+	const veilEpisodeMeta = $derived(episodeInPages(kitsuPageCache.values(), veilEpisode));
+	const currentEpisodeMeta = $derived(episodeInPages(kitsuPageCache.values(), episodeNum));
 
 	const totalEpisodePages = $derived.by(() => {
 		// Display bound (stripCap), not the action cap — the pager must
@@ -1420,11 +1836,30 @@
 		return out;
 	}
 
+	// The reads the page makes once, ended when the page goes; and the
+	// reads of the show it plays, ended when the page closes or moves to
+	// another show, renewed per show below. Each read holds an API
+	// connection until it answers, so a read nobody will look at is
+	// cancelled, and its answer, or its failure, never reaches the page
+	// ($lib/navigation/visit). A refill landing after the show's visit
+	// is not fetched either ($lib/refill/refill).
+	const pageReads = beginVisit();
+	onDestroy(pageReads.end);
+	let showReads: Visit = beginVisit();
+	onDestroy(() => showReads.end());
+
 	async function getKitsuPage(p: number): Promise<KitsuEpisode[]> {
 		if (!id) return [];
 		const cached = kitsuPageCache.get(p);
 		if (cached) return cached;
-		const eps = await kitsuEpisodes(id, p);
+		const eps = await kitsuEpisodes(id, p, {
+			signal: showReads.signal,
+			// Thumbnails AniList's pacing held back, filled in once
+			// they land.
+			onRefill: (filled) => {
+				refillEpisodes(kitsuPageCache, p, filled, rawWindowed);
+			}
+		});
 		kitsuPageCache.set(p, eps);
 		return eps;
 	}
@@ -1437,11 +1872,15 @@
 
 	async function fetchEpisodesPage(page: number, gen: number, opts: { initial?: boolean } = {}) {
 		if (!id) return;
+		// A show left meanwhile answers nothing here, not even a failure.
+		const reads = showReads;
 		episodesLoading = true;
 		try {
 			const start = (page - 1) * UI_PAGE_SIZE + 1;
 			const end = page * UI_PAGE_SIZE;
-			const merged = (await Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage))).flat();
+			const merged = (
+				await reads.keep(Promise.all(kitsuPagesForUiPage(page).map(getKitsuPage)))
+			).flat();
 			if (!stripPager.completed(gen)) return;
 			rawWindowed = merged.filter((ep) => {
 				const n = ep.number ?? ep.relative_number ?? -1;
@@ -1541,20 +1980,9 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		episodes;
 
-		let timerId: number | undefined;
-		const rafId = requestAnimationFrame(() => {
-			const el = document.querySelector(`[data-ep-num="${target}"]`);
-			if (!el) return;
-			el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			timerId = window.setTimeout(() => {
-				if (highlightEp === target) highlightEp = null;
-			}, 3200);
+		return spotlightEpisode(target, () => {
+			if (highlightEp === target) highlightEp = null;
 		});
-
-		return () => {
-			cancelAnimationFrame(rafId);
-			if (timerId !== undefined) clearTimeout(timerId);
-		};
 	});
 
 	function teardown() {
@@ -1563,6 +1991,10 @@
 		// fresh one.
 		hls = null;
 		attachedUrl = null;
+		// The last stream's length is not the next one's, and the
+		// element does not report the change: unloading it fires no
+		// `durationchange`.
+		duration = 0;
 		if (videoEl) {
 			videoEl.removeAttribute('src');
 			videoEl.load();
@@ -1582,7 +2014,6 @@
 		// (after an error overlay) with the stream already playing.
 		currentTime = v.currentTime;
 		duration = isFinite(v.duration) ? v.duration : 0;
-		isPaused = v.paused;
 		videoVolume = v.volume;
 		isMuted = v.muted;
 		playbackRate = v.playbackRate;
@@ -1592,12 +2023,6 @@
 		};
 		const onDuration = () => {
 			duration = isFinite(v.duration) ? v.duration : 0;
-		};
-		const onPlay = () => {
-			isPaused = false;
-		};
-		const onPause = () => {
-			isPaused = true;
 		};
 		const onVol = () => {
 			videoVolume = v.volume;
@@ -1641,6 +2066,7 @@
 		// thrash availableTracks' derivation chain.
 		const onTextTracksMutate = () => {
 			textTracksTick++;
+			rememberViewerPick(v);
 		};
 		v.textTracks.addEventListener('addtrack', onTextTracksMutate);
 		v.textTracks.addEventListener('removetrack', onTextTracksMutate);
@@ -1651,8 +2077,6 @@
 		v.addEventListener('progress', onProg);
 		v.addEventListener('durationchange', onDuration);
 		v.addEventListener('loadedmetadata', onMeta);
-		v.addEventListener('play', onPlay);
-		v.addEventListener('pause', onPause);
 		v.addEventListener('volumechange', onVol);
 		v.addEventListener('ratechange', onRate);
 		v.addEventListener('ended', onEnded);
@@ -1665,8 +2089,6 @@
 			v.removeEventListener('progress', onProg);
 			v.removeEventListener('durationchange', onDuration);
 			v.removeEventListener('loadedmetadata', onMeta);
-			v.removeEventListener('play', onPlay);
-			v.removeEventListener('pause', onPause);
 			v.removeEventListener('volumechange', onVol);
 			v.removeEventListener('ratechange', onRate);
 			v.removeEventListener('ended', onEnded);
@@ -1688,6 +2110,11 @@
 
 	$effect(() => {
 		if (!videoEl || !mediaUrl) return;
+		// The stream a handoff let go of waits for the viewer, whose return
+		// bumps handoffReturns and runs this again; another one (a pick, a
+		// Reload's fresh session) attaches, and ends the wait.
+		void handoffReturns;
+		if (untrack(() => handoff.attachWaits(mediaUrl))) return;
 		// The stream already attached from this URL keeps playing: the
 		// effect can run again without its source changing, and
 		// re-attaching would restart playback from 0. A recovery lands
@@ -1704,11 +2131,23 @@
 		sourceScope.flush();
 		teardown();
 		attachedUrl = mediaUrl;
+		lengthFor = untrack(() => sessionId);
+		// A new engine, not started yet; and a stream the viewer picked
+		// while the episode was handed off ends the handoff: it plays
+		// here, as any pick does.
+		if (handoff.attaching()) ownVideo.autoplay = true;
+		// The unload above set the element paused without a `pause`
+		// event; the stream attaching now is on its way. Told before the
+		// resume hold, below, takes the element's autoplay off.
+		startWatch.attach(videoEl.autoplay);
 		// Source-scoped listeners — the resume seek, the progress
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
 		// Armed AFTER the flush, which retires the previous source's.
-		armSourceScopedListeners({
+		// It also says where the stream starts: an hls engine begins
+		// loading at a resume point's fragment, below, so nothing
+		// before that fragment is fetched or shown.
+		const { startAt, endHold } = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
@@ -1716,10 +2155,21 @@
 			row: fromRow,
 			onResumeHold: (holding) => {
 				resumeHolding = holding;
-			}
+			},
+			// Only hls.js is handed the start, below.
+			startedAtPoint: mediaKind !== 'mp4' && Hls.isSupported()
 		});
+		endResumeHold = endHold;
+		startResumeAt = startAt;
+		// Handed off: a resume hold would start the stream itself once
+		// its seek lands. The seek still goes to the point.
+		if (handoff.handedOff) endHold();
 		playerError = null;
 		failedStreamError = null;
+		// A switch from another show's player hands its speed over, played
+		// once the stream's metadata has loaded ($lib/play/rate-carry).
+		const stopRate = applyCarriedRate(videoEl, id);
+		if (stopRate) sourceScope.add(stopRate);
 
 		// One held retry pending per source: a second failure inside
 		// a hold re-arms it rather than adding a second startLoad,
@@ -1766,7 +2216,7 @@
 			// out: the switch would decline it ($lib/play/reload-offer).
 			if (
 				shouldAttemptStaleStreamRetry({ err: { source: 'video', code }, hasAutoRetried }) &&
-				canRecoverFromStaleStream({ detail, switchBusy }) &&
+				canRecoverFromStaleStream({ detail, switchBusy, handedOff: handoff.handedOff }) &&
 				reloadEnd === null &&
 				!airingIsPending
 			) {
@@ -1793,9 +2243,15 @@
 		if (mediaKind === 'mp4') {
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
-			// The quality control starts the engine once it has chosen the
-			// start level, which waits for the settings ($lib/play/arm-quality).
-			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
+			// The page starts the engine once the levels are in and the
+			// quality control has chosen the start level
+			// ($lib/play/arm-quality), through the handoff gate (below).
+			hls = new Hls({
+				lowLatencyMode: false,
+				autoStartLoad: false,
+				...HLS_STALL_LOAD_POLICY,
+				...HLS_BUFFER_POLICY
+			});
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
 			const engine = hls;
@@ -1803,20 +2259,22 @@
 				engine.destroy();
 			});
 			// The level the stream plays is the app's choice, not the
-			// engine's bandwidth estimate: the setting's level from the
-			// start, down a level when playback stalls, back up once it
+			// engine's bandwidth estimate: Auto at the highest level from
+			// the start (or the level picked earlier in the player
+			// session), down a level when playback stalls, back up once it
 			// runs healthy, or the one the viewer picks from the menu.
 			const quality = armQuality({
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				setting: () => settledWithin(qualitySetting, QUALITY_SETTING_WAIT_MS),
-				holdsStart: true,
+				// The page starts the engine (below), so a handoff can hold
+				// the start until the viewer comes back.
+				holdsStart: false,
 				onView: (view) => {
+					// A stream retiring takes its levels with it; both menus'
+					// Quality lists follow the model this feeds, and close
+					// (the effects beside closePcMenu and closeMore).
 					qualityView = view;
-					// A stream retiring takes its levels with it; the next
-					// one's menu opens on the main list.
-					if (!view) pcQualityExpanded = false;
 				}
 			});
 			qualityControl = quality;
@@ -1824,6 +2282,19 @@
 				quality.dispose();
 				if (qualityControl === quality) qualityControl = null;
 			});
+			// Started once the levels are in and the quality control has
+			// set the start level (its handler is the earlier one): at
+			// once, or, with the episode handed to another player, when
+			// the viewer comes back.
+			const startHere = () => {
+				handoff.engineStarted();
+				startEngine(engine, startAt);
+			};
+			hls.on(Hls.Events.MANIFEST_PARSED, () => {
+				handoff.manifestParsed();
+				handoff.whenWatching(startHere);
+			});
+			sourceScope.add(() => handoff.drop(startHere));
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
 			// One guard per source: a fragment the engine keeps asking
@@ -1834,12 +2305,16 @@
 			const loopGuard = new FragmentLoopGuard();
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
 				stallMachine.fragmentLoaded(data);
-				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
+				if (!loopGuard.loaded(fragmentLoopKey(data.frag), data.frag.start)) return;
 				engine.stopLoad();
+				handoff.engineStopped();
 				dropHeldRetry();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
 			});
+			// A fragment the back buffer let go of is loaded again by a
+			// seek back, not by a loop.
+			hls.on(Hls.Events.BACK_BUFFER_REACHED, (_, data) => loopGuard.released(data.bufferEnd));
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
 				// An engine the guard stopped stays stopped: no hold, no
@@ -1880,6 +2355,8 @@
 						marginSeconds: HOLD_RUNWAY_MARGIN_S,
 						fire: () => {
 							cancelHeldRetry = null;
+							// Handed off, the viewer's return restarts it.
+							if (handoff.handedOff) return;
 							engine.startLoad();
 						}
 					});
@@ -1891,6 +2368,8 @@
 				// re-resolve would return the same crawling URL at the
 				// price of a full interruption.
 				if (action.act === 'nudge' && hls) {
+					// Handed off, the viewer's return restarts it.
+					if (handoff.handedOff) return;
 					if (action.toast) toastStore.push(stallNudgeToast());
 					hls.startLoad();
 					return;
@@ -1901,7 +2380,7 @@
 				// budget on a no-op recovery.
 				if (
 					action.act === 'recover' &&
-					canRecoverFromStaleStream({ detail, switchBusy }) &&
+					canRecoverFromStaleStream({ detail, switchBusy, handedOff: handoff.handedOff }) &&
 					reloadEnd === null &&
 					!airingIsPending
 				) {
@@ -1924,7 +2403,9 @@
 		// URL's origin, one <track> per listing on the video, removed
 		// with the source like the engine is.
 		if (sourceAttached) {
-			sourceScope.add(armSidecarTracks(videoEl, mediaUrl, sessionId));
+			sourceScope.add(
+				armSidecarTracks(videoEl, mediaUrl, sessionId, uiLocale(), storedCaption(id))
+			);
 		}
 	});
 
@@ -1933,7 +2414,12 @@
 	// went ($lib/play/show-release).
 	const showReleases = createShowReleases(clearForShow);
 	$effect.pre(() => showReleases.showing(() => id));
+	// A level picked in the player lasts for the player session: the
+	// next episode keeps it, and another show or leaving lets it go
+	// ($lib/play/quality-session).
+	$effect.pre(() => playerSession.shows(id));
 	onDestroy(() => {
+		playerSession.ends();
 		// Leaving the page ends playback: the stream's engine and
 		// listeners retire, the element unloads and leaves the page,
 		// and picture-in-picture, which shows it, closes. Abandoned
@@ -1941,6 +2427,8 @@
 		// page and hold the provider's rate-limit slots.
 		sourceScope.flush();
 		teardown();
+		startWatch.dispose();
+		ownVideo.removeEventListener('play', comeBack);
 		releasePlayerVideo(ownVideo);
 		showReleases.leave();
 	});
@@ -1955,18 +2443,31 @@
 	 *  even if they've scrolled to the episode strip. */
 	let playFailure = $state<{ episode: number; message: string } | null>(null);
 
-	// Drop the per-show page-cache when the show id changes. No in-app
-	// path navigates /play/A → /play/B today (PosterCard sends to
-	// /anime/[id], prev/next reuses the same id), so the only way to
-	// land here with a stale cache is browser back/forward or URL-bar
-	// edits — but the defense is one line. Same contract /anime/[id]'s
+	// Drop the per-show page-cache when the show id changes. The route
+	// mounts the page afresh for another show (./+layout.svelte), which
+	// a switch to a card's pick does (switchToPick), so this only
+	// guards a page mounted without that layout — but the defense is
+	// one line. Same contract /anime/[id]'s
 	// id-change reset enforces. Episode changes within the same show
 	// keep the cache (id stable → effect doesn't refire), so prev/next
 	// pagination stays instant.
+	// A show change under the page cancels the old show's reads, so the
+	// strip is opened again for the new show: nothing else would read it.
+	// The show the strip was opened for at mount.
+	let stripShow = untrack(() => id);
 	$effect(() => {
-		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
-		id;
+		const current = id;
 		resetEpisodePageCache(kitsuPageCache);
+		showReads.end();
+		showReads = beginVisit();
+		if (current === stripShow) return;
+		stripShow = current;
+		untrack(() => {
+			rawWindowed = null;
+			episodesError = null;
+			const req = stripPager.open(stripPager.pageOf(episodeNum));
+			if (req.fetch) void fetchEpisodesPage(req.page, req.gen, { initial: true });
+		});
 	});
 
 	onMount(() => {
@@ -1974,12 +2475,14 @@
 			detailError = m.play_error_no_show_id();
 			return;
 		}
-		void kitsuAnimeDetail(id)
+		void pageReads
+			.keep(kitsuAnimeDetail(id, { signal: pageReads.signal }))
 			.then((d) => {
 				detail = d;
 				const seed = (d.canonical_title ?? '').split(/\s+/).slice(0, 2).join(' ').trim();
 				if (seed.length >= 2) {
-					void kitsuSearch(seed)
+					void pageReads
+						.keep(kitsuSearch(seed, { signal: pageReads.signal }))
 						.then((hits) => {
 							similar = hits.filter((h) => h.id !== d.id).slice(0, 12);
 						})
@@ -2000,26 +2503,26 @@
 		const startReq = stripPager.open(stripPager.pageOf(episodeNum));
 		if (startReq.fetch) void fetchEpisodesPage(startReq.page, startReq.gen, { initial: true });
 
-		void settingsGet()
+		void pageReads
+			.keep(settingsGet({ signal: pageReads.signal }))
 			.then((c) => {
 				config = c;
-				answerQualitySetting(c.quality);
 			})
 			.catch(() => {
 				config = null;
-				answerQualitySetting(undefined);
 			});
 	});
 
 	// Breadcrumb: Home › <title> › EP <n>. Re-runs when the episode
 	// number flips (next/prev buttons replaceState the URL) or when
 	// the title finally lands. The leaf is plain text — current page
-	// gets no href in the trail.
+	// gets no href in the trail. Named through the keeper, so the
+	// layout's reset for the navigation keeps it whichever runs first.
 	$effect(() => {
 		const title = detail?.canonical_title ?? null;
-		breadcrumb.set([
+		pageTrail.name(page.url.pathname, [
 			{ label: m.breadcrumb_home(), href: '/' },
-			{ label: title ?? m.breadcrumb_anime(), href: resolve('/anime/[id]', { id }) },
+			{ label: title ?? m.breadcrumb_anime(), href: showHref },
 			{ label: m.play_head_title_episode_prefix({ episode: String(episodeNum) }) }
 		]);
 	});
@@ -2027,7 +2530,7 @@
 	// Background prefetch: warm every episode visible in the strip
 	// concurrently so any click in the page is instant. Re-runs when
 	// the strip page changes (different `episodes` array) or settings
-	// flip mode/quality. The play-cache dedupes across calls — duplicate
+	// flip the audio mode. The play-cache dedupes across calls — duplicate
 	// keys share a single in-flight promise, so reloading the same page
 	// after a swap doesn't refire requests already resolved.
 	//
@@ -2041,6 +2544,8 @@
 	// Widening the radius here changes how many are queued, not how
 	// many are in flight.
 	$effect(() => {
+		// A captions pick names another choice: warm again for it.
+		void captionPicks;
 		if (!detail || !config || !episodes) return;
 		// Wait for the airing answer — warming on mount with airing
 		// still in flight would resolve greyed-out future episodes.
@@ -2051,8 +2556,7 @@
 		if (!availabilityResolved) return;
 		const title = detail.canonical_title;
 		if (!title) return;
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		// The version remembered for the show on its detail page — the
 		// one the session playing here was resolved for.
 		const version = storedChoice(id);
@@ -2075,14 +2579,20 @@
 				title,
 				episode: targetEp,
 				mode,
-				quality,
 				show: detail,
-				kitsuId: recordableId(id, fromGuess),
 				prefetch: true,
-				version
+				version,
+				caption: storedCaption(id),
+				// The click may take this warm's session: it answers for the
+				// guessed card's row, naming its show, as the click would.
+				kitsuId: playingAs.kitsuId,
+				guessRow: playingAs.guessRow,
+				cardRow: playingAs.cardRow,
+				guessId: playingAs.guessId
 			});
-			void getOrFire(makeKey(id, targetEp, mode, quality, version), (emit, signal) =>
-				playStream(args, emit, signal)
+			void getOrFire(
+				makeKey(id, targetEp, mode, version, args.guess_row, args.caption, args.card_row),
+				(emit, signal) => playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
 				 *  rejects with "aborted" which we swallow */
@@ -2115,11 +2625,12 @@
 		if (airingIsPending || deadEnd(standingOf(targetEp)) !== null) return;
 		const title = detail.canonical_title;
 		if (!title) return;
-		const mode = playMode(config);
+		const mode = audio;
 		// The show, visit and flags this switch is for, and its request,
-		// taken at the click ($lib/play/owned-play): the route's component
-		// is reused across shows and across a round trip back, so a late
-		// answer is judged against them. (`detail` loads only on mount.)
+		// taken at the click ($lib/play/owned-play): a late answer is
+		// judged against them, as the visit it was for may be over. (The
+		// route mounts a new page for another show, ./+layout.svelte,
+		// since `detail` loads only on mount.)
 		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
@@ -2129,22 +2640,30 @@
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
-		const quality = playQuality(config);
+		// What the switch names as its show: the page's, or a guess named
+		// apart — the link, once the card was linked from here.
+		const as = playingAs;
 		const version = storedChoice(owner.showId);
 		const playArgs = playArgsFor({
 			title,
 			episode: targetEp,
 			mode,
-			quality,
 			show,
-			kitsuId: recordableId(owner.showId, guess),
-			version
+			version,
+			caption: storedCaption(owner.showId),
+			kitsuId: as.kitsuId,
+			guessRow: as.guessRow,
+			cardRow: as.cardRow,
+			// The guess, apart from the page's id: the resolve records it on
+			// the card's row when the switch lands on that row's listing.
+			guessId: as.guessId
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
 		markStarted(owner.showId, targetEp, undefined, row);
 		switchesStarted += 1;
 		switchBusy = true;
+		switchTarget = targetEp;
 		switchProgress = null;
 		// Cleared for the stream the switch brings; kept to put back if
 		// the switch fails, or its navigation does, and the failed stream
@@ -2160,7 +2679,15 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, quality, version),
+						makeKey(
+							owner.showId,
+							targetEp,
+							mode,
+							version,
+							playArgs.guess_row,
+							playArgs.caption,
+							playArgs.card_row
+						),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2204,17 +2731,26 @@
 			// is the clicked show's even when the viewer has moved on.
 			// The tracker mirror is renderer-driven — the backend is
 			// stateless — and a guessed match writes nothing to the
-			// user's trackers.
+			// user's trackers unless its play landed on the card's own
+			// listing.
 			// The episode the session plays: the request may have named it
 			// by a number it no longer carries.
 			const played = followPlayed(owner.showId, outcome.session, targetEp);
+			// A guess whose play landed on the card's own listing is recorded
+			// and mirrored as a play from the show's page is.
+			const record = playedRecord(
+				{ ...playArgs, episode: String(played) },
+				as.recordAs,
+				guess,
+				outcome.session
+			);
 			recordPlayed(
 				{
-					args: { ...playArgs, episode: String(played) },
+					args: record.args,
 					showId: owner.showId,
 					episode: played,
 					show,
-					mirror: !guess,
+					mirror: record.mirror && as.mirrors,
 					unverified: outcome.session.episode_unverified
 				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
@@ -2244,7 +2780,99 @@
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} finally {
 			switchBusy = false;
+			switchTarget = null;
 		}
+	}
+
+	/** "Switch to it now": the same episode, from the point playback
+	 *  stands at — or the pick's own episode, when the viewer is further
+	 *  along in it, as Continue would play it — on the stream of the show
+	 *  picked for the card
+	 *  ($lib/play/switch-show.ts). The between-episodes loading band
+	 *  holds the player meanwhile. The route mounts the page afresh for
+	 *  the other show (./+layout.svelte); a stream that cannot be had
+	 *  leaves the episode on screen and says so, while the viewer is
+	 *  still on the player. */
+	async function switchToPick() {
+		await runPickSwitch(playLink.linked, {
+			busy: () => switchBusy,
+			setBusy: (busy) => {
+				switchBusy = busy;
+				if (busy) switchProgress = null;
+			},
+			playback: () => ({
+				at: videoEl?.currentTime ?? currentTime,
+				playing: videoEl ? !videoEl.paused : false,
+				rate: videoEl?.playbackRate ?? playbackRate
+			}),
+			pause: () => videoEl?.pause(),
+			resume: () => void videoEl?.play().catch(() => {}),
+			storedAudio,
+			sessionAudio: () => audio,
+			carryAudio: carrySwitchAudio,
+			takeAudio: (showId) => void takeSwitchAudio(showId),
+			choices: (showId) => ({ version: storedChoice(showId), caption: storedCaption(showId) }),
+			episode: () => episodeNum,
+			row: () => fromRow,
+			claim: () => {
+				const claimed = navigationClaims.claim();
+				return () => !gone && claimed();
+			},
+			run: (req, here) => switchShow(pickSwitchEffects(req, here), req),
+			failed: (pick) =>
+				toastStore.push({
+					kind: 'error',
+					message: m.play_link_switch_failed({ title: pick.title })
+				})
+		});
+	}
+
+	/** The app's effects for a switch to `req.to` ($lib/play/switch-show). */
+	function pickSwitchEffects(req: SwitchRequest, here: () => boolean): SwitchShowDeps {
+		const pickId = req.to.id;
+		return {
+			resolve: (args) =>
+				getOrFire(
+					makeKey(pickId, Number(args.episode), req.mode, req.version, undefined, args.caption),
+					(emit, signal) => playStream(args, emit, signal),
+					(p) => {
+						switchProgress = progressLabel(p);
+					}
+				),
+			record: (args, session, episode) =>
+				void recordPlayed(
+					{
+						args,
+						showId: pickId,
+						episode,
+						show: req.to,
+						mirror: true,
+						unverified: session.episode_unverified
+					},
+					{ markWatched, syncTrackers: syncWatchedToTrackers }
+				),
+			carry: (showId, episode, seconds) => recoveryResume.carry(showId, episode, seconds),
+			noteSwitch,
+			played: (showId, session, requested) => followPlayed(showId, session, requested),
+			carryRate,
+			forget: (showId, row) => {
+				recoveryResume.forgetShow(showId);
+				takeRate(showId);
+				takeSwitch(row);
+			},
+			open: (showId, session, episode, row) =>
+				/* eslint-disable svelte/no-navigation-without-resolve */
+				goto(
+					resolve('/play/[id]', { id: showId }) + withRow(buildPlayQuery(session, episode), row),
+					{ replaceState: true }
+				).then(
+					() => true,
+					() => false
+				),
+			/* eslint-enable svelte/no-navigation-without-resolve */
+			plan: switchEpisodeOf,
+			isCurrent: () => !gone && here()
+		};
 	}
 
 	/** Hand off to a fresh resolve when the player layer fails
@@ -2292,30 +2920,33 @@
 		// place so the fresh attach can seek back, and tell the user
 		// what the upcoming loading overlay is (silence here is what
 		// made recoveries read as the app breaking).
-		recoveryResume.capture(id, episodeNum, videoEl?.currentTime ?? 0);
+		// A stream a handoff let go of reads zero: its playhead is the
+		// one it was let go of at.
+		recoveryResume.capture(id, episodeNum, handoff.reloadPoint(videoEl?.currentTime ?? 0));
 		// The fresh session gets its own same-stream retry budget.
 		stallMachine.reset();
 		const toast = stallRecoveryToast(reason);
 		if (toast) toastStore.push(toast);
 		const title = detail.canonical_title;
 		// Settings is intentionally NOT a precondition — falling back to
-		// sub/best matches switchToEpisode's pattern. A permanently null
+		// sub matches switchToEpisode's pattern. A permanently null
 		// config (settingsGet rejected) shouldn't leave Reload no-op.
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		console.info('[play] stale-stream recovery:', reason);
 		try {
 			// The resolution cache keys on the version, so the eviction
-			// names the one the failing session was resolved for.
+			// names the one the failing session was resolved for. It
+			// describes the play as every other request does, the captions
+			// choice included, though the cache key does not read it.
 			await evictPlayCache(
 				playArgsFor({
 					title,
 					episode: episodeNum,
 					mode,
-					quality,
 					show: detail,
 					kitsuId: undefined,
-					version: storedChoice(id)
+					version: storedChoice(id),
+					caption: storedCaption(id)
 				})
 			);
 		} catch {
@@ -2339,6 +2970,15 @@
 		// Reload, or with the dead end it is at.
 		if (turn === 'offer-reload') playerError = restore;
 		if (turn !== 'resolve') return;
+		// Handed to another player while the eviction was out: resolving
+		// again would only load the episode behind it. The failed stream's
+		// error comes back, with its Reload, for when the viewer does. A
+		// Reload goes on while it is still the viewer's latest word: a
+		// handoff since it was pressed clears the pick it made.
+		if (handoff.recoveryStandsDown(reason === 'manual reload')) {
+			playerError = restore;
+			return;
+		}
 		clearForShow(id);
 		// The error went off screen as the recovery began; a fresh
 		// resolve that fails leaves the failed stream, so it comes back.
@@ -2361,21 +3001,25 @@
 	 *  loading leaves the overlay in place to try again rather than
 	 *  flashing into a blank frame. */
 	function onReloadStream() {
+		comeBackWith();
 		void recoverFromStaleStream('manual reload');
 	}
 
 	function onPrev() {
 		if (!hasPrev) return;
+		comeBackWith();
 		void switchToEpisode(prevEpisodeNum);
 	}
 	function onNext() {
 		if (!hasNext) return;
+		comeBackWith();
 		void switchToEpisode(nextEpisodeNum);
 	}
 	function onPickEpisode(ep: KitsuEpisode) {
 		const n = ep.number ?? ep.relative_number ?? null;
 		if (n === null) return;
 		if (n === episodeNum) return; // already playing
+		comeBackWith();
 		void switchToEpisode(n);
 	}
 
@@ -2403,6 +3047,7 @@
 	function onVideoEnded() {
 		const decision = decideAutoPlayNext({
 			enabled: autoPlayNext,
+			handedOff: handoff.handedOff,
 			episodeNum,
 			totalEpisodes,
 			extras: extraNums
@@ -2446,13 +3091,106 @@
 	// Open in external + Download. They were demoted from the np-actions
 	// row to declutter — the primary controls are now ep-nav +
 	// auto-play, with everything else one click deeper.
-	let moreOpen = $state(false);
+	// Its state and focus moves are $lib/play/drill-menu's; this is the
+	// glue that applies them.
+	let moreMenu = $state.raw<DrillMenu<'quality'>>(closedDrill());
+	const moreOpen = $derived(moreMenu.open);
+	const moreQualityOpen = $derived(moreMenu.list === 'quality');
 	let moreAnchor = $state<HTMLButtonElement | null>(null);
+	function moreDo(event: DrillEvent<'quality'>) {
+		const step = drillStep(moreMenu, event);
+		moreMenu = step.menu;
+		applyDrillFocus(step.focus, 'np-more-menu', moreAnchor);
+	}
 	function toggleMore() {
-		moreOpen = !moreOpen;
+		moreDo({ type: 'toggle' });
 	}
 	function closeMore() {
-		moreOpen = false;
+		moreDo({ type: 'close' });
+	}
+	// The quality picker rides the ⋯ menu while the custom controls are
+	// off: the native controls have none, and the in-player menu goes
+	// with the custom bar. Same model, same pick ($lib/play/more-menu-quality).
+	const moreQuality = $derived(moreMenuQuality(qualityMenuModel, USE_CUSTOM_PLAYER_CONTROLS));
+	/** The ⋯ menu's width as it stands, which it keeps while the levels
+	 *  show, so the right-anchored menu does not jump narrower. */
+	function moreMenuWidthNow(): number | null {
+		return document.getElementById('np-more-menu')?.offsetWidth ?? null;
+	}
+	function openMoreQuality() {
+		moreDo({
+			type: 'openList',
+			list: 'quality',
+			choosable: moreQuality?.choosable === true,
+			width: moreMenuWidthNow()
+		});
+	}
+	function closeMoreQuality() {
+		moreDo({ type: 'back' });
+	}
+	function pickMoreQuality(choice: 'auto' | number) {
+		pickQuality(choice);
+		moreDo({ type: 'dismiss' });
+	}
+	// A stream retiring takes the levels with it, and one of a single
+	// level leaves nothing to choose: the menu falls back to its main
+	// list.
+	$effect(() => {
+		moreDo({ type: 'models', choosable: () => moreQuality?.choosable === true });
+	});
+	// The arrow keys move between the menu's items, as a menu's should,
+	// rather than reaching the player's volume and seek keys.
+	// Left and Right open the levels from the Quality row and go back
+	// from them, and otherwise stay in the menu rather than seek.
+	function onMoreMenuKey(e: KeyboardEvent) {
+		// A modified key (Alt+ArrowLeft for history back) is not the menu's.
+		if (plainKey(e) === null) return;
+		// Tab and Shift+Tab close it, and a typed character stays in it
+		// rather than reach the player's keys ($lib/menu/menu-keys).
+		if (onMenuTabOrType(e, { anchor: moreAnchor, close: () => flushSync(closeMore) })) return;
+		const menu = e.currentTarget as HTMLElement;
+		const step = drillArrow(moreMenu, e.key, {
+			rtl: getComputedStyle(menu).direction === 'rtl',
+			opener: focusedOpener(['quality']),
+			choosable: moreQuality?.choosable === true,
+			width: moreMenuWidthNow()
+		});
+		if (step === null) {
+			stepMenuFocus(e);
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+		moreMenu = step.menu;
+		applyDrillFocus(step.focus, 'np-more-menu', moreAnchor);
+	}
+	/** The list the focused row opens (its `data-opens`), among `lists`. */
+	function focusedOpener<L extends string>(lists: readonly L[]): L | null {
+		const opens = (document.activeElement as HTMLElement | null)?.dataset.opens;
+		return lists.find((l) => l === opens) ?? null;
+	}
+	// The in-player menu steps the same way: Left and Right open Speed
+	// or Quality from its row and go back from the list, and otherwise
+	// stay in the menu rather than seek.
+	function onPcMenuKey(e: KeyboardEvent) {
+		if (plainKey(e) === null) return;
+		if (onMenuTabOrType(e, { anchor: pcMenuAnchor, close: () => flushSync(closePcMenu) })) return;
+		const menu = e.currentTarget as HTMLElement;
+		const opener = focusedOpener<PcList>(['speed', 'quality']);
+		const step = drillArrow(pcMenu, e.key, {
+			rtl: getComputedStyle(menu).direction === 'rtl',
+			opener,
+			choosable: opener !== null && pcListChoosable(opener),
+			width: null
+		});
+		if (step === null) {
+			stepMenuFocus(e);
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+		pcMenu = step.menu;
+		applyDrillFocus(step.focus, 'pc-overflow-menu', pcMenuAnchor);
 	}
 	$effect(() => {
 		if (!moreOpen) return;
@@ -2468,10 +3206,7 @@
 			closeMore();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				closeMore();
-				moreAnchor?.focus();
-			}
+			if (e.key === 'Escape') moreDo({ type: 'escape' });
 		};
 		document.addEventListener('pointerdown', onPointerDown);
 		document.addEventListener('keydown', onKey);
@@ -2488,7 +3223,11 @@
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
 		const cfg = config;
-		const launch = { kitsuId: id, mode: playMode(cfg), episode: ep };
+		const mode = audio;
+		const launch = { kitsuId: id, mode, episode: ep };
+		// What the session's own plays name: the card's row and its guess
+		// (the pick, once one was made here).
+		const as = playingAs;
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on (another show, or away and back) is
 		// not shown to them, and asks the cache nothing.
@@ -2497,11 +3236,12 @@
 			() => visit,
 			() => gone
 		);
-		// Pause the embedded video so the user isn't watching two
-		// instances simultaneously. The notice/launch flow continues
-		// regardless; if the external player fails to start the user
-		// can press space (or click the embedded player) to resume.
-		videoEl?.pause();
+		// Stop the embedded video, and anything that would start it
+		// again, so the user isn't watching two instances at once. The
+		// notice/launch flow continues regardless; if the external
+		// player fails to start, the user plays the embedded one again
+		// (Space, a click) and it comes back.
+		stopForHandoff();
 		externalBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -2511,10 +3251,14 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							kitsuId: recordableId(id, fromGuess) ?? '',
-							config: cfg,
+							kitsuId: as.kitsuId ?? '',
+							guessRow: as.guessRow,
+							cardRow: as.cardRow,
+							guessId: as.guessId,
+							config: { mode },
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				// Body text is shaped by describeExternalLaunchFailure so
@@ -2557,8 +3301,11 @@
 		// switch while a slow launch is out must not re-head its failure,
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
-		const cfg = config;
-		const launch = { kitsuId: id, mode: playMode(cfg), episode: ep };
+		const mode = audio;
+		const launch = { kitsuId: id, mode, episode: ep };
+		// What the session's own plays name: the card's row and its guess
+		// (the pick, once one was made here).
+		const as = playingAs;
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on is not shown to them.
 		const owner = claimPlay(
@@ -2566,10 +3313,9 @@
 			() => visit,
 			() => gone
 		);
-		// Same pause-the-embedded-video logic as the external flow:
-		// Syncplay opens its own player window so two instances would
-		// otherwise stack audio.
-		videoEl?.pause();
+		// Same handoff as the external flow: Syncplay opens its own
+		// player window, so two instances would otherwise stack audio.
+		stopForHandoff();
 		syncplayBusy = true;
 		try {
 			const outcome = await runOwnedPlay(
@@ -2579,10 +3325,14 @@
 						handoffArgs({
 							title,
 							episode: ep,
-							kitsuId: recordableId(id, fromGuess) ?? '',
-							config: cfg,
+							kitsuId: as.kitsuId ?? '',
+							guessRow: as.guessRow,
+							cardRow: as.cardRow,
+							guessId: as.guessId,
+							config: { mode },
 							detail,
-							version: storedChoice(id)
+							version: storedChoice(id),
+							caption: storedCaption(id)
 						})
 					),
 				async (e) => describeSyncplayLaunchFailure(e, await otherAudioForFailure(e, launch))
@@ -2613,7 +3363,8 @@
 	let downloadArgs = $state<DownloadArgs | null>(null);
 	let downloadDefaultDir = $state('');
 
-	void downloadDefaultDirApi()
+	void pageReads
+		.keep(downloadDefaultDirApi({ signal: pageReads.signal }))
 		.then((d) => {
 			if (d) downloadDefaultDir = d;
 		})
@@ -2624,15 +3375,16 @@
 		// flight the modal's cap would fall back to the announced
 		// total and an All download could range into unaired episodes.
 		if (!detail || airingIsPending) return;
-		const mode = playMode(config);
-		const quality = playQuality(config);
+		const mode = audio;
 		downloadArgs = buildDownloadArgs({
 			detail,
 			episode: episodeNum,
 			mode,
-			quality,
+			// The download quality, not a level picked in the player.
+			quality: downloadQuality(config),
 			kitsuId: id,
-			version: storedChoice(id)
+			version: storedChoice(id),
+			caption: storedCaption(id)
 		});
 		downloadModalOpen = true;
 	}
@@ -2649,6 +3401,10 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const onKey = (e: KeyboardEvent) => {
+			// A modal over the player (the change-show picker, a play
+			// failure, the download dialog) is the only keyboard target
+			// while it is up.
+			if (isModalOpen()) return;
 			const t = e.target as HTMLElement | null;
 			const inField =
 				!!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
@@ -2663,7 +3419,8 @@
 				inField,
 				inButton,
 				modifier: e.ctrlKey || e.metaKey || e.altKey,
-				repeat: e.repeat
+				repeat: e.repeat,
+				overDialog: playLink.open
 			});
 			if (!action) return;
 			// All player shortcuts swallow the default browser action:
@@ -2737,7 +3494,9 @@
 		class="player-frame"
 		class:player-busy={switchBusy}
 		class:player-resuming={resumeHolding && !videoFullscreen}
-		aria-busy={switchBusy || (resumeHolding && !playerError)}
+		class:player-starting={startVeil === 'start'}
+		data-start-veil={startVeil}
+		aria-busy={switchBusy || ((resumeHolding || streamLoading) && !playerError)}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
 		style:--player-letterbox-y="{letterboxY}px"
@@ -2764,14 +3523,15 @@
 					<p class="player-error-body">
 						{deadEndMessage(reloadEnd, availabilityMode, deadEndOtherAudio)}
 					</p>
+					<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 					<a
 						class="player-error-action"
-						href={resolve('/anime/[id]', { id })}
+						href={showHref}
 						onclick={(e) => {
 							// Replace, like the now-playing link: the show's page
 							// is "up" from the player.
 							e.preventDefault();
-							void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+							void goto(showHref, { replaceState: true });
 						}}
 					>
 						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -2782,6 +3542,7 @@
 						</svg>
 						<span>{m.play_error_stream_back_to_show()}</span>
 					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				{:else}
 					<!-- Held while the airing lookup is out: the switch the
 					     Reload hands to would decline it ($lib/play/reload-offer). -->
@@ -2810,13 +3571,32 @@
 			     100%/100% sizing letterboxes within. -->
 			<div class="player-video-slot" bind:this={frameTargetEl}></div>
 
+			<!-- The start veil sits here: inside the frame, above the
+			     picture and below the controls and the Skip button, which
+			     come later in the frame (the veil takes no z-index, so
+			     order decides). Anything laid over or beside the
+			     player for a shared session (Watch Together's room panel
+			     and room messages) belongs outside the frame or above it;
+			     the veil must never cover them. -->
+			<StartVeil
+				look={startLook}
+				mode={startVeil}
+				still={imageProxyUrl(veilEpisodeMeta?.thumbnail?.original ?? null)}
+				poster={npPoster}
+				episode={veilEpisode}
+				episodeTitle={veilEpisodeMeta?.canonical_title ?? null}
+				showTitle={detail?.canonical_title ?? null}
+				resumeAt={switchBusy ? null : startResumeAt}
+				fullscreen={isFullscreen}
+			/>
+
 			<!-- Skip OP / Skip Outro overlay — driven by aniskip's
 			     crowd-sourced timestamps. Renders only when the
 			     current playhead is inside an OP/ED interval; click
 			     seeks just past `end_time`. Positioned bottom-right
 			     above native + custom controls so it never overlaps
 			     the timeline. -->
-			{#if !resumeHolding && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
+			{#if !resumeHolding && startVeil !== 'start' && startPhase !== 'starting' && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
 				<button
 					type="button"
 					class="player-skip-btn"
@@ -2829,7 +3609,7 @@
 			{/if}
 
 			<!-- Custom controls overlay — toggled by the
-				     USE_CUSTOM_PLAYER_CONTROLS feature flag (off by
+				     use_custom_player_controls setting (on by
 				     default). When on, replaces Chromium's native
 				     timeline so the progress bar can take the
 				     per-show accent color. -->
@@ -2986,11 +3766,21 @@
 									<span class="pc-cc-rule" aria-hidden="true"></span>
 								</button>
 								{#if ccMenuOpen}
-									<div id="pc-cc-menu" class="pc-cc-menu" role="menu" tabindex="-1">
-										<p class="pc-cc-menu-heading">{m.play_controls_cc_menu_heading()}</p>
+									<div
+										id="pc-cc-menu"
+										class="pc-cc-menu"
+										role="menu"
+										aria-labelledby="pc-cc-menu-heading"
+										tabindex="-1"
+										use:fitCcMenu
+										onkeydown={onCcMenuKey}
+									>
+										<p id="pc-cc-menu-heading" class="pc-cc-menu-heading">
+											{m.play_controls_cc_menu_heading()}
+										</p>
 										<button
 											type="button"
-											class="pc-menu-item"
+											class="pc-menu-item pc-cc-item"
 											class:pc-menu-active={!captionsOn}
 											role="menuitemradio"
 											aria-checked={!captionsOn}
@@ -3001,20 +3791,35 @@
 											</span>
 											<span>{m.play_controls_cc_off()}</span>
 										</button>
-										{#each availableTracks as t (t.index)}
+										{#snippet ccItem(t: (typeof ccMenu.rest)[number])}
 											<button
 												type="button"
-												class="pc-menu-item"
+												class="pc-menu-item pc-cc-item"
 												class:pc-menu-active={t.showing}
 												role="menuitemradio"
 												aria-checked={t.showing}
+												title={t.name}
 												onclick={() => pickCcTrack(t.index)}
 											>
 												<span class="pc-menu-check" aria-hidden="true">
 													{#if t.showing}✓{/if}
 												</span>
-												<span>{t.label}</span>
+												<span class="pc-cc-name">{t.name}</span>
+												{#if t.sdh}
+													<abbr class="pc-cc-sdh" title={m.play_controls_cc_sdh_title()}>
+														{m.play_controls_cc_sdh()}
+													</abbr>
+												{/if}
 											</button>
+										{/snippet}
+										{#each ccMenu.yours as t (t.index)}
+											{@render ccItem(t)}
+										{/each}
+										{#if ccMenu.yours.length > 0 && ccMenu.rest.length > 0}
+											<div class="pc-cc-divider" role="separator"></div>
+										{/if}
+										{#each ccMenu.rest as t (t.index)}
+											{@render ccItem(t)}
 										{/each}
 									</div>
 								{/if}
@@ -3055,13 +3860,20 @@
 								</svg>
 							</button>
 							{#if pcMenuOpen}
-								<div id="pc-overflow-menu" class="pc-menu" role="menu" tabindex="-1">
+								<div
+									id="pc-overflow-menu"
+									class="pc-menu"
+									role="menu"
+									aria-label={m.play_controls_menu_aria_label()}
+									tabindex="-1"
+									onkeydown={onPcMenuKey}
+								>
 									{#if pcSpeedExpanded}
 										<button
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => (pcSpeedExpanded = false)}
+											onclick={closePcList}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3099,7 +3911,7 @@
 											type="button"
 											class="pc-menu-item pc-menu-back"
 											role="menuitem"
-											onclick={() => (pcQualityExpanded = false)}
+											onclick={closePcList}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<path
@@ -3155,7 +3967,8 @@
 											class="pc-menu-item pc-menu-row-arrow"
 											role="menuitem"
 											aria-haspopup="menu"
-											onclick={() => (pcSpeedExpanded = true)}
+											data-opens="speed"
+											onclick={() => openPcList('speed')}
 										>
 											<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 												<circle
@@ -3203,7 +4016,8 @@
 												class="pc-menu-item pc-menu-row-arrow"
 												role="menuitem"
 												aria-haspopup="menu"
-												onclick={() => (pcQualityExpanded = true)}
+												data-opens="quality"
+												onclick={() => openPcList('quality')}
 											>
 												<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 													<path
@@ -3360,36 +4174,38 @@
 				</div>
 			{/if}
 		{/if}
-		<!-- Mounted across a switch and the resume hold that follows it,
-		     and toggled: the two states are set in different places, and
-		     the moment between them must not restart the indicator. An
-		     error unmounts it outright, so nothing lingers over the
-		     panel. -->
-		{#if !playerError}
-			<span
-				class="player-spinner"
-				class:player-spinner-on={switchBusy || resumeHolding}
-				aria-hidden="true"
-			>
-				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
-			</span>
-		{/if}
 	</section>
+	<StartAnnounce mode={startVeil} />
 
 	<div class="watch-column">
+		{#if playLink.slip !== 'none'}
+			<GuessSlip
+				view={playLink.slip}
+				title={playLink.offer?.entry.title ?? null}
+				linkedTitle={playLink.linked?.title ?? null}
+				switchedTitle={playLink.switchedTitle}
+				busy={playLink.busy}
+				switching={switchBusy}
+				onchange={() => void playLink.start(episodeNum)}
+				onright={() => void playLink.answerYes()}
+				onswitch={() => void switchToPick()}
+				onhide={() => playLink.hide()}
+			/>
+		{/if}
 		<!-- Now-playing row: compact breadcrumb under the player so the
 		     page hierarchy reads "video → context → more episodes →
 		     similar". Show title links back to the detail page; episode
 		     prev/next + external player live on the right. -->
 		<header class="now-playing">
+			<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the guessed card's query -->
 			<a
 				class="np-link"
-				href={resolve('/anime/[id]', { id })}
+				href={showHref}
 				onclick={(e) => {
 					// Replace, not push — treats poster → details as an "up"
 					// navigation rather than burying the player in history.
 					e.preventDefault();
-					void goto(resolve('/anime/[id]', { id }), { replaceState: true });
+					void goto(showHref, { replaceState: true });
 				}}
 			>
 				{#if npPoster}
@@ -3434,6 +4250,7 @@
 					</span>
 				</span>
 			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 			<div class="np-actions">
 				{#if !singleVideo}
@@ -3556,127 +4373,268 @@
 							class="more-menu"
 							role="menu"
 							aria-label={m.play_more_aria_label()}
+							tabindex="-1"
+							onkeydown={onMoreMenuKey}
+							style:min-inline-size={moreMenu.width === null ? undefined : `${moreMenu.width}px`}
 							transition:settle={{ duration: 120 }}
 						>
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								onclick={() => {
-									closeMore();
-									void onOpenExternal();
-								}}
-								disabled={switchBusy || externalBusy}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<path
-										d="M14 5h5v5M19 5L10 14M5 9v10h10"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								<span>{externalBusy ? m.play_external_launching() : m.play_external_label()}</span>
-							</button>
+							{#if moreQualityOpen && moreQuality}
+								<!-- The levels replace the menu's contents, as in the in-player
+     menu: a back row naming the list, then the levels. -->
+								<div class="more-pane" in:fade={{ duration: 120 }}>
+									<button
+										type="button"
+										class="more-item more-back"
+										role="menuitem"
+										onclick={closeMoreQuality}
+									>
+										<svg
+											class="more-icon more-flip"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M15 6l-6 6 6 6"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span>{m.play_controls_menu_quality_label()}</span>
+									</button>
+									<div
+										class="more-pane"
+										role="group"
+										aria-label={m.play_controls_menu_quality_label()}
+									>
+										{#each moreQuality.menu.items as item (item.key)}
+											<button
+												type="button"
+												class="more-item more-radio"
+												class:more-radio-on={item.checked}
+												role="menuitemradio"
+												aria-checked={item.checked}
+												onclick={() => pickMoreQuality(item.key)}
+											>
+												<span class="more-check" aria-hidden="true"
+													>{#if item.checked}✓{/if}</span
+												>
+												<span>{item.label}</span>
+											</button>
+										{/each}
+									</div>
+								</div>
+							{:else}
+								<div class="more-pane" in:fade={{ duration: 120 }}>
+									{#if playLink.offer}
+										<button
+											type="button"
+											class="more-item"
+											role="menuitem"
+											onclick={() => {
+												closeMore();
+												void playLink.start(episodeNum);
+											}}
+										>
+											<GuessMark class="more-icon" />
+											<span>{m.play_link_menu_item()}</span>
+										</button>
+									{/if}
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										onclick={() => {
+											closeMore();
+											void onOpenExternal();
+										}}
+										disabled={switchBusy || externalBusy}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M14 5h5v5M19 5L10 14M5 9v10h10"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span
+											>{externalBusy ? m.play_external_launching() : m.play_external_label()}</span
+										>
+									</button>
 
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								onclick={() => {
-									closeMore();
-									onDownload();
-								}}
-								disabled={switchBusy}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<path
-										d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								<span>{m.play_controls_menu_download()}</span>
-							</button>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										onclick={() => {
+											closeMore();
+											onDownload();
+										}}
+										disabled={switchBusy}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<path
+												d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										<span>{m.play_controls_menu_download()}</span>
+									</button>
 
-							<!-- "Watch together" lives here in addition to the
+									<!-- "Watch together" lives here in addition to the
 							     in-player hamburger (pc-menu) because the
 							     hamburger is gated on use_custom_player_controls.
 							     When the user opts into Chromium's native
 							     controls the hamburger disappears, and the
 							     more-menu becomes the only reachable surface
 							     for Syncplay launches. -->
-							<button
-								type="button"
-								class="more-item"
-								role="menuitem"
-								disabled={syncplayBusy}
-								onclick={() => {
-									closeMore();
-									void onSyncplay();
-								}}
-							>
-								<svg
-									class="more-icon"
-									viewBox="0 0 24 24"
-									width="18"
-									height="18"
-									aria-hidden="true"
-								>
-									<circle
-										cx="9"
-										cy="8"
-										r="3"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-									/>
-									<path
-										d="M3 19c0-3 3-5 6-5s6 2 6 5"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-									/>
-									<circle
-										cx="17"
-										cy="9"
-										r="2.4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-									/>
-									<path
-										d="M15 19c0-2 2-3.5 4-3.5s2 1 2 3"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.25"
-										stroke-linecap="round"
-									/>
-								</svg>
-								<span>
-									{syncplayBusy
-										? m.play_hamburger_syncplay_busy_label()
-										: m.play_hamburger_syncplay_label()}
-								</span>
-							</button>
+									<button
+										type="button"
+										class="more-item"
+										role="menuitem"
+										disabled={syncplayBusy}
+										onclick={() => {
+											closeMore();
+											void onSyncplay();
+										}}
+									>
+										<svg
+											class="more-icon"
+											viewBox="0 0 24 24"
+											width="18"
+											height="18"
+											aria-hidden="true"
+										>
+											<circle
+												cx="9"
+												cy="8"
+												r="3"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+											/>
+											<path
+												d="M3 19c0-3 3-5 6-5s6 2 6 5"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+											/>
+											<circle
+												cx="17"
+												cy="9"
+												r="2.4"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+											/>
+											<path
+												d="M15 19c0-2 2-3.5 4-3.5s2 1 2 3"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2.25"
+												stroke-linecap="round"
+											/>
+										</svg>
+										<span>
+											{syncplayBusy
+												? m.play_hamburger_syncplay_busy_label()
+												: m.play_hamburger_syncplay_label()}
+										</span>
+									</button>
+									<!-- Quality, while the custom controls are off: the native
+     controls have no quality menu and the in-player one goes with
+     the custom bar. Last, so the actions above keep their places.
+     A stream of one level names it with nothing to open. -->
+									{#if moreQuality}
+										<button
+											type="button"
+											class="more-item more-row-value"
+											class:more-row-still={!moreQuality.choosable}
+											role="menuitem"
+											aria-haspopup={moreQuality.choosable ? 'menu' : undefined}
+											aria-disabled={moreQuality.choosable ? undefined : 'true'}
+											data-opens="quality"
+											onclick={openMoreQuality}
+										>
+											<svg
+												class="more-icon"
+												viewBox="0 0 24 24"
+												width="18"
+												height="18"
+												aria-hidden="true"
+											>
+												<path
+													d="M4 7h9m4 0h3M4 17h3m4 0h9"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+													stroke-linecap="round"
+												/>
+												<circle
+													cx="15"
+													cy="7"
+													r="2"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+												/>
+												<circle
+													cx="9"
+													cy="17"
+													r="2"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2.25"
+												/>
+											</svg>
+											<span>{m.play_controls_menu_quality_label()}</span>
+											<span class="more-value">{moreQuality.menu.current}</span>
+											{#if moreQuality.choosable}
+												<svg
+													class="more-icon more-chev more-flip"
+													viewBox="0 0 24 24"
+													width="16"
+													height="16"
+													aria-hidden="true"
+												>
+													<path
+														d="M9 6l6 6-6 6"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2.25"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+													/>
+												</svg>
+											{/if}
+										</button>
+									{/if}
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -3855,7 +4813,7 @@
 								>
 									<span class="ep-card-thumb">
 										{#if epThumb}
-											<img src={epThumb} alt="" loading="lazy" />
+											<img class="img-fade" use:fadeOnLoad src={epThumb} alt="" loading="lazy" />
 										{:else if air.unaired}
 											<span class="ep-card-thumb-placeholder ep-card-airs" aria-hidden="true">
 												{unairedLabel(air.airsAt)}
@@ -3927,6 +4885,34 @@
 			</div>
 		{/if}
 	</div>
+	{#if playLink.offer}
+		<LinkShowDialog
+			open={playLink.open}
+			savedTitle={playLink.offer.entry.title}
+			episode={playLink.episode}
+			playing
+			currentLabel={m.play_link_playing_now()}
+			candidates={playLink.candidates}
+			failed={playLink.failed}
+			chosen={playLink.chosen}
+			warnings={playLink.warnings}
+			rowCount={playLink.group?.length ?? null}
+			busy={playLink.busy}
+			error={playLink.error}
+			onSearch={(q) => void playLink.search(q)}
+			onChoose={(c) => playLink.choose(c)}
+			onConfirm={() => void playLink.confirm()}
+			onCancel={() => playLink.cancel()}
+			switchAt={formatTime(currentTime)}
+			switchOwn={playLink.chosen ? switchPreview.ownFor(switchKey(playLink.chosen.ref)) : null}
+			shown={detail}
+			onSwitch={async () => {
+				// Only a pick that was saved: a failed one leaves its error in
+				// the picker, and an earlier pick's switch is not this one.
+				if (await playLink.confirm()) void switchToPick();
+			}}
+		/>
+	{/if}
 </main>
 
 <LoadingOverlay visible={switchBusy} progress={switchProgress} />
@@ -4270,6 +5256,62 @@
 	.more-icon {
 		flex-shrink: 0;
 	}
+	/* A pane is the menu's column; opening the levels swaps one pane
+	   for another, so the two never show at once. */
+	.more-pane {
+		display: flex;
+		flex-direction: column;
+	}
+	.more-row-value {
+		inline-size: 100%;
+	}
+	/* One level: the row names it, with nothing to open. */
+	.more-row-still {
+		cursor: default;
+	}
+	.more-item.more-row-still:hover:not(:disabled) {
+		background: transparent;
+	}
+	/* Heights line up down the list: tabular figures, so 1080p and
+	   720p share a column edge rather than wobbling with digit width. */
+	.more-value {
+		margin-inline-start: auto;
+		padding-inline-start: var(--space-3);
+		color: var(--bone-300);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.more-chev {
+		color: var(--bone-300);
+		margin-inline-start: calc(var(--space-1) * -1);
+	}
+	.more-back {
+		font-weight: 600;
+		border-block-end: 1px solid color-mix(in oklab, var(--accent) 20%, var(--bone-400));
+		border-end-start-radius: 0;
+		border-end-end-radius: 0;
+		margin-block-end: var(--space-1);
+	}
+	/* The check sits in the icon column, so the level names share one
+	   edge with the back row's label and the main list's. */
+	.more-radio {
+		font-variant-numeric: tabular-nums;
+	}
+	.more-radio-on {
+		background: color-mix(in oklab, var(--accent) 10%, transparent);
+	}
+	.more-check {
+		display: inline-flex;
+		justify-content: center;
+		inline-size: 18px;
+		flex-shrink: 0;
+		font-weight: 700;
+		color: var(--accent);
+	}
+	/* Chevrons point along the inline axis, so they turn round in RTL. */
+	:global([dir='rtl']) .more-flip {
+		transform: scaleX(-1);
+	}
 	.bars {
 		display: inline-flex;
 		align-items: end;
@@ -4306,7 +5348,6 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.bars span {
-			animation: none;
 			transform: scaleY(0.7);
 		}
 	}
@@ -4481,6 +5522,15 @@
 	.player-frame.player-resuming:hover .player-controls {
 		opacity: 0;
 	}
+	/* From any other stream's attach to its first frame (the start
+	   veil's `start`) the controls are out of sight and out of the
+	   pointer's way: a timeline at 0:00 / 0:00 says nothing. They stay
+	   in the keyboard's reach, and show while focus is in them, so a
+	   menu open when a stream re-attaches under it stays usable. */
+	.player-frame.player-starting .player-controls:not(:focus-within) {
+		opacity: 0;
+		pointer-events: none;
+	}
 	.player-frame.fs-controls-hidden,
 	.player-frame.fs-controls-hidden :global(*) {
 		cursor: none;
@@ -4560,6 +5610,15 @@
 		inset-inline-end: 0;
 		inset-block-end: calc(100% + 0.5rem);
 		min-inline-size: 14rem;
+		/* With a provider listing thirty-odd languages the menu is
+		   taller than the player: its height is capped at the room
+		   above the button (set as it opens, and on resize) and it
+		   scrolls inside that. */
+		max-inline-size: min(22rem, calc(100vw - 2rem));
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
 		padding: 0.45rem;
 		background: rgba(28, 28, 32, 0.96);
 		border: 1px solid rgba(255, 255, 255, 0.12);
@@ -4572,6 +5631,38 @@
 		   popover always wins. The kebab menu uses 5; the player-skip
 		   button is z-10 — we stay above both. */
 		z-index: 50;
+	}
+	/* Each entry stays on one line, its name ellipsised only past the
+	   menu's widest. */
+	.pc-cc-menu > * {
+		flex-shrink: 0;
+	}
+	.pc-cc-item {
+		white-space: nowrap;
+	}
+	.pc-cc-name {
+		flex: 1 1 auto;
+		min-inline-size: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	/* The mark for a track for the deaf and hard of hearing: a small
+	   outlined tag after the name, so "Thai" and its SDH twin read as
+	   one language in two forms. */
+	.pc-cc-sdh {
+		flex-shrink: 0;
+		padding: 0.05rem 0.35rem;
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		border-radius: 4px;
+		font: 600 0.65rem/1.3 var(--font-mono);
+		letter-spacing: 0.06em;
+		color: rgba(255, 255, 255, 0.72);
+		text-decoration: none;
+	}
+	.pc-cc-divider {
+		block-size: 1px;
+		margin: 0.3rem 0.6rem;
+		background: rgba(255, 255, 255, 0.12);
 	}
 	.pc-cc-menu-heading {
 		margin: 0.15rem 0.6rem 0.4rem;
@@ -4760,6 +5851,11 @@
 	.pc-menu-quality-current {
 		font-variant-numeric: tabular-nums;
 	}
+	/* "Auto · 1080p" is one value: on one line, however long the
+	   locale's word for Auto. */
+	.pc-menu-quality-current {
+		white-space: nowrap;
+	}
 	.pc-menu-check {
 		display: inline-flex;
 		align-items: center;
@@ -4932,111 +6028,6 @@
 		opacity: 0;
 		transition: none;
 	}
-	/* Loading indicator over the player: the app's indeterminate
-	   hairline (the search bar's and the download bar's sweep), set
-	   in the show's accent and centred in the frame. It waits a beat
-	   before fading in, so a switch or a resume that lands quickly
-	   never flashes it, and goes at once when the load ends, so it
-	   never lingers over the picture. Toggled rather than remounted,
-	   it runs on unbroken from a switch into the resume hold that
-	   follows it: the switch stays busy until the next stream has
-	   attached and started its hold. Off, it leaves the layout, so
-	   the sweep stops with it. The sweep travels on
-	   inset-inline-start, so it runs with the reading direction; the
-	   track contains its own layout, so that costs the page nothing
-	   while the video decodes. A soft dark halo is invisible on the black frame of a resume
-	   hold and lifts the line off a half-dimmed picture. */
-	.player-spinner {
-		position: absolute;
-		inset: 0;
-		place-items: center;
-		pointer-events: none;
-		display: none;
-		opacity: 0;
-	}
-	.player-spinner.player-spinner-on {
-		display: grid;
-		opacity: 1;
-		transition: opacity var(--dur-slow) var(--ease-out-soft) 240ms;
-	}
-	@starting-style {
-		.player-spinner.player-spinner-on {
-			opacity: 0;
-		}
-	}
-	.player-spinner-track {
-		position: relative;
-		display: block;
-		inline-size: clamp(6rem, 22%, 12rem);
-		block-size: 3px;
-		border-radius: var(--radius-pill);
-		background: color-mix(in oklab, var(--bone-100) 16%, transparent);
-		box-shadow:
-			0 0 0 1px rgb(0 0 0 / 0.45),
-			0 0 16px 4px rgb(0 0 0 / 0.55);
-		overflow: hidden;
-		contain: layout paint;
-	}
-	/* Windowed, a switch already has the page-wide loading overlay;
-	   a second indicator in the frame would peek out beside its band.
-	   So windowed, the frame's indicator stays off through a switch;
-	   when the overlay lifts into a resume hold, it enters as it does
-	   on a fresh open, after the same beat, so a hold that lands
-	   quickly does not flash it there either. In fullscreen that
-	   overlay is outside the top layer, so the frame's own indicator
-	   is the one the viewer sees throughout, scaled up for the larger
-	   picture. */
-	.player-frame.player-busy:not(:fullscreen) .player-spinner {
-		display: none;
-	}
-	.player-frame:fullscreen .player-spinner-track {
-		inline-size: clamp(8rem, 22%, 16rem);
-		block-size: 4px;
-	}
-	.player-spinner-sweep {
-		position: absolute;
-		inset-block: 0;
-		inline-size: 40%;
-		background: linear-gradient(
-			to right,
-			transparent,
-			var(--accent) 35%,
-			color-mix(in oklab, var(--accent), white 35%) 50%,
-			var(--accent) 65%,
-			transparent
-		);
-		animation: player-spinner-sweep 1.4s var(--ease-in-out) infinite;
-	}
-	@keyframes player-spinner-sweep {
-		from {
-			inset-inline-start: -40%;
-		}
-		to {
-			inset-inline-start: 100%;
-		}
-	}
-	/* Reduced motion: nothing travels. The whole track takes the
-	   accent and breathes slowly in opacity, so the frame still reads
-	   as working rather than stopped. The search bar holds a static
-	   bar instead; that one rides the topbar's edge, where a still
-	   line reads as chrome, while this one is alone in a dark frame. */
-	@media (prefers-reduced-motion: reduce) {
-		.player-spinner-sweep {
-			inset-inline-start: 0;
-			inline-size: 100%;
-			background: var(--accent);
-			animation: player-spinner-breathe 2.4s var(--ease-in-out) infinite;
-		}
-	}
-	@keyframes player-spinner-breathe {
-		0%,
-		100% {
-			opacity: 0.35;
-		}
-		50% {
-			opacity: 0.85;
-		}
-	}
 
 	/* Similar Titles wrapper — fills the watch-column (no per-section
 	   cap). Zeroes Strip's internal --strip-pad (via :global pierce,
@@ -5052,9 +6043,6 @@
 	   reads as supporting content, not a peer to the player. The
 	   accent rule + bone-300 caption stay so the editorial voice
 	   carries through. */
-	.similar-wrap :global(.strip-header) {
-		justify-content: flex-start;
-	}
 	.similar-wrap :global(.eyebrow) {
 		font-family: var(--font-body);
 		font-size: 1.25rem; /* 20px — matches Episodes toolbar h2 */
@@ -5357,9 +6345,6 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.ep-row > li.ep-highlight .ep-card-thumb {
-			animation: none;
-		}
 		.ep-row:has(li.ep-highlight) > li:not(.ep-highlight) .ep-card {
 			opacity: 1;
 		}
@@ -5438,9 +6423,11 @@
 		block-size: 100%;
 		object-fit: cover;
 		filter: brightness(0.92);
+		/* Opacity: the fade in on load (.img-fade, tokens.css). */
 		transition:
 			transform var(--dur-med) var(--ease-out-soft),
-			filter var(--dur-med) var(--ease-out-soft);
+			filter var(--dur-med) var(--ease-out-soft),
+			opacity var(--dur-med) var(--ease-out-soft);
 	}
 	.ep-card:hover:not(:disabled) .ep-card-thumb img {
 		transform: scale(1.04);
@@ -5465,8 +6452,6 @@
 	   keeps the default cursor. */
 	.ep-card-unaired {
 		cursor: default;
-		opacity: 0.45;
-		filter: saturate(0.35);
 	}
 	.ep-card-unaired:not(:disabled) {
 		cursor: pointer;
@@ -5480,8 +6465,36 @@
 	   the episode. Hiding the icon would advertise the opposite. */
 	.ep-card-recheck {
 		cursor: pointer;
+	}
+	/* Both stay clickable, so their words stay readable: the picture
+	   dims and the title steps down a tier, where fading the whole card
+	   took the title to 4.0:1 and the number line to 2.6:1. A disabled
+	   card (a delisted show, a switch in flight) keeps fading whole
+	   through `.ep-card:disabled`, so these rules leave it alone. Hover
+	   lifts the brightness as on any card but keeps the desaturation. */
+	.ep-card-unaired:not(:disabled) .ep-card-thumb img,
+	.ep-card-recheck:not(:disabled) .ep-card-thumb img {
 		opacity: 0.45;
-		filter: saturate(0.35);
+		filter: brightness(0.92) saturate(0.35);
+	}
+	.ep-card-unaired:not(:disabled):hover .ep-card-thumb img,
+	.ep-card-recheck:not(:disabled):hover .ep-card-thumb img {
+		filter: brightness(1) saturate(0.35);
+	}
+	.ep-card-unaired:not(:disabled) .ep-card-foot-title,
+	.ep-card-recheck:not(:disabled) .ep-card-foot-title {
+		color: var(--bone-300);
+	}
+	/* The thumb loses its accent warmth, and a placeholder's words step
+	   down to the faintest tier, which still clears AA on ink-100
+	   (5.4:1). */
+	.ep-card-unaired:not(:disabled) .ep-card-thumb,
+	.ep-card-recheck:not(:disabled) .ep-card-thumb {
+		background: var(--ink-100);
+	}
+	.ep-card-unaired:not(:disabled) .ep-card-thumb-placeholder,
+	.ep-card-recheck:not(:disabled) .ep-card-thumb-placeholder {
+		color: var(--bone-400);
 	}
 	/* Center-of-thumb airs label replaces the display-size number.
 	   Smaller than the detail grid's — these cards are ~1/5 row. */
@@ -5633,12 +6646,6 @@
 				0 4px 14px color-mix(in oklab, var(--accent) 50%, transparent),
 				0 1px 2px rgb(0 0 0 / 0.4),
 				0 0 0 6px color-mix(in oklab, var(--accent) 0%, transparent);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.ep-card-thumb-flag,
-		.ep-card-thumb-flag::before {
-			animation: none;
 		}
 	}
 </style>

@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "42061",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gekijouban One Piece: Stampede",
+    "titles": {
+     "en": "One Piece: Stampede",
+     "en_jp": "Gekijouban One Piece: Stampede",
+     "ja_jp": "劇場版 ONE PIECE STAMPEDE"
+    },
+    "abbreviatedTitles": [],
+    "slug": "one-piece-stampede",
+    "startDate": "2019-08-09",
+    "endDate": "2019-08-09",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

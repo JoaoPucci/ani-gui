@@ -1,0 +1,48 @@
+{
+ "data": [
+  {
+   "id": "861",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Astro Boy: Tetsuwan Atom",
+    "titles": {
+     "en": "Astro Boy (2003)",
+     "en_jp": "Astro Boy: Tetsuwan Atom",
+     "ja_jp": "アストロボーイ・鉄腕アトム"
+    },
+    "abbreviatedTitles": [
+     "Astroboy",
+     "Astro Boy (2003)"
+    ],
+    "slug": "astro-boy-2003",
+    "startDate": "2003-04-06",
+    "endDate": "2004-03-28",
+    "episodeCount": 50,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2507",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tetsuwan Atom",
+    "titles": {
+     "en": "Astro Boy",
+     "en_jp": "Tetsuwan Atom",
+     "en_us": "Astro Boy",
+     "ja_jp": "鉄腕アトム"
+    },
+    "abbreviatedTitles": [
+     "Mighty Atom"
+    ],
+    "slug": "astro-boy",
+    "startDate": "1963-01-01",
+    "endDate": "1966-12-31",
+    "episodeCount": 193,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

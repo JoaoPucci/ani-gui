@@ -23,22 +23,22 @@
 //! `ErrorOverlay` modal with a link to syncplay.pl — same pattern as
 //! the ffmpeg-missing dialog.
 
-use serde::Deserialize;
-
 use crate::commands::external_player::ExternalPlayerKind;
 use crate::error::{AniError, Result};
 
-/// Arguments to the command. Caller supplies the resolved stream URL
-/// (the play flow's same URL the embedded player would consume), the
-/// configured Syncplay binary path, and an optional `Referer:` value
-/// that gets forwarded to Syncplay's wrapped mpv. Frontend reads the
-/// binary from `Config::syncplay_binary`; the referer is inferred by
-/// `play_syncplay` from the resolved upstream (mirrors the
-/// `play_external` path's fast4speed.rsvp → provider-origin fallback).
-#[derive(Debug, Deserialize)]
+/// Arguments to the command, built by the backend alone
+/// ([`crate::commands::play_syncplay`]): the stream the play resolved,
+/// the Syncplay binary from `Config::syncplay_binary`, the wrapped
+/// player and its kind from the external-player settings, and the
+/// referer `play_syncplay` infers from the resolved upstream (mirrors
+/// the `play_external` path's fast4speed.rsvp → provider-origin
+/// fallback). Never decoded from a request, so no caller names the
+/// program the backend runs or the arguments it is given.
+#[derive(Debug)]
 pub struct SyncplayLaunchArgs {
     /// The resolved stream URL (mp4 or m3u8). Syncplay's positional
-    /// "file" argument.
+    /// "file" argument; must be an http(s) URL
+    /// ([`crate::commands::external_player::is_stream_url`]).
     pub stream_url: String,
     /// Syncplay binary path. Resolved from `Config::syncplay_binary`
     /// (per-OS default; user-overridable in settings).
@@ -48,8 +48,6 @@ pub struct SyncplayLaunchArgs {
     /// `--referrer=` flag after the `--` separator. fast4speed.rsvp
     /// 403s without the provider's origin as `Referer:`, so the same
     /// inference logic `play_external` uses applies to Syncplay too.
-    /// Old payloads without this field decode as `None`.
-    #[serde(default)]
     pub referer: Option<String>,
     /// Which media player Syncplay wraps. Drives the flag syntax
     /// emitted past `--`: mpv takes `--referrer=`, VLC takes
@@ -62,9 +60,6 @@ pub struct SyncplayLaunchArgs {
     /// Reuses `Config::external_player_kind` directly: most users
     /// have one media player installed and Syncplay defaults to
     /// wrapping the same one they picked for "Open in external".
-    /// Old payloads without this field decode as `Mpv` (the
-    /// upstream Syncplay default).
-    #[serde(default)]
     pub player_kind: ExternalPlayerKind,
     /// Path to the media-player binary Syncplay should wrap.
     /// Forwarded via Syncplay's `--player-path=` flag, which
@@ -72,15 +67,15 @@ pub struct SyncplayLaunchArgs {
     /// wrapped binary here means `player_kind` is guaranteed to
     /// match what Syncplay actually launches — no more "ani-gui says
     /// mpv but Syncplay's .ini was last set to VLC" mismatches.
-    /// Empty / missing skips the flag (defers to Syncplay's own
-    /// config, same back-compat behavior pre-PR).
-    #[serde(default)]
+    /// Empty skips the flag (defers to Syncplay's own config).
     pub player_binary: String,
     /// Sidecar subtitle tracks' upstream URLs, forwarded to the
     /// wrapped player past `--` in its own flag. The referer flag
     /// beside them covers those fetches too.
-    #[serde(default)]
     pub subtitle_urls: Vec<String>,
+    /// Whether the show's remembered captions choice is Off: the
+    /// wrapped player starts with its subtitles off.
+    pub subtitles_off: bool,
 }
 
 /// Build the argv that would be passed to `Command::new(binary).args(...)`.
@@ -118,22 +113,47 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
     // Custom is short-circuited above; its arms here are unreachable,
     // but the compiler can't see that without the explicit matches!()
     // above, so they stay explicit.
-    let (referrer_flag, sub_flag, every_track) = match args.player_kind {
-        ExternalPlayerKind::Mpv => ("--referrer=", "--sub-file=", true),
-        ExternalPlayerKind::Vlc => ("--http-referrer=", "--sub-file=", false),
-        ExternalPlayerKind::Iina => ("--mpv-referrer=", "--mpv-sub-file=", true),
-        ExternalPlayerKind::Custom => ("--referrer=", "--sub-file=", false),
+    let (referrer_flag, sub_flag, every_track, off_flag) = match args.player_kind {
+        ExternalPlayerKind::Mpv => ("--referrer=", "--sub-file=", true, "--sid=no"),
+        ExternalPlayerKind::Vlc => ("--http-referrer=", "--sub-file=", false, ""),
+        ExternalPlayerKind::Iina => ("--mpv-referrer=", "--mpv-sub-file=", true, "--mpv-sid=no"),
+        ExternalPlayerKind::Custom => ("--referrer=", "--sub-file=", false, ""),
     };
     let mut player_opts = Vec::new();
     if let Some(r) = args.referer.as_deref().filter(|s| !s.is_empty()) {
         player_opts.push(format!("{referrer_flag}{r}"));
     }
+    // A show remembered Off starts the player with its subtitles off:
+    // every track still there to turn on where the player takes them
+    // all, none where it takes one.
+    if args.subtitles_off && every_track {
+        player_opts.push(off_flag.to_string());
+    }
     let tracks: &[String] = if every_track {
         &args.subtitle_urls
+    } else if args.subtitles_off {
+        &[]
     } else {
         &args.subtitle_urls[..args.subtitle_urls.len().min(1)]
     };
-    player_opts.extend(tracks.iter().map(|u| format!("{sub_flag}{u}")));
+    // Fitted to the command line beside everything else on it: the
+    // arguments so far, the separator and the referer flag.
+    let fixed: Vec<String> = argv
+        .iter()
+        .cloned()
+        .chain(std::iter::once("--".to_string()))
+        .chain(player_opts.iter().cloned())
+        .collect();
+    let flags = tracks.iter().map(|u| format!("{sub_flag}{u}")).collect();
+    let mut kept = crate::commands::command_line::flags_within_budget(&args.binary, &fixed, flags);
+    // Syncplay starts the player with them, beside the referer flag: a
+    // player that is a batch file runs them through `cmd.exe`, whose
+    // line is far shorter.
+    let player = args.player_binary.trim();
+    if !player.is_empty() {
+        kept = crate::commands::command_line::flags_within_budget(player, &player_opts, kept);
+    }
+    player_opts.extend(kept);
     if !player_opts.is_empty() {
         argv.push("--".to_string());
         argv.extend(player_opts);
@@ -146,12 +166,15 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
 /// same way external_player.rs detaches the user's mpv.
 ///
 /// # Errors
+/// - [`AniError::ParseFailed`] if the stream is not an http(s) URL;
+///   nothing is spawned.
 /// - [`AniError::SyncplaySpawnFailed`] if the configured binary can't
 ///   be spawned (not on PATH, doesn't exist, or path doesn't point at
 ///   an executable). Carries the binary string so the UI can name
 ///   the failed command in the error dialog and link the user to
 ///   <https://syncplay.pl/download/>.
 pub fn open_syncplay(args: &SyncplayLaunchArgs) -> Result<()> {
+    crate::commands::external_player::ensure_stream_url(&args.stream_url)?;
     if args.binary.trim().is_empty() {
         return Err(AniError::SyncplaySpawnFailed {
             binary: args.binary.clone(),

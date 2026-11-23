@@ -10,6 +10,8 @@ import {
 	type PositionStorage
 } from '$lib/play/watch-position';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+import type { ConfirmDeleteDeps } from './delete-controller';
 function memory(): PositionStorage {
 	const data = new Map<string, string>();
 	return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
@@ -22,7 +24,7 @@ function h(id: string): HistoryEntry {
 		title: 'Stub',
 		watched_at: 1,
 		kitsu_id: ''
-	} as HistoryEntry;
+	};
 }
 /** A delete, and the forgetting of positions it leaves running. */
 async function deleteAndForget(...args: Parameters<typeof executeKitsuGroupDelete>) {
@@ -31,13 +33,13 @@ async function deleteAndForget(...args: Parameters<typeof executeKitsuGroupDelet
 	return result;
 }
 function m(id: string): KitsuAnimeRef {
-	return { id, canonical_title: 'Stub' } as KitsuAnimeRef;
+	return kitsuRefAnswer({ id, canonical_title: 'Stub' });
 }
 
 describe('executeKitsuGroupDelete', () => {
 	test('serializes backend deletes — next call starts only after the previous resolves', async () => {
 		const callOrder: string[] = [];
-		const historyDelete = vi.fn(async (id: string) => {
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>(async (id: string) => {
 			callOrder.push(`start:${id}`);
 			await new Promise((r) => setTimeout(r, 5));
 			callOrder.push(`end:${id}`);
@@ -59,7 +61,7 @@ describe('executeKitsuGroupDelete', () => {
 	test('removes every Kitsu-group sibling from history and reports the removed ids', async () => {
 		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
-		const historyDelete = vi.fn().mockResolvedValue(undefined);
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>().mockResolvedValue(undefined);
 
 		const result = await deleteAndForget('aa-1', { history, matches, historyDelete });
 
@@ -71,7 +73,7 @@ describe('executeKitsuGroupDelete', () => {
 	test('with no resolved match, deletes only the clicked id', async () => {
 		const history = [h('aa-1'), h('aa-2')];
 		const matches = { 'aa-1': null, 'aa-2': m('k-1') };
-		const historyDelete = vi.fn().mockResolvedValue(undefined);
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>().mockResolvedValue(undefined);
 
 		const result = await deleteAndForget('aa-1', { history, matches, historyDelete });
 
@@ -84,7 +86,7 @@ describe('executeKitsuGroupDelete', () => {
 	test('singleton group (clicked entry resolves but no siblings share its Kitsu id)', async () => {
 		const history = [h('aa-1'), h('aa-2')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-2') };
-		const historyDelete = vi.fn().mockResolvedValue(undefined);
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>().mockResolvedValue(undefined);
 
 		const result = await deleteAndForget('aa-1', { history, matches, historyDelete });
 
@@ -98,12 +100,14 @@ describe('executeKitsuGroupDelete — kept positions', () => {
 		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
 		const order: string[] = [];
-		const historyDelete = vi.fn(async (id: string) => {
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>(async (id: string) => {
 			order.push(`delete:${id}`);
 		});
-		const forgetPositions = vi.fn((kitsuId: string) => {
-			order.push(`forget:${kitsuId}`);
-		});
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>(
+			(kitsuId: string) => {
+				order.push(`forget:${kitsuId}`);
+			}
+		);
 
 		await deleteAndForget('aa-1', { history, matches, historyDelete, forgetPositions });
 
@@ -113,13 +117,84 @@ describe('executeKitsuGroupDelete — kept positions', () => {
 	test('a failed delete forgets nothing', async () => {
 		const history = [h('aa-1')];
 		const matches = { 'aa-1': m('k-1') };
-		const historyDelete = vi.fn().mockRejectedValue(new Error('down'));
-		const forgetPositions = vi.fn();
+		const historyDelete = vi
+			.fn<ConfirmDeleteDeps['historyDelete']>()
+			.mockRejectedValue(new Error('down'));
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 
 		await expect(
 			executeKitsuGroupDelete('aa-1', { history, matches, historyDelete, forgetPositions })
 		).rejects.toThrow('down');
 		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+
+	test('a delete that fails at its first row leaves the strip as it was', async () => {
+		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
+		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
+		const applyRemaining = vi.fn<NonNullable<ConfirmDeleteDeps['applyRemaining']>>();
+		await expect(
+			executeKitsuGroupDelete('aa-1', {
+				history,
+				matches,
+				historyDelete: vi
+					.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+					.mockRejectedValue(new Error('down')),
+				applyRemaining
+			})
+		).rejects.toThrow('down');
+		expect(applyRemaining).not.toHaveBeenCalled();
+	});
+
+	test('a group delete that fails partway takes the rows it did delete off the strip, and still fails', async () => {
+		// The clicked row's sibling was hidden behind it by the dedupe.
+		// The first delete lands and the second is refused: the backend
+		// has lost aa-1 and kept aa-2, and the strip has to say the same
+		// rather than keep a card for a row that is gone.
+		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
+		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>(async (id: string) => {
+			if (id === 'aa-2') throw new Error('down');
+		});
+		const applyRemaining = vi.fn<NonNullable<ConfirmDeleteDeps['applyRemaining']>>();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
+		const forgetRowPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetRowPositions']>>();
+		await expect(
+			executeKitsuGroupDelete('aa-1', {
+				history,
+				matches,
+				historyDelete,
+				applyRemaining,
+				forgetPositions,
+				forgetRowPositions
+			})
+		).rejects.toThrow('down');
+		expect(historyDelete.mock.calls.map(([id]) => id)).toEqual(['aa-1', 'aa-2']);
+		expect(applyRemaining).toHaveBeenCalledTimes(1);
+		expect(applyRemaining).toHaveBeenCalledWith([h('aa-2'), h('aa-3')], ['aa-1']);
+		// A failed delete forgets nothing, partway or not: the show still
+		// has a row, so its positions are still a card's.
+		expect(forgetPositions).not.toHaveBeenCalled();
+		expect(forgetRowPositions).not.toHaveBeenCalled();
+	});
+
+	test('a partway failure reads the remaining rows off the strip as it stands then', async () => {
+		const history = [h('aa-1'), h('aa-2')];
+		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1') };
+		// A row read again while the deletes were out.
+		const reread = [h('aa-1'), h('aa-2'), h('bb-9')];
+		const applyRemaining = vi.fn<NonNullable<ConfirmDeleteDeps['applyRemaining']>>();
+		await expect(
+			executeKitsuGroupDelete('aa-1', {
+				history,
+				currentHistory: () => reread,
+				matches,
+				historyDelete: async (id) => {
+					if (id === 'aa-2') throw new Error('down');
+				},
+				applyRemaining
+			})
+		).rejects.toThrow('down');
+		expect(applyRemaining).toHaveBeenCalledWith([h('aa-2'), h('bb-9')], ['aa-1']);
 	});
 });
 
@@ -129,9 +204,11 @@ describe('executeKitsuGroupDelete — kept positions of a card without its match
 	// its match resolved still has that mapping to forget by.
 	test('forgets by the stamped mapping when the match never resolved', async () => {
 		const history = [h('aa-1')];
-		const historyDelete = vi.fn().mockResolvedValue(undefined);
-		const forgetPositions = vi.fn();
-		const kitsuIdOf = vi.fn(async (showId: string) => (showId === 'aa-1' ? 'k-9' : null));
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>().mockResolvedValue(undefined);
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
+		const kitsuIdOf = vi.fn<NonNullable<ConfirmDeleteDeps['kitsuIdOf']>>(async (showId: string) =>
+			showId === 'aa-1' ? 'k-9' : null
+		);
 
 		await deleteAndForget('aa-1', {
 			history,
@@ -145,12 +222,14 @@ describe('executeKitsuGroupDelete — kept positions of a card without its match
 	});
 
 	test('asks for no mapping when the match resolved', async () => {
-		const kitsuIdOf = vi.fn();
-		const forgetPositions = vi.fn();
+		const kitsuIdOf = vi.fn<NonNullable<ConfirmDeleteDeps['kitsuIdOf']>>();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1')],
 			matches: { 'aa-1': m('k-1') },
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetPositions,
 			kitsuIdOf
 		});
@@ -159,13 +238,17 @@ describe('executeKitsuGroupDelete — kept positions of a card without its match
 	});
 
 	test('a mapping that cannot be read forgets nothing and fails nothing', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		const result = await deleteAndForget('aa-1', {
 			history: [h('aa-1')],
 			matches: { 'aa-1': null },
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetPositions,
-			kitsuIdOf: vi.fn().mockRejectedValue(new Error('down'))
+			kitsuIdOf: vi
+				.fn<NonNullable<ConfirmDeleteDeps['kitsuIdOf']>>()
+				.mockRejectedValue(new Error('down'))
 		});
 		expect(forgetPositions).not.toHaveBeenCalled();
 		expect(result.removedIds).toEqual(['aa-1']);
@@ -176,11 +259,13 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 	// Positions belong to the show, and a surviving row of the same show
 	// is still a Continue card whose resume point they are.
 	test('an unresolved card forgets nothing while a resolved row of its show remains', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1')],
 			matches: { 'aa-1': undefined, 'bb-1': m('k-9') },
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetPositions,
 			kitsuIdOf: async (id) => (id === 'aa-1' ? 'k-9' : null)
 		});
@@ -188,11 +273,13 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 	});
 
 	test('a resolved card forgets nothing while an unresolved row maps to its show', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1')],
 			matches: { 'aa-1': m('k-9'), 'bb-1': undefined },
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetPositions,
 			kitsuIdOf: async (id) => (id === 'bb-1' ? 'k-9' : null)
 		});
@@ -200,11 +287,13 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 	});
 
 	test("a remaining row of another show does not keep this show's positions", async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1'), h('cc-1')],
 			matches: { 'aa-1': undefined, 'bb-1': m('k-2'), 'cc-1': undefined },
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetPositions,
 			kitsuIdOf: async (id) => (id === 'aa-1' ? 'k-9' : id === 'cc-1' ? 'k-3' : null)
 		});
@@ -214,11 +303,13 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 	test("a remaining unresolved row with no stamped mapping keeps the removed show's positions", async () => {
 		// No mapping is not a different show: the row may well be this
 		// one's, so its show cannot be told.
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1')],
 			matches: { 'aa-1': m('k-9'), 'bb-1': undefined },
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetPositions,
 			kitsuIdOf: async () => null
 		});
@@ -226,11 +317,13 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 	});
 
 	test("a remaining row whose show cannot be told keeps the removed show's positions", async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1')],
 			matches: { 'aa-1': m('k-9'), 'bb-1': undefined },
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetPositions,
 			kitsuIdOf: async (id) => {
 				if (id === 'bb-1') throw new Error('down');
@@ -256,11 +349,11 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 		// Removing a row deletes its show id → Kitsu id mapping with it,
 		// so a read after the delete finds nothing.
 		const mappings: Record<string, string> = { 'aa-1': 'k-9' };
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1')],
 			matches: { 'aa-1': undefined },
-			historyDelete: vi.fn(async (id: string) => {
+			historyDelete: vi.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>(async (id: string) => {
 				delete mappings[id];
 			}),
 			forgetPositions,
@@ -270,7 +363,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 	});
 
 	test('forgets a removed row’s recorded id though its card never resolved', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [rec('aa-1', 'k-5')],
 			matches: { 'aa-1': undefined },
@@ -282,7 +375,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 	});
 
 	test('forgets a gone recorded id and the entry the card was shown as', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [rec('aa-1', 'k-gone')],
 			matches: { 'aa-1': m('k-6') },
@@ -293,7 +386,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 	});
 
 	test('a remaining row is told by its recorded id, not a stale mapping', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-8')],
 			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
@@ -306,7 +399,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 	});
 
 	test('a remaining row with a recorded id needs no mapping to be told', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-8')],
 			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
@@ -319,7 +412,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 	});
 
 	test('a remaining row of the same show keeps its positions by the id it records', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [rec('aa-1', 'k-1'), rec('bb-1', 'k-1')],
 			matches: { 'aa-1': m('k-1'), 'bb-1': undefined },
@@ -332,7 +425,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 	});
 
 	test('a remaining row whose recorded entry is gone is told by its mapping', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-gone')],
 			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
@@ -348,8 +441,8 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 		// The home page goes past a recorded id only when Kitsu answers
 		// it gone, so a match other than the recorded id is the entry
 		// the card shows.
-		const recordedGone = vi.fn(async () => false);
-		const forgetPositions = vi.fn();
+		const recordedGone = vi.fn<NonNullable<ConfirmDeleteDeps['recordedGone']>>(async () => false);
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-gone')],
 			matches: { 'aa-1': undefined, 'bb-1': m('k-7') },
@@ -363,14 +456,16 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 	});
 
 	test('a remaining row whose recorded id cannot be judged keeps the removed show’s positions', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-8')],
 			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
 			historyDelete: deleteOk(),
 			forgetPositions,
 			kitsuIdOf: async (id) => (id === 'bb-1' ? 'k-8' : null),
-			recordedGone: vi.fn().mockRejectedValue(new Error('down'))
+			recordedGone: vi
+				.fn<NonNullable<ConfirmDeleteDeps['recordedGone']>>()
+				.mockRejectedValue(new Error('down'))
 		});
 		expect(forgetPositions).not.toHaveBeenCalled();
 	});
@@ -384,12 +479,14 @@ describe('executeKitsuGroupDelete — a slow Kitsu does not hold the removal', (
 	const tick = () => new Promise((r) => setTimeout(r, 20));
 
 	test('settles with the remaining history while a Kitsu read hangs', async () => {
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		const outcome = await Promise.race([
 			executeKitsuGroupDelete('aa-1', {
 				history: [h('aa-1'), { ...h('bb-1'), kitsu_id: 'k-8' }],
 				matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
-				historyDelete: vi.fn().mockResolvedValue(undefined),
+				historyDelete: vi
+					.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+					.mockResolvedValue(undefined),
 				forgetPositions,
 				recordedGone: never
 			}),
@@ -403,12 +500,14 @@ describe('executeKitsuGroupDelete — a slow Kitsu does not hold the removal', (
 	test('asks about every remaining row at once', async () => {
 		const asked: string[] = [];
 		const answers: Array<(gone: boolean) => void> = [];
-		const forgetPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
 		const result = await Promise.race([
 			executeKitsuGroupDelete('aa-1', {
 				history: [h('aa-1'), { ...h('bb-1'), kitsu_id: 'k-8' }, { ...h('cc-1'), kitsu_id: 'k-9' }],
 				matches: { 'aa-1': m('k-7'), 'bb-1': undefined, 'cc-1': undefined },
-				historyDelete: vi.fn().mockResolvedValue(undefined),
+				historyDelete: vi
+					.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+					.mockResolvedValue(undefined),
 				forgetPositions,
 				recordedGone: (k) => {
 					asked.push(k);
@@ -430,7 +529,9 @@ describe('executeKitsuGroupDelete — forgetting that fails', () => {
 		const result = await executeKitsuGroupDelete('aa-1', {
 			history: [h('aa-1')],
 			matches: { 'aa-1': m('k-1') },
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetPositions: () => {
 				throw new Error('storage refused');
 			}
@@ -449,12 +550,14 @@ describe('executeKitsuGroupDelete — positions written for the removed rows', (
 		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
 		const order: string[] = [];
-		const historyDelete = vi.fn(async (id: string) => {
+		const historyDelete = vi.fn<ConfirmDeleteDeps['historyDelete']>(async (id: string) => {
 			order.push(`delete:${id}`);
 		});
-		const forgetRowPositions = vi.fn((rows: string[]) => {
-			order.push(`forget-rows:${rows.join(',')}`);
-		});
+		const forgetRowPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetRowPositions']>>(
+			(rows: string[]) => {
+				order.push(`forget-rows:${rows.join(',')}`);
+			}
+		);
 
 		await deleteAndForget('aa-1', { history, matches, historyDelete, forgetRowPositions });
 
@@ -467,13 +570,15 @@ describe('executeKitsuGroupDelete — positions written for the removed rows', (
 		// row — so every position stays, as the show rule keeps them.
 		const history = [h('aa-1'), h('aa-2')];
 		const matches = { 'aa-1': m('k-1') };
-		const forgetPositions = vi.fn();
-		const forgetRowPositions = vi.fn();
+		const forgetPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetPositions']>>();
+		const forgetRowPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetRowPositions']>>();
 
 		await deleteAndForget('aa-1', {
 			history,
 			matches,
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetPositions,
 			forgetRowPositions
 		});
@@ -493,7 +598,9 @@ describe('executeKitsuGroupDelete — positions written for the removed rows', (
 		await deleteAndForget('aa-1', {
 			history,
 			matches,
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetRowPositions: (rows, keep) => clearRowPositions(rows, s, keep)
 		});
 
@@ -511,7 +618,9 @@ describe('executeKitsuGroupDelete — positions written for the removed rows', (
 		await deleteAndForget('aa-1', {
 			history,
 			matches,
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			forgetRowPositions: (rows, keep) => clearRowPositions(rows, s, keep)
 		});
 
@@ -519,13 +628,15 @@ describe('executeKitsuGroupDelete — positions written for the removed rows', (
 	});
 
 	test('a failed delete forgets nothing', async () => {
-		const forgetRowPositions = vi.fn();
+		const forgetRowPositions = vi.fn<NonNullable<ConfirmDeleteDeps['forgetRowPositions']>>();
 
 		await expect(
 			executeKitsuGroupDelete('aa-1', {
 				history: [h('aa-1')],
 				matches: { 'aa-1': m('k-1') },
-				historyDelete: vi.fn().mockRejectedValue(new Error('down')),
+				historyDelete: vi
+					.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+					.mockRejectedValue(new Error('down')),
 				forgetRowPositions
 			})
 		).rejects.toThrow('down');
@@ -545,7 +656,9 @@ describe('executeKitsuGroupDelete — what the user plays after the removal', ()
 		const result = await executeKitsuGroupDelete('aa-1', {
 			history: [h('aa-1'), { ...h('bb-1'), kitsu_id: 'k-8' }],
 			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
-			historyDelete: vi.fn().mockResolvedValue(undefined),
+			historyDelete: vi
+				.fn<NonNullable<ConfirmDeleteDeps['historyDelete']>>()
+				.mockResolvedValue(undefined),
 			snapshotPositions,
 			forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, s, since),
 			forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, s, keep, since),

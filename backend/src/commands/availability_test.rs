@@ -1724,7 +1724,6 @@ async fn a_transient_provider_failure_surfaces_network_and_writes_nothing() {
 pub(super) fn cache_only_state(td: &tempfile::TempDir) -> AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::path::PathBuf;
     AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -1740,11 +1739,12 @@ pub(super) fn cache_only_state(td: &tempfile::TempDir) -> AppState {
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: td.path().join("config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: td.path().join("state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 

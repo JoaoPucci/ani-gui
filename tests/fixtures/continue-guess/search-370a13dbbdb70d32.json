@@ -1,0 +1,82 @@
+{
+ "data": [
+  {
+   "id": "45950",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mushoku Tensei: Isekai Ittara Honki Dasu Season 2",
+    "titles": {
+     "en": "Mushoku Tensei: Jobless Reincarnation Season 2",
+     "en_jp": "Mushoku Tensei: Isekai Ittara Honki Dasu Season 2",
+     "ja_jp": "無職転生 ～異世界行ったら本気だす～ 第2期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mushoku-tensei-isekai-ittara-honki-dasu-season-2",
+    "startDate": "2023-07-09",
+    "endDate": "2023-09-24",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47694",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mushoku Tensei II: Isekai Ittara Honki Dasu Part 2",
+    "titles": {
+     "en": "Mushoku Tensei: Jobless Reincarnation Season 2 Part 2",
+     "en_jp": "Mushoku Tensei II: Isekai Ittara Honki Dasu Part 2",
+     "ja_jp": "無職転生 Ⅱ ～異世界行ったら本気だす～ 第2クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Mushoku-Tensei-Isekai-Ittara-Honki-Dasu-Season-2-Part-2",
+    "startDate": "2024-04-07",
+    "endDate": "2024-06-30",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "51093",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mushoku Tensei III: Isekai Ittara Honki Dasu Part 2",
+    "titles": {
+     "en": "Mushoku Tensei: Jobless Reincarnation Season 3 Part 2",
+     "en_jp": "Mushoku Tensei III: Isekai Ittara Honki Dasu Part 2",
+     "ja_jp": "無職転生Ⅲ ～異世界行ったら本気だす～ 第2クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mushoku-tensei-iii-isekai-ittara-honki-dasu-part-2",
+    "startDate": "2027-12-31",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "unreleased"
+   }
+  },
+  {
+   "id": "47683",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mushoku Tensei II: Isekai Ittara Honki Dasu - Shugo Jutsushi Fitz",
+    "titles": {
+     "en": "Mushoku Tensei: Jobless Reincarnation 2nd Season - Guardian Fitz",
+     "en_jp": "Mushoku Tensei II: Isekai Ittara Honki Dasu - Shugo Jutsushi Fitz",
+     "ja_jp": "無職転生Ⅱ ～異世界行ったら本気だす～ 第0話「守護術師フィッツ」"
+    },
+    "abbreviatedTitles": [
+     "Mushoku Tensei Ⅱ: Isekai Ittara Honki Dasu Episode 0"
+    ],
+    "slug": "mushoku-tensei-ii-isekai-ittara-honki-dasu-shugo-jutsushi-fitz",
+    "startDate": "2023-07-02",
+    "endDate": "2023-07-02",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

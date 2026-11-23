@@ -1,6 +1,6 @@
 {
 	"name": "ani-gui",
-	"version": "0.17.0",
+	"version": "0.18.1",
 	"description": "Browse and watch anime",
 	"homepage": "https://github.com/pucci/ani-gui",
 	"author": {
@@ -14,24 +14,27 @@
 		"start": "electron .",
 		"build:backend": "cd ../backend && cargo build --bin ani-gui-backend --release",
 		"build:backend:linux": "cd ../backend && cargo build --bin ani-gui-backend --release --target x86_64-unknown-linux-musl",
+		"build:backend:e2e": "cd ../backend && cargo build --bin ani-gui-backend --release --target x86_64-unknown-linux-musl --features test-run-key --target-dir target-e2e",
 		"build:frontend": "cd ../frontend && pnpm build",
 		"fetch:win-deps": "node scripts/fetch-windows-deps.mjs",
 		"fetch:linux-deps": "node scripts/fetch-linux-deps.mjs",
 		"package": "pnpm run build:backend:linux && pnpm run dist",
 		"package:release": "pnpm run build:backend:linux && pnpm run dist:release",
+		"package:e2e": "pnpm run build:backend:e2e && pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux dir --config electron-builder.e2e.cjs",
 		"package:win": "pnpm run fetch:win-deps && pnpm run build:backend && pnpm run dist:win",
 		"dist": "pnpm run build:backend:linux && pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux AppImage && pnpm run repack-appimage",
-		"dist:release": "pnpm run build:backend:linux && pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux AppImage deb && pnpm run repack-appimage",
-		"dist:win": "pnpm run build:frontend && pnpm run fetch:win-deps && electron-builder --win nsis",
+		"dist:release": "pnpm run build:backend:linux && pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux && pnpm run repack-appimage",
+		"dist:win": "pnpm run build:frontend && pnpm run fetch:win-deps && electron-builder --win",
 		"repack-appimage": "node scripts/repack-appimage.mjs",
-		"e2e": "pnpm run package && playwright test",
+		"e2e": "pnpm run package:e2e && playwright test",
 		"e2e:fast": "playwright test",
 		"test": "node --test lib/*.test.cjs"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.59.1",
 		"electron": "^33.2.0",
-		"electron-builder": "^25.1.8"
+		"electron-builder": "^26.18.0",
+		"fast-check": "^4.7.0"
 	},
 	"build": {
 		"appId": "net.thirdmovement.ani-gui",
@@ -47,6 +50,8 @@
 			"oauth-server.js",
 			"package.json",
 			"lib/**/*.cjs",
+			"splash/**/*",
+			"build-resources/icon.png",
 			"!lib/**/*.test.cjs",
 			"node_modules/**/*"
 		],
@@ -66,8 +71,10 @@
 			"artifactName": "${productName}-${version}-${arch}.${ext}",
 			"maintainer": "ani-gui contributors <dev@thirdmovement.net>",
 			"desktop": {
-				"GenericName": "Anime Viewer",
-				"Keywords": "anime;video;streaming;player;"
+				"entry": {
+					"GenericName": "Anime Viewer",
+					"Keywords": "anime;video;streaming;player;"
+				}
 			},
 			"extraResources": [
 				{
@@ -77,12 +84,21 @@
 				{
 					"from": "build-resources/linux/bin",
 					"to": "bin"
+				},
+				{
+					"from": "build-resources/licenses",
+					"to": "licenses",
+					"filter": [
+						"curl-impersonate.txt",
+						"yt-dlp.txt"
+					]
 				}
 			]
 		},
 		"deb": {
 			"afterInstall": "build-resources/deb-after-install.sh",
 			"afterRemove": "build-resources/deb-after-remove.sh",
+			"appArmorProfile": "build-resources/apparmor-profile",
 			"depends": [
 				"curl",
 				"sed",
@@ -90,7 +106,8 @@
 				"coreutils"
 			],
 			"recommends": [
-				"ffmpeg"
+				"ffmpeg",
+				"ca-certificates"
 			]
 		},
 		"win": {
@@ -115,6 +132,10 @@
 				{
 					"from": "build-resources/win/bin",
 					"to": "bin"
+				},
+				{
+					"from": "build-resources/licenses",
+					"to": "licenses"
 				}
 			]
 		},

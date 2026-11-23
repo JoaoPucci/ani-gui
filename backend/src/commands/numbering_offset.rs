@@ -21,8 +21,10 @@
 //! row's slot where the listing agrees with the sidecar
 //! (`numbering_offset_drift.rs`), and a row no such listing reaches
 //! reads as its slot until its show is next watched.
-//! The rows anidb.app's resolves stamped stay: they are what keeps the
-//! history rows from its days readable.
+//! A retired provider's rows stay while a history row of its still
+//! reads through them; the launch sweep ([`crate::retired_provider`])
+//! writes a kept row's episode in the app's own numbering and then
+//! drops them.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
 //! which is exactly today's behavior.
 //!
@@ -86,6 +88,14 @@ pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &s
 /// one that exists but cannot be read is left as it is.
 pub fn forget(state: &AppState, removed: &std::collections::HashSet<&str>) -> std::io::Result<()> {
     remove_rows(state, |r| removed.contains(r.slug.as_str()))
+}
+
+/// Drop the rows whose slug `forget` names, whatever made them.
+///
+/// # Errors
+/// The store's read or write failure, as [`forget`].
+pub(crate) fn forget_where(state: &AppState, forget: impl Fn(&str) -> bool) -> std::io::Result<()> {
+    remove_rows(state, |r| forget(&r.slug))
 }
 
 /// The slug's stamped (slot, display tag) pair, when one exists.

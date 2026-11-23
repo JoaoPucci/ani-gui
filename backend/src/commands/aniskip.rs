@@ -1,7 +1,8 @@
 //! aniskip command — bridges Kitsu id → MAL id → aniskip skip
-//! times. The intervals are cached by Kitsu id, MAL id and episode, so
-//! a repeat visit skips the aniskip request; the MAL id comes from
-//! the show's cached external ids ([`super::external_ids`]).
+//! times. The intervals are cached by Kitsu id, MAL id, episode and
+//! the length they were asked with, so a repeat visit skips the
+//! aniskip request; the MAL id comes from the show's cached external
+//! ids ([`super::external_ids`]).
 //!
 //! The frontend player uses this on `loadedmetadata` to learn
 //! when to render the Skip OP / Skip Outro overlay buttons.
@@ -18,9 +19,9 @@ const ANISKIP_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 /// Fetch the aniskip skip-time list for a given Kitsu id +
 /// episode + episode length (seconds). Resolves the MAL id
 /// transparently via Kitsu's mappings; caches the result as
-/// `aniskip:v2:<kitsu_id>:<mal_id>:<episode>` so repeat visits to the
-/// same episode reuse the lookup, and removing the show from history
-/// finds the rows by its Kitsu id.
+/// `aniskip:v2:<kitsu_id>:<mal_id>:<episode>:<length>` so repeat visits
+/// to the same episode at the same length reuse the lookup, and
+/// removing the show from history finds the rows by its Kitsu id.
 ///
 /// Returns `Ok(empty Vec)` when:
 ///   - Kitsu has no MAL mapping for this anime, or
@@ -53,7 +54,7 @@ pub async fn aniskip_get(
         return Ok(Vec::new());
     };
 
-    let key = cache_key(kitsu_id, mal_id, episode);
+    let key = cache_key(kitsu_id, mal_id, episode, episode_length);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(intervals) = serde_json::from_str::<Vec<SkipInterval>>(&body) {
             return Ok(intervals);
@@ -96,12 +97,21 @@ fn store_skip_times(
     });
 }
 
-/// Cache key for `(mal_id, episode)` lookups, led by the Kitsu id the
-/// player asked with so removing a show from history can find its
-/// rows without asking Kitsu for the MAL id. Schema v2; v1 keys carried
-/// the MAL id alone and are no longer read.
-fn cache_key(kitsu_id: &str, mal_id: u32, episode: &str) -> String {
-    format!("aniskip:v2:{kitsu_id}:{mal_id}:{episode}")
+/// Cache key for `(mal_id, episode, length)` lookups, led by the Kitsu
+/// id the player asked with so removing a show from history can find
+/// its rows without asking Kitsu for the MAL id. The length is the one
+/// aniskip is asked with: it matches its submissions to it, so an
+/// answer for one length is not another's. Schema v2; v1 keys carried
+/// the MAL id alone and are no longer read. The v2 rows keyed without a
+/// length are not read either: one may hold the answer a switch asked
+/// with the previous episode's length. They are declared still, so they
+/// wait out their lifetime, which the launch's reclaim then ends.
+fn cache_key(kitsu_id: &str, mal_id: u32, episode: &str, episode_length: f32) -> String {
+    format!(
+        "{}{kitsu_id}:{mal_id}:{episode}:{}",
+        crate::cache::families::ANISKIP,
+        crate::meta::aniskip::episode_length_param(episode_length)
+    )
 }
 
 #[cfg(test)]
@@ -110,12 +120,12 @@ mod tests {
     use crate::app::AppState;
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::path::PathBuf;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    fn state_with_kitsu_at(uri: &str) -> AppState {
-        AppState {
+    fn state_with_kitsu_at(uri: &str) -> crate::scratch::Scratch<AppState> {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -124,19 +134,21 @@ mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: PathBuf::from("/y/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests(),
-            image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), uri),
-            config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-        }
+            flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+        };
+        dirs.hold(state)
     }
 
     const ANIME_WITHOUT_MAPPINGS: &str = r##"{
@@ -168,7 +180,7 @@ mod tests {
     /// cache key shape stays stable under refactors.
     #[tokio::test]
     async fn cache_hit_returns_stored_intervals_without_network() {
-        let state = state_with_kitsu_at("http://unused");
+        let mut state = state_with_kitsu_at("http://unused");
         // Pre-populate the cache for (mal=21, ep=1) — the format
         // matches what the green impl will write. The Kitsu
         // mappings call is needed first to learn the MAL id
@@ -183,10 +195,7 @@ mod tests {
             ))
             .mount(&kitsu)
             .await;
-        let state = AppState {
-            kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu.uri()),
-            ..state
-        };
+        state.kitsu = KitsuClient::with_base(reqwest::Client::new(), kitsu.uri());
         // Pre-populate the cache row so the green impl's hit path
         // returns these without ever hitting aniskip.com.
         let intervals = vec![SkipInterval {
@@ -195,7 +204,8 @@ mod tests {
             end_time: 90.0,
         }];
         let body = serde_json::to_string(&intervals).expect("serialize");
-        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1", &body, 3600).unwrap();
+        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1:1440", &body, 3600)
+            .unwrap();
 
         let v = aniskip_get(&state, "12", "1", 1440.0).await.expect("ok");
         assert_eq!(v.len(), 1);
@@ -205,11 +215,9 @@ mod tests {
 
     /// A state whose history lives under `dir`, holding one row for
     /// One Piece that records Kitsu id 12.
-    fn state_with_a_row_in(dir: &std::path::Path) -> AppState {
-        let state = AppState {
-            history_path: dir.join("history"),
-            ..state_with_kitsu_at("http://unused")
-        };
+    fn state_with_a_row_in(dir: &std::path::Path) -> crate::scratch::Scratch<AppState> {
+        let mut state = state_with_kitsu_at("http://unused");
+        state.history_path = dir.join("history");
         crate::history::upsert_and_write(
             &state.history_path,
             crate::history::HistoryEntry {
@@ -273,12 +281,91 @@ mod tests {
     }
 
     #[test]
-    fn cache_key_includes_kitsu_mal_and_episode() {
+    fn cache_key_includes_kitsu_mal_episode_and_length() {
         // Stable key shape — the lookup chain depends on it, and
         // removing a show from history finds its rows by the Kitsu id
-        // that leads it.
-        assert_eq!(cache_key("12", 21, "1"), "aniskip:v2:12:21:1");
-        assert_eq!(cache_key("49877", 59970, "12"), "aniskip:v2:49877:59970:12");
+        // that leads it. The length is the one aniskip is asked with:
+        // its answer depends on it.
+        assert_eq!(cache_key("12", 21, "1", 1440.0), "aniskip:v2:12:21:1:1440");
+        assert_eq!(
+            cache_key("49877", 59970, "12", 1417.7),
+            "aniskip:v2:49877:59970:12:1418"
+        );
+    }
+
+    proptest::proptest! {
+        /// Two lookups share a cached answer exactly when aniskip
+        /// would have been asked the same question: the same episode
+        /// with the same length, as the request rounds it.
+        #[test]
+        fn cache_keys_match_exactly_when_the_asked_lengths_do(
+            a in 1.0f32..20_000.0,
+            b in 1.0f32..20_000.0,
+        ) {
+            let same = crate::meta::aniskip::episode_length_param(a)
+                == crate::meta::aniskip::episode_length_param(b);
+            proptest::prop_assert_eq!(cache_key("12", 21, "1", a) == cache_key("12", 21, "1", b), same);
+        }
+
+        /// Whatever the length, the key is led by the family and the
+        /// Kitsu id with its colon, which is how a history removal
+        /// finds a show's rows.
+        #[test]
+        fn cache_keys_stay_found_by_their_kitsu_id(len in 1.0f32..20_000.0) {
+            let key = cache_key("12", 21, "1", len);
+            let lead = format!("{}12:", crate::cache::families::ANISKIP);
+            proptest::prop_assert!(key.starts_with(&lead));
+        }
+    }
+
+    /// The answer cached for one length is not another length's: a
+    /// switch that asked with the last episode's length, or a cut of
+    /// another length, must not decide what this stream is told. The
+    /// lookup goes to aniskip instead, which the client here cannot
+    /// reach, so it fails rather than answering from the cache.
+    #[tokio::test]
+    async fn an_answer_cached_for_another_length_is_not_served() {
+        let kitsu = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/anime/12"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r##"{"data":{"id":"12","type":"anime","attributes":{"canonicalTitle":"X"}},"included":[{"id":"m","type":"mappings","attributes":{"externalSite":"myanimelist/anime","externalId":"21"}}]}"##,
+            ))
+            .mount(&kitsu)
+            .await;
+        let mut state = state_with_kitsu_at(&kitsu.uri());
+        let intervals = vec![SkipInterval {
+            skip_type: "op".into(),
+            start_time: 5.0,
+            end_time: 90.0,
+        }];
+        let body = serde_json::to_string(&intervals).expect("serialize");
+        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1:1420", &body, 3600)
+            .unwrap();
+        state.meta_http = reqwest::Client::builder()
+            // aniskip's host resolves to this machine's loopback, and no
+            // proxy from the environment is used, so the request never
+            // reaches the network: nothing serving aniskip's TLS answers
+            // there, and the timeout bounds the rest. (reqwest keeps the
+            // URL's port, 443.)
+            .no_proxy()
+            .resolve(
+                "api.aniskip.com",
+                std::net::SocketAddr::from(([127, 0, 0, 1], 443)),
+            )
+            .timeout(std::time::Duration::from_millis(50))
+            .build()
+            .expect("client");
+        // The kitsu hop above answers from the mock; only aniskip
+        // itself is out of reach.
+        state.kitsu = KitsuClient::with_base(reqwest::Client::new(), kitsu.uri());
+
+        assert!(aniskip_get(&state, "12", "1", 1500.0).await.is_err());
+        // The length it was cached for is still served.
+        assert_eq!(
+            aniskip_get(&state, "12", "1", 1420.0).await.expect("ok"),
+            intervals
+        );
     }
 
     /// Cache MISS path: walk the full chain end-to-end. Mocks both
@@ -318,7 +405,7 @@ mod tests {
         // cache row and let the fall-through path run.
         crate::cache::meta_cache_put(
             &state.cache_pool,
-            "aniskip:v2:12:21:1",
+            "aniskip:v2:12:21:1:1440",
             "{not valid json",
             3600,
         )
@@ -352,9 +439,19 @@ mod tests {
         // The corrupt-row path still touches: meta_cache_get OK
         // branch, the inner from_str Err arm, then continues to
         // fetch_skip_times which makes a real HTTP call —
-        // suppress it by setting proxy_http to a client whose
+        // suppress it by setting meta_http to a client whose
         // resolver fails fast.
         state.meta_http = reqwest::Client::builder()
+            // aniskip's host resolves to this machine's loopback, and no
+            // proxy from the environment is used, so the request never
+            // reaches the network: nothing serving aniskip's TLS answers
+            // there, and the timeout bounds the rest. (reqwest keeps the
+            // URL's port, 443.)
+            .no_proxy()
+            .resolve(
+                "api.aniskip.com",
+                std::net::SocketAddr::from(([127, 0, 0, 1], 443)),
+            )
             .timeout(std::time::Duration::from_millis(50))
             .build()
             .expect("client");

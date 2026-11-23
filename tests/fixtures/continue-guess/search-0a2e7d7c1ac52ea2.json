@@ -1,0 +1,26 @@
+{
+ "data": [
+  {
+   "id": "41410",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo's Bizarre Adventure: Golden Wind",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Golden Wind",
+     "en_jp": "JoJo no Kimyou na Bouken: Ougon no Kaze",
+     "ja_jp": "ジョジョの奇妙な冒険 黄金の風"
+    },
+    "abbreviatedTitles": [
+     "Jojo's Bizarre Adventure Part 5: Golden Wind",
+     "JoJo's Bizarre Adventure Part 5: Vento Aureo"
+    ],
+    "slug": "jojo-s-bizarre-adventure-part-5-vento-aureo",
+    "startDate": "2018-10-06",
+    "endDate": "2019-07-28",
+    "episodeCount": 39,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

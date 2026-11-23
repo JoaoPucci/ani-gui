@@ -64,6 +64,8 @@ pub struct AccountWriteLocks {
     inner: Arc<ShowLockMap>,
     /// Which connection of each tracker a cache write belongs to.
     pub(crate) epochs: super::account_epoch::AccountEpochs,
+    /// Which user each bearer belongs to.
+    pub(crate) owners: super::account_owner::OwnerMemo,
     /// Which cached rows a write changed while a full-list read was out.
     pub(crate) cache_revisions: super::account_revisions::CacheRevisions,
 }
@@ -217,13 +219,32 @@ pub async fn me(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> R
     provider.me(tokens).await
 }
 
-/// The bearer's own list: its owner from `me()` — the only identity the
-/// backend trusts — then its full list (all statuses), written through
-/// the cache under that owner. Returns the freshly-fetched entries.
+/// The user `tokens` belongs to on `kind`, asked of the tracker once
+/// per bearer ([`super::account_owner::OwnerMemo`]).
 ///
 /// # Errors
 /// [`AniError::Metadata`] for a kind with no provider; otherwise those
-/// of `me()` and the list read.
+/// of `me()`.
+pub async fn owner(state: &Arc<AppState>, kind: ProviderKind, tokens: &Tokens) -> Result<String> {
+    let Some(provider) = provider_for_kind(state, kind) else {
+        return Err(AniError::Metadata);
+    };
+    state
+        .account_write_locks
+        .owners
+        .owner(kind, provider.as_ref(), tokens)
+        .await
+}
+
+/// The bearer's own list: its owner as the tracker names it for the
+/// bearer ([`owner`]: asked once per bearer, then remembered) — the only
+/// identity the backend trusts — then its full list (all statuses),
+/// written through the cache under that owner. Returns the
+/// freshly-fetched entries.
+///
+/// # Errors
+/// [`AniError::Metadata`] for a kind with no provider; otherwise those
+/// of the owner lookup and the list read.
 pub async fn list_for_bearer(
     state: &Arc<AppState>,
     kind: ProviderKind,
@@ -250,8 +271,12 @@ pub(crate) async fn list_for_bearer_via(
             .cache_revisions
             .start_refresh(kind),
     );
-    let profile = provider.me(tokens).await?;
-    list_all_and_cache_from(state, kind, provider, tokens, &profile.user_id, began).await
+    let owner = state
+        .account_write_locks
+        .owners
+        .owner(kind, provider, tokens)
+        .await?;
+    list_all_and_cache_from(state, kind, provider, tokens, &owner, began).await
 }
 
 /// The list read and its write-through for `user_id`, with the provider
@@ -288,7 +313,7 @@ async fn list_all_and_cache_from(
     user_id: &str,
     began: (u64, u64),
 ) -> Result<Vec<ListEntry>> {
-    let entries = provider.list_all(tokens).await?;
+    let entries = provider.list_all_for(tokens, user_id).await?;
     let locks = &state.account_write_locks;
     locks
         .epochs
@@ -320,6 +345,7 @@ pub fn cached_list(
 
 /// Drop every cached row for `(kind, user_id)` — called on disconnect.
 pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> Result<()> {
+    state.account_write_locks.owners.forget(kind);
     state.account_write_locks.epochs.purge(kind, || {
         crate::account::cache::clear_user(&state.cache_pool, kind, user_id)
     })
@@ -332,6 +358,7 @@ pub fn clear_cache(state: &Arc<AppState>, kind: ProviderKind, user_id: &str) -> 
 /// internal secret so a cross-origin tab can't wipe a stranger's cache by
 /// guessing nothing.
 pub fn clear_provider_cache(state: &Arc<AppState>, kind: ProviderKind) -> Result<()> {
+    state.account_write_locks.owners.forget(kind);
     state.account_write_locks.epochs.purge(kind, || {
         crate::account::cache::clear_provider(&state.cache_pool, kind)
     })
@@ -407,10 +434,9 @@ pub fn status_from_snake(s: &str) -> Option<ListStatus> {
 /// Cap on the renderer-supplied Watch-Later bridge batch. The home
 /// rail's largest plausible Plan-to-Watch is a few hundred titles;
 /// 500 leaves comfortable headroom while bounding the fan-out cost
-/// per request to a fixed worst case. Under
-/// the permissive CORS layer a cross-origin page could otherwise
-/// POST an unbounded `mal_ids` array and burn N concurrent Kitsu
-/// requests per call.
+/// per request to a fixed worst case, so even a caller holding the
+/// launch's secret cannot POST an unbounded `mal_ids` array and burn
+/// N concurrent Kitsu requests per call.
 pub const WATCH_LATER_BRIDGE_MAX_IDS: usize = 500;
 
 /// Concurrent in-flight Kitsu `/mappings` lookups during the
@@ -425,8 +451,10 @@ pub const WATCH_LATER_BRIDGE_MAX_IDS: usize = 500;
 /// than serial.
 const WATCH_LATER_BRIDGE_CONCURRENCY: usize = 8;
 
-/// Bridge a list of MAL ids to Kitsu refs, preserving input order
-/// and dropping ids Kitsu can't map. Used by the home page's Watch
+/// Bridge a list of MAL ids to Kitsu refs, preserving input order,
+/// dropping ids Kitsu can't map and shows it marks nsfw, and listing a
+/// Kitsu show two ids lead to once, at the first (`rail_cards`). Used
+/// by the home page's Watch
 /// Later rail so cached `user_list_cache` rows render with the same
 /// Kitsu metadata + availability filter as the rest of the home.
 ///
@@ -468,7 +496,7 @@ const MAL_MAP_MISS_TTL_SECS: u64 = 24 * 60 * 60; // 1d
 /// input rather than on the individual Kitsu lookups inside it, so a
 /// hit skips the AniList fallback hop as well as the Kitsu one.
 fn mal_map_key(mal_id: u32) -> String {
-    format!("kitsu:mal-map:v1:{mal_id}")
+    format!("{}{mal_id}", crate::cache::families::KITSU_MAL_MAP)
 }
 
 /// The cached answer for one id: `Some(kitsu_id)` resolved,
@@ -661,7 +689,28 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
             slots[i] = r;
         }
     }
-    slots.into_iter().flatten().collect()
+    rail_cards(slots.into_iter().flatten().collect())
+}
+
+/// The bridged cards as the Watch Later rail lists them: each Kitsu
+/// show once, as its first card, the rest in input order. Two MAL ids
+/// can lead to the same Kitsu show, and the rail keys its cards by
+/// Kitsu id, so a show handed to it twice would be a duplicate key.
+///
+/// A show Kitsu marks nsfw is left out: Kitsu hides it from search,
+/// browse and its own anime pages, and only the mappings lookup names
+/// it. Its mapping is still remembered, as any card's is, so the next
+/// load does not bridge it again; the cut is made here, on every card,
+/// whether a load resolved it just now or from what an earlier one
+/// cached.
+fn rail_cards(
+    cards: Vec<crate::meta::kitsu::KitsuAnimeRef>,
+) -> Vec<crate::meta::kitsu::KitsuAnimeRef> {
+    let mut seen = std::collections::HashSet::new();
+    crate::meta::kitsu::drop_nsfw(cards)
+        .into_iter()
+        .filter(|c| seen.insert(c.id.clone()))
+        .collect()
 }
 
 /// Resolve a show's Kitsu id into the provider-native media id needed
@@ -711,8 +760,13 @@ pub(crate) async fn resolve_native_media_id(
         // (unchanged primary), direct anilist/anime mapping second.
         ProviderKind::AniList => {
             if let Some(mal_id) = ids.mal {
-                let media_id =
-                    super::anilist_ids::media_id_for_mal(state, mal_id, anilist_base).await?;
+                let media_id = super::anilist_ids::media_id_for_mal(
+                    state,
+                    mal_id,
+                    anilist_base,
+                    crate::meta::anilist_gate::Purpose::TrackerIds,
+                )
+                .await?;
                 if media_id.is_some() {
                     return Ok(media_id.map(ProviderMediaId));
                 }
@@ -1036,9 +1090,9 @@ pub(crate) async fn write_through(
     if update.is_empty() {
         return Ok(None);
     }
-    let owner = super::account_owner::before_write(provider, tokens).await?;
+    let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
     let entry = provider.update_entry(tokens, native, update).await?;
-    let owner = super::account_owner::after_write(provider, tokens, owner).await;
+    let owner = super::account_owner::after_write(state, kind, provider, tokens, owner).await;
     super::account_owner::cache_row(state, kind, began, native.0, owner.as_deref(), |owner| {
         upsert_cached_entry(state, kind, owner, &entry)
     });
@@ -1052,6 +1106,10 @@ mod tests;
 #[cfg(test)]
 #[path = "account_key_test.rs"]
 mod key_tests;
+
+#[cfg(test)]
+#[path = "account_rail_cards_test.rs"]
+mod rail_cards_tests;
 
 #[cfg(test)]
 #[path = "account_reconcile_for_test.rs"]

@@ -1,0 +1,88 @@
+{
+ "data": [
+  {
+   "id": "13882",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu: Memory Snow",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Memory Snow",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu: Memory Snow",
+     "ja_jp": "Re：ゼロから始める異世界生活 OVA"
+    },
+    "abbreviatedTitles": [
+     "Re:Zero kara Hajimeru Isekai Seikatsu OVA",
+     "Re:ZERO -Starting Life in Another World- OVA",
+     "Re: Life in a different world from zero",
+     "ReZero"
+    ],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-memory-snow",
+    "startDate": "2018-10-06",
+    "endDate": "2018-10-06",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42392",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow - Manner Movie",
+    "titles": {
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow - Manner Movie",
+     "ja_jp": "Re:ゼロから始める異世界生活 Memory Snow マナームービー"
+    },
+    "abbreviatedTitles": [],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-memory-snow-manner-movie",
+    "startDate": "2018-10-06",
+    "endDate": "2018-10-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46382",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow Announcement",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- OVA PV",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow Announcement",
+     "ja_jp": "『Re:ゼロから始める異世界生活』アニメ新作エピソード制作決定PV"
+    },
+    "abbreviatedTitles": [
+     "Re:Zero kara Hajimeru Isekai Seikatsu OVA PV"
+    ],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-memory-snow-announcement",
+    "startDate": "2017-09-09",
+    "endDate": "2017-09-09",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42006",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu: Hyouketsu no Kizuna",
+    "titles": {
+     "en": "Re:ZERO: -Starting Life in Another World- Frozen Bonds",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu: Hyouketsu no Kizuna",
+     "ja_jp": "Re：ゼロから始める異世界生活『氷結の絆』"
+    },
+    "abbreviatedTitles": [
+     "Re:Zero kara Hajimeru Isekai Seikatsu OVA 2"
+    ],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-hyouketsu-no-kizuna",
+    "startDate": "2019-11-08",
+    "endDate": "2019-11-08",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  }
+ ]
+}

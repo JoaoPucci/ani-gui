@@ -1,0 +1,29 @@
+{
+ "data": [
+  {
+   "id": "46336",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!!: Gomi Suteba no Kessen",
+    "titles": {
+     "en": "Haikyu!! The Dumpster Battle",
+     "en_jp": "Haikyuu!!: Gomi Suteba no Kessen",
+     "ja_jp": "劇場版ハイキュー!! ゴミ捨て場の決戦"
+    },
+    "abbreviatedTitles": [
+     "Haikyuu!! Final",
+     "ハイキュー!! FINAL 第1クール",
+     "Haikyuu!! FINAL Part 1",
+     "Haikyuu!! Battle at the Garbage Dump",
+     "Haikyu!! the Movie: Decisive Battle at the Garbage Dump"
+    ],
+    "slug": "Haikyuu-Gomi-Suteba-no-Kessen",
+    "startDate": "2024-02-16",
+    "endDate": "2024-02-16",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

@@ -17,9 +17,9 @@ use crate::meta::mal_user::{MalProvider, MalRefreshState};
 
 /// `AppState` whose Kitsu client points at `kitsu_uri` (a wiremock
 /// server) so id resolution can be exercised.
-fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
-    use std::path::PathBuf;
-    Arc::new(AppState {
+fn state_with_kitsu(kitsu_uri: &str) -> crate::scratch::Scratch<Arc<AppState>> {
+    let dirs = crate::scratch::dir();
+    let state = Arc::new(AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -28,18 +28,20 @@ fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    })
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    });
+    dirs.hold(state)
 }
 
 /// A MAL provider pointed at a wiremock server.
@@ -805,6 +807,72 @@ async fn a_list_refresh_started_before_removal_cannot_resurrect_the_removed_show
 async fn a_list_refresh_started_before_save_cannot_undo_the_saved_status() {
     stale_list_cannot_replace_an_edit(false).await;
 }
+
+// ─── The cache's owner, asked once per bearer ──────────────────────────
+
+#[tokio::test]
+async fn a_save_files_its_row_once_the_bearer_s_user_is_known_even_when_the_lookup_is_refused() {
+    // A held save lands right as the tracker's cool-down ends, when the
+    // lookup of the bearer's user is the likeliest request to be refused.
+    // The bearer's user was learned before — by the Watch Later row's
+    // cached read, by an earlier save — so the write-through still files
+    // the row, and the row on screen can show the write.
+    use wiremock::matchers::{method, path};
+    let kitsu = mappable_kitsu().await;
+    let mal = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("PATCH"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(mal_patch_answer())
+        .mount(&mal)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"id":4242,"name":"shiro"}"#),
+        )
+        .up_to_n_times(1)
+        .mount(&mal)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/users/@me"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "30"))
+        .mount(&mal)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal_provider(&mal.uri());
+    let tokens = test_tokens();
+    // The row's cached read learns who the bearer is.
+    assert_eq!(
+        crate::commands::account_owner::OwnerMemo::owner(
+            &state.account_write_locks.owners,
+            ProviderKind::MyAnimeList,
+            &provider,
+            &tokens,
+        )
+        .await
+        .expect("owner"),
+        "4242"
+    );
+    set_entry_via(
+        &state,
+        ProviderKind::MyAnimeList,
+        &provider,
+        &tokens,
+        "12",
+        EntryUpdate {
+            progress_episodes: Some(3),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("the tracker took the write")
+    .expect("mapped + written");
+    assert_eq!(cached_rows(&state), 1, "the written row is in the cache");
+}
+
+// Writes for a bearer whose user is already known: their own file.
+#[path = "account_owner_known_test.rs"]
+mod owner_known;
 
 // Staleness cases that pair a full-list refresh with a write: their own
 // file, so this one stays readable.

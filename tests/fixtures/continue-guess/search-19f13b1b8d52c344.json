@@ -1,0 +1,327 @@
+{
+ "data": [
+  {
+   "id": "41370",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba",
+     "en_jp": "Kimetsu no Yaiba",
+     "ja_jp": "鬼滅の刃"
+    },
+    "abbreviatedTitles": [
+     "Blade of Demon Destruction",
+     "KnY",
+     "Kimetsu no Yaiba: Kyoudai no Kizuna",
+     "Demon Slayer: Kimetsu no Yaiba: Bonds of Siblings",
+     "Demon Slayer: Kimetsu no Yaiba - Tanjiro Kamado, Unwavering Resolve Arc",
+     "鬼滅の刃-兄妹の絆-",
+     "鬼灭之刃",
+     "הלהב קוטל השדים",
+     "قاتل الشياطين",
+     "ดาบพิฆาตอสูร",
+     "Miecz zabójcy demonów – Kimetsu no Yaiba",
+     "Guardians de la nit: Kimetsu no Yaiba",
+     "İblis Keser"
+    ],
+    "slug": "kimetsu-no-yaiba",
+    "startDate": "2019-04-06",
+    "endDate": "2019-09-28",
+    "episodeCount": 26,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42586",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Mugen Ressha-hen",
+    "titles": {
+     "en": "Demon Slayer -Kimetsu no Yaiba- The Movie: Mugen Train",
+     "en_jp": "Kimetsu no Yaiba: Mugen Ressha-hen",
+     "ja_jp": "劇場版 鬼滅の刃 無限列車編"
+    },
+    "abbreviatedTitles": [
+     "Gekijouban Kimetsu no Yaiba: Mugen Ressha-hen",
+     "Kimetsu no Yaiba: Infinity Train"
+    ],
+    "slug": "kimetsu-no-yaiba-movie-mugen-ressha-hen",
+    "startDate": "2020-10-16",
+    "endDate": "2020-10-16",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44081",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Yuukaku-hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Entertainment District Arc",
+     "en_jp": "Kimetsu no Yaiba: Yuukaku-hen",
+     "ja_jp": "鬼滅の刃 遊郭編"
+    },
+    "abbreviatedTitles": [
+     "Kimetsu no Yaiba 2",
+     "Demon Slayer: Kimetsu no Yaiba Season 2",
+     "Demon Slayer 2",
+     "Demon Slayer: Kimetsu no Yaiba - Yuukaku-hen"
+    ],
+    "slug": "kimetsu-no-yaiba-yuukaku-hen",
+    "startDate": "2021-12-05",
+    "endDate": "2022-02-13",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44389",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Natagumo Yama Hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Mt. Natagumo Arc",
+     "en_jp": "Kimetsu no Yaiba: Natagumo Yama Hen",
+     "ja_jp": "鬼滅の刃 那田蜘蛛山編"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kimetsu-no-yaiba-natagumo-yama-hen",
+    "startDate": "2020-10-17",
+    "endDate": "2020-10-17",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45249",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Mugen Ressha-hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Mugen Train Arc",
+     "en_jp": "Kimetsu no Yaiba: Mugen Ressha-hen",
+     "ja_jp": "鬼滅の刃 無限列車編"
+    },
+    "abbreviatedTitles": [
+     "Kimetsu no Yaiba Movie: Mugen Ressha-hen (TV)",
+     "The Demon Slayer: Kimetsu no Yaiba Mugen Train Arc TV"
+    ],
+    "slug": "kimetsu-no-yaiba-mugen-ressha-hen",
+    "startDate": "2021-10-10",
+    "endDate": "2021-11-28",
+    "episodeCount": 7,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44390",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Hashira Gou Kaigi - Chouyashiki Hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - The Hashira Meeting Arc",
+     "en_jp": "Kimetsu no Yaiba: Hashira Gou Kaigi - Chouyashiki Hen",
+     "ja_jp": "鬼滅の刃 柱合会議・蝶屋敷編"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kimetsu-no-yaiba-hashira-gou-kaigi-chouyashiki-hen",
+    "startDate": "2020-12-20",
+    "endDate": "2020-12-20",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44388",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Kyoudai no Kizuna",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba Sibling`s Bond",
+     "en_jp": "Kimetsu no Yaiba: Kyoudai no Kizuna",
+     "ja_jp": "鬼滅の刃 那田蜘蛛山編"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kimetsu-no-yaiba-kyoudai-no-kizuna",
+    "startDate": "2019-03-29",
+    "endDate": "2019-03-29",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45254",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Tsuzumi Yashiki Hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Tsuzumi Mansion Arc",
+     "en_jp": "Kimetsu no Yaiba: Tsuzumi Yashiki Hen"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kimetsu-no-yaiba-tsuzumi-yashiki-hen",
+    "startDate": "2021-09-18",
+    "endDate": "2021-09-18",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45253",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Asakusa Hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Asakusa Arc",
+     "en_jp": "Kimetsu no Yaiba: Asakusa Hen",
+     "ja_jp": "鬼滅の刃 浅あさ草くさ編へん"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kimetsu-no-yaiba-asakusa-hen",
+    "startDate": "2021-09-12",
+    "endDate": "2021-09-12",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45866",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Katanakaji no Sato-hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Swordsmith Village Arc",
+     "en_jp": "Kimetsu no Yaiba: Katanakaji no Sato-hen",
+     "ja_jp": "鬼滅の刃 刀鍛冶の里編"
+    },
+    "abbreviatedTitles": [
+     "Kimetsu no Yaiba: Swordsmith Village Arc",
+     "KnY 3",
+     "Demon Slayer Season 3"
+    ],
+    "slug": "kimetsu-no-yaiba-katanakaji-no-satohen",
+    "startDate": "2023-04-09",
+    "endDate": "2023-06-18",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47635",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Hashira Geiko-hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Hashira Training Arc",
+     "en_jp": "Kimetsu no Yaiba: Hashira Geiko-hen",
+     "ja_jp": "鬼滅の刃 柱稽古編"
+    },
+    "abbreviatedTitles": [
+     "KnY 4",
+     "Demon Slayer Season 4"
+    ],
+    "slug": "Kimetsu-no-Yaiba-Hashira-Geikohen",
+    "startDate": "2024-05-12",
+    "endDate": "2024-06-30",
+    "episodeCount": 8,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49001",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Mugenjou-hen Movie 1 - Akaza Sairai",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Infinity Castle - Part 1: Akaza Returns",
+     "en_jp": "Kimetsu no Yaiba: Mugenjou-hen Movie 1 - Akaza Sairai",
+     "en_us": "Demon Slayer: Kimetsu no Yaiba Infinity Castle I",
+     "ja_jp": "劇場版「鬼滅の刃」無限城編 第一章 猗窩座再来"
+    },
+    "abbreviatedTitles": [
+     "Demon Slayer: Kimetsu no Yaiba the Movie - Infinity Castle",
+     "Demon Slayer: Kimetsu no Yaiba La Forteresse infinie",
+     "Demon Slayer: Kimetsu no Yaiba Castelo Infinito",
+     "en: Demon Slayer: Kimetsu no Yaiba - Infinity Castle Part 1 - Akaza's Return"
+    ],
+    "slug": "Kimetsu-no-Yaiba-Mugenjou-hen",
+    "startDate": "2025-07-18",
+    "endDate": "2025-07-18",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47122",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Jougen Shuuketsu, Soshite Katanakaji no Sato e",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba -To the Swordsmith Village-",
+     "en_jp": "Kimetsu no Yaiba: Jougen Shuuketsu, Soshite Katanakaji no Sato e",
+     "ja_jp": "「鬼滅の刃」上弦集結、そして刀鍛冶の里へ"
+    },
+    "abbreviatedTitles": [
+     "Kimetsu no Yaiba World Tour"
+    ],
+    "slug": "kimetsu-no-yaiba-jougen-shuuketsu-soshite-katanakaji-no-sato-e",
+    "startDate": "2023-02-03",
+    "endDate": "2023-02-03",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50005",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Mugenjou-hen Movie 2",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba Infinity Castle Part 2",
+     "en_jp": "Kimetsu no Yaiba: Mugenjou-hen Movie 2",
+     "ja_jp": "劇場版「鬼滅の刃」無限城編 第二章"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Kimetsu-no-Yaiba-Mugenjou-hen-Part-2",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "49645",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba x MLB Tokyo Series presented by Guggenheim",
+    "titles": {
+     "en_jp": "Kimetsu no Yaiba x MLB Tokyo Series presented by Guggenheim",
+     "ja_jp": "鬼滅の刃 × MLB Tokyo Series presented by Guggenheim"
+    },
+    "abbreviatedTitles": [],
+    "slug": "kimetsu-no-yaiba-x-mlb-tokyo-series-presented-by-guggenheim",
+    "startDate": "2025-03-05",
+    "endDate": "2025-03-05",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

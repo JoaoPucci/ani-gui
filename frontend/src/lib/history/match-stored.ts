@@ -7,14 +7,19 @@ import {
 	allmangaKitsuMapGet,
 	allmangaKitsuMapPlayed,
 	kitsuAnimeDetail,
-	type KitsuAnimeRef
+	type KitsuAnimeRef,
+	type ReadOptions
 } from '$lib/api';
 import { cachedBindingVerdict, onlyTitleInDoubt, type ResumeTarget } from './resolve';
+import { readOpts } from './read-opts';
+import { kitsuEntryGone } from './entry-gone';
 
 /** The stored mapping for the row's show id when it can stand as the
  *  answer, and whether a real play stored it, else null and the row
  *  resolves on. Every endpoint failure is the same as finding nothing,
- *  and a played read that fails is the same as no play.
+ *  noted on `read` unless Kitsu answered the id gone, and a played read
+ *  that fails is the same as no play, noted on `read` as a trust that
+ *  could not be read.
  *
  *  The played read runs after the mapping was read and its entry
  *  fetched, and a watch in between can store another mapping with its
@@ -22,24 +27,33 @@ import { cachedBindingVerdict, onlyTitleInDoubt, type ResumeTarget } from './res
  *  id means the mapping changed underneath, and the binding this load
  *  holds stays a guess. */
 export async function storedBinding(
-	preliminary: ResumeTarget
+	preliminary: ResumeTarget,
+	opts: ReadOptions = {},
+	read: { unread?: true; trustUnread?: true } = {}
 ): Promise<{ ref: KitsuAnimeRef; played: boolean } | null> {
 	if (!preliminary.allmangaShowId) return null;
 	let kitsuId: string | null;
 	let cached: KitsuAnimeRef;
 	try {
-		kitsuId = await allmangaKitsuMapGet(preliminary.allmangaShowId);
+		kitsuId = await allmangaKitsuMapGet(preliminary.allmangaShowId, ...readOpts(opts));
 		if (!kitsuId) return null;
-		cached = await kitsuAnimeDetail(kitsuId);
-	} catch {
-		// The endpoint is down or the stored id is stale.
+		cached = await kitsuAnimeDetail(kitsuId, ...readOpts(opts));
+	} catch (e) {
+		// The endpoint is down or the stored id is stale. A failure that
+		// is not Kitsu answering the id gone leaves the match, and whether
+		// a play stored it, unread.
+		if (!kitsuEntryGone(e)) Object.assign(read, { unread: true, trustUnread: true });
 		return null;
 	}
 	const verdict = cachedBindingVerdict(cached, preliminary, true);
 	const played = () =>
-		allmangaKitsuMapPlayed(preliminary.allmangaShowId).then(
+		allmangaKitsuMapPlayed(preliminary.allmangaShowId, ...readOpts(opts)).then(
 			(id) => id === kitsuId,
-			() => false
+			// No play is known: whether one stored the mapping is unread.
+			() => {
+				read.trustUnread = true;
+				return false;
+			}
 		);
 	if (verdict === 'trust') return { ref: cached, played: await played() };
 	if (verdict === 'evict') {

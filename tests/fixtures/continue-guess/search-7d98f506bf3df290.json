@@ -1,0 +1,150 @@
+{
+ "data": [
+  {
+   "id": "8271",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul",
+    "titles": {
+     "en": "Tokyo Ghoul",
+     "en_jp": "Tokyo Ghoul",
+     "en_us": "Tokyo Ghoul",
+     "ja_jp": "東京喰種-トーキョーグール-"
+    },
+    "abbreviatedTitles": [
+     "Tokyo Kushu",
+     "Toukyou Kushu",
+     "Toukyou Ghoul"
+    ],
+    "slug": "tokyo-ghoul",
+    "startDate": "2014-07-04",
+    "endDate": "2014-09-19",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "9135",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul √A",
+    "titles": {
+     "en": "Tokyo Ghoul √A",
+     "en_jp": "Tokyo Ghoul √A",
+     "en_us": "Tokyo Ghoul √A",
+     "ja_jp": "東京喰種√A"
+    },
+    "abbreviatedTitles": [
+     "Tokyo Ghoul Root A",
+     "Tokyo Ghoul 2nd Season",
+     "Tokyo Ghoul Second Season"
+    ],
+    "slug": "tokyo-ghoul-2",
+    "startDate": "2015-01-09",
+    "endDate": "2015-03-27",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13929",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul:re",
+    "titles": {
+     "en_jp": "Tokyo Ghoul:re",
+     "ja_jp": "東京喰種トーキョーグール：re"
+    },
+    "abbreviatedTitles": [
+     "トーキョーグール：re",
+     "Tokyo Kushu:re",
+     "Toukyou Kuushu:re"
+    ],
+    "slug": "tokyo-ghoul-re",
+    "startDate": "2018-04-03",
+    "endDate": "2018-06-19",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41359",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul:re 2",
+    "titles": {
+     "en": "Tokyo Ghoul:re 2",
+     "en_jp": "Tokyo Ghoul:re 2",
+     "ja_jp": "京喰種：re 第2期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "tokyo-ghoul-re-2",
+    "startDate": "2018-10-09",
+    "endDate": "2018-12-25",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "10789",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul: \"Jack\"",
+    "titles": {
+     "en_jp": "Tokyo Ghoul: \"Jack\"",
+     "ja_jp": "東京喰種 トーキョーグール【JACK】"
+    },
+    "abbreviatedTitles": [
+     "Tokyo Ghoul: \"Jack\""
+    ],
+    "slug": "tokyo-ghoul-jack",
+    "startDate": "2015-09-30",
+    "endDate": "2015-09-30",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11294",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul: \"Pinto\"",
+    "titles": {
+     "en_jp": "Tokyo Ghoul: \"Pinto\"",
+     "ja_jp": "東京喰種 トーキョーグール【PINTO】"
+    },
+    "abbreviatedTitles": [],
+    "slug": "tokyo-ghoul-pinto",
+    "startDate": "2015-12-25",
+    "endDate": "2015-12-25",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "12550",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Force of Will",
+    "titles": {
+     "en": "",
+     "en_jp": "Force of Will",
+     "ja_jp": ""
+    },
+    "abbreviatedTitles": [],
+    "slug": "force-of-will",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "tba"
+   }
+  }
+ ]
+}

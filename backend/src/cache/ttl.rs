@@ -78,8 +78,8 @@ pub const TRACKER_MAP_TTL: Duration = TITLE_MATCH_TTL;
 /// than left on identity for a month.
 pub const TRACKER_MAP_UNSETTLED_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 
-/// TTL for cached play resolutions (canonical_title + mode + quality +
-/// episode → upstream URL + referer + media_kind). 7d is
+/// TTL for cached play resolutions (canonical_title + mode + episode
+/// → upstream URL + referer + media_kind). 7d is
 /// generous because the *real* validity gate is the per-read HEAD
 /// check + an evict-on-player-failure feedback loop — a stale row
 /// survives until the next access, where HEAD or playback failure

@@ -1,0 +1,334 @@
+{
+ "data": [
+  {
+   "id": "7158",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken (TV)",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure (2012)",
+     "en_jp": "JoJo no Kimyou na Bouken (TV)",
+     "en_us": "JoJo's Bizarre Adventure",
+     "ja_jp": "ジョジョの奇妙な冒険"
+    },
+    "abbreviatedTitles": [
+     "JoJo no Kimyou na Bouken (2012)"
+    ],
+    "slug": "jojo-s-bizarre-adventure-2012",
+    "startDate": "2012-10-06",
+    "endDate": "2013-04-06",
+    "episodeCount": 26,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41410",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo's Bizarre Adventure: Golden Wind",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Golden Wind",
+     "en_jp": "JoJo no Kimyou na Bouken: Ougon no Kaze",
+     "ja_jp": "ジョジョの奇妙な冒険 黄金の風"
+    },
+    "abbreviatedTitles": [
+     "Jojo's Bizarre Adventure Part 5: Golden Wind",
+     "JoJo's Bizarre Adventure Part 5: Vento Aureo"
+    ],
+    "slug": "jojo-s-bizarre-adventure-part-5-vento-aureo",
+    "startDate": "2018-10-06",
+    "endDate": "2019-07-28",
+    "episodeCount": 39,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8739",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Stardust Crusaders 2nd Season",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Stardust Crusaders - Battle in Egypt",
+     "en_jp": "JoJo no Kimyou na Bouken: Stardust Crusaders 2nd Season",
+     "en_us": "JoJo's Bizarre Adventure: Stardust Crusaders - Battle in Egypt",
+     "ja_jp": "ジョジョの奇妙な冒険 スターダストクルセイダース"
+    },
+    "abbreviatedTitles": [
+     "JoJo's Bizarre Adventure Part 3",
+     "JoJo's Bizarre Adventure: Stardust Crusaders - Egypt Arc"
+    ],
+    "slug": "jojo-s-bizarre-adventure-stardust-crusaders-2",
+    "startDate": "2015-01-10",
+    "endDate": "2015-06-20",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44294",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo's Bizarre Adventure: Stone Ocean",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Stone Ocean",
+     "en_jp": "JoJo no Kimyou na Bouken: Stone Ocean",
+     "en_us": "JoJo's Bizarre Adventure STONE OCEAN",
+     "ja_jp": "ジョジョの奇妙な冒険 ストーンオーシャン"
+    },
+    "abbreviatedTitles": [
+     "JoJo no Kimyou na Bouken: Sutōn Ōshan",
+     "Jojo part 6"
+    ],
+    "slug": "jojo-s-bizarre-adventure-part-6-stone-ocean",
+    "startDate": "2021-12-01",
+    "endDate": "2021-12-01",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13306",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo’s Bizarre Adventure Re-edited",
+    "titles": {
+     "en": "JoJo’s Bizarre Adventure Re-edited",
+     "en_jp": "JoJo no Kimyou na Bouken Re-edited",
+     "ja_jp": "ジョジョの奇妙な冒険 Re-edited"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jojo-no-kimyou-na-bouken-re-edited",
+    "startDate": "2012-12-31",
+    "endDate": "2012-12-31",
+    "episodeCount": 3,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42116",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo's Bizarre Adventure: Golden Wind Recap",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Golden Wind Recap",
+     "en_jp": "JoJo no Kimyou na Bouken: Ougon no Kaze Recap",
+     "ja_jp": "ジョジョの奇妙な冒険 黄金の風 Inizio del vento aureo"
+    },
+    "abbreviatedTitles": [
+     "JoJo no Kimyou na Bouken: Ougon no Kaze - Inizio del vento aureo"
+    ],
+    "slug": "jojo-no-kimyou-na-bouken-ougon-no-kaze-recap",
+    "startDate": "2019-01-05",
+    "endDate": "2019-05-04",
+    "episodeCount": 3,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11459",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Diamond wa Kudakenai",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Diamond is Unbreakable",
+     "en_jp": "JoJo no Kimyou na Bouken: Diamond wa Kudakenai",
+     "en_us": "JoJo's Bizarre Adventure: Diamond is Unbreakable",
+     "ja_jp": "ジョジョの奇妙な冒険 ダイヤモンドは砕けない"
+    },
+    "abbreviatedTitles": [
+     "JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai",
+     "Diamond is not Crash"
+    ],
+    "slug": "jojo-s-bizarre-adventure-diamond-is-unbreakable",
+    "startDate": "2016-04-02",
+    "endDate": "2016-12-24",
+    "episodeCount": 39,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8063",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Stardust Crusaders",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Stardust Crusaders",
+     "en_jp": "JoJo no Kimyou na Bouken: Stardust Crusaders",
+     "en_us": "JoJo's Bizarre Adventure: Stardust Crusaders",
+     "ja_jp": "ジョジョの奇妙な冒険 スターダストクルセイダース"
+    },
+    "abbreviatedTitles": [
+     "Dai San Bu Kujo Jotaro: Mirai e no Isan",
+     "JoJo's Bizarre Adventure Part 3"
+    ],
+    "slug": "jojo-s-bizarre-adventure-stardust-crusaders",
+    "startDate": "2014-04-05",
+    "endDate": "2014-09-13",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "610",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure (1993)",
+     "en_jp": "JoJo no Kimyou na Bouken",
+     "ja_jp": "ジョジョの奇妙な冒険"
+    },
+    "abbreviatedTitles": [
+     "JoJo's Bizarre Adventure OVA 1"
+    ],
+    "slug": "jojo-s-bizarre-adventure-1993",
+    "startDate": "1993-11-19",
+    "endDate": "1994-11-18",
+    "episodeCount": 6,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "3136",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Phantom Blood",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Phantom Blood",
+     "en_jp": "JoJo no Kimyou na Bouken: Phantom Blood",
+     "en_us": "JoJo's Bizarre Adventure: Phantom Blood",
+     "ja_jp": "ジョジョの奇妙な冒険 ファントム ブラッド"
+    },
+    "abbreviatedTitles": [
+     "JoJo's Bizarre Adventure: Phantom Blood"
+    ],
+    "slug": "jojo-s-bizarre-adventure-phantom-blood",
+    "startDate": "2007-02-17",
+    "endDate": "2007-02-17",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46010",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Stone Ocean Part 2",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Stone Ocean Part 2",
+     "en_jp": "JoJo no Kimyou na Bouken: Stone Ocean Part 2",
+     "en_us": "JoJo's Bizarre Adventure STONE OCEAN Part 2",
+     "ja_jp": "ジョジョの奇妙な冒険 ストーンオーシャン 2クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jojo-no-kimyou-na-bouken-part-6-stone-ocean-part-2",
+    "startDate": "2022-09-01",
+    "endDate": "2022-09-01",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7730",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Adventure",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure (2000)",
+     "en_jp": "JoJo no Kimyou na Bouken: Adventure",
+     "ja_jp": "ジョジョの奇妙な冒険 ADVENTURE"
+    },
+    "abbreviatedTitles": [
+     "JoJo's Bizarre Adventure (2000)"
+    ],
+    "slug": "jojo-s-bizarre-adventure-2000",
+    "startDate": "2000-05-25",
+    "endDate": "2002-01-25",
+    "episodeCount": 7,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46598",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Stone Ocean Part 3",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Stone Ocean Part 3",
+     "en_jp": "JoJo no Kimyou na Bouken: Stone Ocean Part 3",
+     "en_us": "JoJo's Bizarre Adventure STONE OCEAN Part 3",
+     "ja_jp": "ジョジョの奇妙な冒険 ストーンオーシャン 3クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jojo-no-kimyou-na-bouken-part-6-stone-ocean-part-3",
+    "startDate": "2022-12-01",
+    "endDate": "2022-12-01",
+    "episodeCount": 14,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49847",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Steel Ball Run: JoJo no Kimyou na Bouken",
+    "titles": {
+     "en": "Steel Ball Run: JoJo's Bizarre Adventure",
+     "en_jp": "Steel Ball Run: JoJo no Kimyou na Bouken",
+     "en_us": "STEEL BALL RUN JoJo's Bizarre Adventure",
+     "ja_jp": "スティール・ボール・ラン ジョジョの奇妙な冒険"
+    },
+    "abbreviatedTitles": [
+     "JoJo's Bizarre Adventure Part 7: Steel Ball Run",
+     "JoJo's Bizarre Adventure: Steel Ball Run",
+     "JoJo no Kimyou na Bouken: Steel Ball Run",
+     "ジョジョの奇妙な冒険 スティール・ボール・ラン",
+     "STEEL BALL RUN JoJo's Bizarre Adventure 1st STAGE",
+     "ジョジョの奇妙な冒険 スティール・ボール・ラン 1st STAGE",
+     "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE",
+     "STEEL BALL RUN JoJo's Bizarre Adventure 2nd - 3rd STAGE",
+     "JoJo no Kimyou na Bouken: Steel Ball Run - 2nd - 3rd STAGE",
+     "ジョジョの奇妙な冒険 スティール・ボール・ラン 2nd - 3rd STAGE"
+    ],
+    "slug": "steel-ball-run-jojo-no-kimyou-na-bouken",
+    "startDate": "2026-03-19",
+    "endDate": "2026-12-04",
+    "episodeCount": 12,
+    "subtype": "ONA",
+    "status": "current"
+   }
+  },
+  {
+   "id": "46393",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Phantom Blood Pilot",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Phantom Blood Pilot",
+     "en_jp": "JoJo no Kimyou na Bouken: Phantom Blood Pilot",
+     "ja_jp": "ジョジョの奇妙な冒険 ファントム ブラッド"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jojo-no-kimyou-na-bouken-phantom-blood-pilot",
+    "startDate": "2004-03-28",
+    "endDate": "2004-03-28",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

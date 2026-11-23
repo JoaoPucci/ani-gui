@@ -3,7 +3,8 @@
 //! Bound to `127.0.0.1:0` (kernel-assigned port) at app startup. Routes:
 //!
 //! - `GET /healthz` — liveness probe used by the frontend bootstrap.
-//! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master.
+//! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master,
+//!   or the media playlist a single-quality source serves in its place.
 //! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl&s=<stream>[&v=<variables key>]]`
 //!   — fetch + rewrite + return a rendition playlist when the master
 //!   marked it `k=pl` (with its kind of stream, `s=`, and the key the
@@ -28,7 +29,11 @@
 pub mod host_budget;
 pub mod host_budget_demand;
 pub mod m3u8;
+mod m3u8_attrs;
 pub mod m3u8_define;
+mod m3u8_guard;
+mod m3u8_lines;
+mod m3u8_reach;
 pub mod token;
 pub mod upstream;
 
@@ -43,7 +48,6 @@ use axum::routing::get;
 use axum::Router;
 use base64::Engine;
 use serde::Deserialize;
-use tower_http::cors::{Any, CorsLayer};
 use url::Url;
 
 use crate::error::AniError;
@@ -88,12 +92,11 @@ pub fn build_router(state: ProxyState) -> Router {
         .route("/s/:session/seg", get(handle_seg))
         .route("/s/:session/subtitles", get(handle_subtitle_list))
         .route("/s/:session/sub/:track", get(handle_subtitle))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        )
+        // hls.js, and the `<video>` and `<track>` the player marks
+        // `crossorigin`, read the proxy's answers from the renderer's
+        // origin; the download tools send no origin and need no CORS.
+        // Nothing else is allowed to read them (`crate::renderer_origin`).
+        .layer(crate::renderer_origin::cors())
         .with_state(Arc::new(state))
 }
 
@@ -173,28 +176,17 @@ async fn handle_master(
         .sessions
         .keep_master_variables(session, master_variables(&body, &served_from))
         .unwrap_or_default();
-    let rewritten = match rewrite_master_naming(
+    // A source with a single quality may answer with the media
+    // playlist itself rather than a master.
+    let Ok(rewritten) = m3u8::rewrite_served(
         &body,
         &served_from,
         &state.origin,
         session,
         &state.secret,
         &vars,
-    ) {
-        Ok(s) => s,
-        Err(_) => {
-            // Try as a media playlist before giving up — some upstreams
-            // return media directly when there's only one variant.
-            match rewrite_media(&body, &served_from, &state.origin, session, &state.secret) {
-                Ok(s) => s,
-                Err(_) => {
-                    return error_response(
-                        StatusCode::BAD_GATEWAY,
-                        "upstream manifest unparseable",
-                    );
-                }
-            }
-        }
+    ) else {
+        return error_response(StatusCode::BAD_GATEWAY, "upstream manifest unparseable");
     };
 
     let mut headers = HeaderMap::new();

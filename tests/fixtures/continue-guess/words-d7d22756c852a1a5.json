@@ -1,0 +1,129 @@
+{
+ "data": [
+  {
+   "id": "46170",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "[Oshi no Ko]",
+    "titles": {
+     "en": "Oshi no Ko",
+     "en_jp": "[Oshi no Ko]",
+     "ja_jp": "【推しの子】"
+    },
+    "abbreviatedTitles": [
+     "【OSHI NO KO】",
+     "[Mein*Star]",
+     "Favorite Girl",
+     "My Idol's Child",
+     "เกิดใหม่เป็นลูกโอชิ",
+     "Anak Idola",
+     "【推しの子】Mother and Children",
+     "[Oshi no Ko] Mother and Children",
+     "【MOJA GWIAZDA】",
+     "我推的孩子"
+    ],
+    "slug": "oshi-no-ko",
+    "startDate": "2023-04-12",
+    "endDate": "2023-06-28",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47659",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "[Oshi no Ko] Season 2",
+    "titles": {
+     "en": "Oshi no Ko Season 2",
+     "en_jp": "[Oshi no Ko] Season 2",
+     "ja_jp": "【推しの子】第2期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "oshi-no-ko-season-2",
+    "startDate": "2024-07-03",
+    "endDate": "2024-10-06",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49264",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "[Oshi no Ko] 3rd Season",
+    "titles": {
+     "en": "Oshi no Ko Season 3",
+     "en_jp": "[Oshi no Ko] 3rd Season",
+     "ja_jp": "【推しの子】第3期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "oshi-no-ko-season-3",
+    "startDate": "2026-01-14",
+    "endDate": "2026-03-25",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50624",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "[Oshi no Ko] Final Season",
+    "titles": {
+     "en_jp": "[Oshi no Ko] Final Season",
+     "ja_jp": "【推しの子】第4期 Final Season"
+    },
+    "abbreviatedTitles": [
+     "【OSHI NO KO】Season 4"
+    ],
+    "slug": "oshi-no-ko-final-season",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "51130",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Serenade (2026)",
+    "titles": {
+     "en_jp": "Serenade (2026)",
+     "ja_jp": "セレナーデ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "serenade-2026",
+    "startDate": "2026-01-21",
+    "endDate": "2026-01-21",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47328",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Idol",
+    "titles": {
+     "en": "Idol",
+     "en_jp": "Idol",
+     "ja_jp": "アイドル"
+    },
+    "abbreviatedTitles": [],
+    "slug": "idol",
+    "startDate": "2023-04-12",
+    "endDate": "2023-04-12",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

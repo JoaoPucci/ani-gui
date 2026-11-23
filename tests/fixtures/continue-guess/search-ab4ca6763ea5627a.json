@@ -1,0 +1,189 @@
+{
+ "data": [
+  {
+   "id": "45513",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Film: Red",
+    "titles": {
+     "en": "One Piece Film: Red",
+     "en_jp": "One Piece Film: Red",
+     "ja_jp": "ONE PIECE FILM RED"
+    },
+    "abbreviatedTitles": [],
+    "slug": "one-piece-film-red",
+    "startDate": "2022-08-06",
+    "endDate": "2022-08-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46389",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tot Musica",
+    "titles": {
+     "en": "Tot Musica",
+     "en_jp": "Tot Musica",
+     "ja_jp": "Tot Musica"
+    },
+    "abbreviatedTitles": [
+     "UTA'S SONGS ONE PIECE FILM RED"
+    ],
+    "slug": "tot-musica",
+    "startDate": "2022-08-17",
+    "endDate": "2022-08-17",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46384",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Shin Jidai",
+    "titles": {
+     "en": "New Genesis",
+     "en_jp": "Shin Jidai",
+     "ja_jp": "新時代"
+    },
+    "abbreviatedTitles": [
+     "UTA'S SONGS ONE PIECE FILM RED"
+    ],
+    "slug": "shin-jidai",
+    "startDate": "2022-06-15",
+    "endDate": "2022-06-15",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46386",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Gyakkou",
+    "titles": {
+     "en": "Backlight",
+     "en_jp": "Gyakkou",
+     "ja_jp": "逆光"
+    },
+    "abbreviatedTitles": [
+     "UTA'S SONGS ONE PIECE FILM RED"
+    ],
+    "slug": "backlight",
+    "startDate": "2022-07-06",
+    "endDate": "2022-07-06",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46390",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kaze no Yukue",
+    "titles": {
+     "en": "Where the Wind Blows",
+     "en_jp": "Kaze no Yukue",
+     "ja_jp": "風のゆくえ"
+    },
+    "abbreviatedTitles": [
+     "UTA'S SONGS ONE PIECE FILM RED"
+    ],
+    "slug": "kaze-no-yukue",
+    "startDate": "2022-08-24",
+    "endDate": "2022-08-24",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46387",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Utakata Lullaby",
+    "titles": {
+     "en": "Fleeting Lullaby",
+     "en_jp": "Utakata Lullaby",
+     "ja_jp": "ウタカタララバイ"
+    },
+    "abbreviatedTitles": [
+     "UTA'S SONGS ONE PIECE FILM RED"
+    ],
+    "slug": "utakata-lullaby",
+    "startDate": "2022-08-06",
+    "endDate": "2022-08-06",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46385",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Watashi wa Saikyou",
+    "titles": {
+     "en": "I'm Invincible",
+     "en_jp": "Watashi wa Saikyou",
+     "ja_jp": "私は最強"
+    },
+    "abbreviatedTitles": [
+     "UTA'S SONGS ONE PIECE FILM RED"
+    ],
+    "slug": "watashi-wa-saikyou",
+    "startDate": "2022-06-22",
+    "endDate": "2022-06-22",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46388",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sekai no Tsuzuki",
+    "titles": {
+     "en": "The World's Continuation",
+     "en_jp": "Sekai no Tsuzuki",
+     "ja_jp": "世界のつづき"
+    },
+    "abbreviatedTitles": [
+     "UTA'S SONGS ONE PIECE FILM RED"
+    ],
+    "slug": "sekai-no-tsuzuki",
+    "startDate": "2022-08-10",
+    "endDate": "2022-08-10",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48761",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Enter the Garden",
+    "titles": {
+     "en_jp": "Enter the Garden"
+    },
+    "abbreviatedTitles": [
+     "Azuki: Enter The Garden"
+    ],
+    "slug": "enter-the-garden",
+    "startDate": "2024-04-30",
+    "endDate": null,
+    "episodeCount": 3,
+    "subtype": "ONA",
+    "status": "current"
+   }
+  }
+ ]
+}

@@ -1,0 +1,65 @@
+{
+ "data": [
+  {
+   "id": "42059",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!!: To the Top",
+    "titles": {
+     "en_jp": "Haikyuu!!: To the Top",
+     "ja_jp": "ハイキュー!! TO THE TOP"
+    },
+    "abbreviatedTitles": [
+     "Haikyuu!! (Shin Series)",
+     "ハイキュー!! (新シリーズ)",
+     "Haikyuu!! (2020)",
+     "Haikyuu!! Fourth Season",
+     "Haikyuu!! 4th Season",
+     "Haikyuu 4"
+    ],
+    "slug": "haikyuu-to-the-top",
+    "startDate": "2020-01-10",
+    "endDate": "2020-04-04",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42938",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!! TO THE TOP 2",
+    "titles": {
+     "en": "Haikyuu!!: To the Top Part 2",
+     "en_jp": "Haikyuu!! TO THE TOP 2",
+     "ja_jp": "ハイキュー!! TO THE TOP 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "haikyuu-to-the-top-2",
+    "startDate": "2020-10-03",
+    "endDate": "2020-12-19",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42920",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Delete",
+    "titles": {
+     "en_jp": "Delete"
+    },
+    "abbreviatedTitles": [],
+    "slug": "deleted-2020",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "tba"
+   }
+  }
+ ]
+}

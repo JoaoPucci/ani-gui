@@ -1,0 +1,103 @@
+{
+ "data": [
+  {
+   "id": "41084",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Vinland Saga",
+    "titles": {
+     "en": "Vinland Saga",
+     "en_jp": "Vinland Saga",
+     "ja_jp": "ヴィンランド・サガ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "vinland-saga",
+    "startDate": "2019-07-08",
+    "endDate": "2019-12-30",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44875",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Vinland Saga Season 2",
+    "titles": {
+     "en_jp": "Vinland Saga Season 2",
+     "ja_jp": "ヴィンランド・サガ SEASON2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "vinland-saga-season-2",
+    "startDate": "2023-01-09",
+    "endDate": "2023-06-19",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47074",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Vinland Saga Season 2: Drowning in the Shadow",
+    "titles": {
+     "en_jp": "Vinland Saga Season 2: Drowning in the Shadow",
+     "ja_jp": "ヴィンランド・サガ SEASON2 Drowning in the Shadow"
+    },
+    "abbreviatedTitles": [
+     "Vinland Saga Season 2 Episode 6.5"
+    ],
+    "slug": "vinland-saga-season-2-drowning-in-the-shadow",
+    "startDate": "2023-02-14",
+    "endDate": "2023-02-14",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47444",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "VINLAND SAGA SEASON 2: Same old story",
+    "titles": {
+     "en_jp": "VINLAND SAGA SEASON 2: Same old story",
+     "ja_jp": "ヴィンランド・サガ SEASON2 Same old story"
+    },
+    "abbreviatedTitles": [
+     "VINLAND SAGA SEASON 2 Episode 18.5 \"Same old story\"",
+     "ヴィンランド・サガ SEASON2 第18.5話 \"Same old story\""
+    ],
+    "slug": "vinland-saga-season-2-same-old-story",
+    "startDate": "2023-05-12",
+    "endDate": "2023-05-12",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11481",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ponkotsuland Saga",
+    "titles": {
+     "en_jp": "Ponkotsuland Saga",
+     "ja_jp": "ポンコツランド・サガ"
+    },
+    "abbreviatedTitles": [
+     "Pon Kotsuland Saga",
+     "Ponkotsu Quest x Vinland Saga Special"
+    ],
+    "slug": "ponkotsuland-saga",
+    "startDate": "2015-10-24",
+    "endDate": "2019-10-01",
+    "episodeCount": 3,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

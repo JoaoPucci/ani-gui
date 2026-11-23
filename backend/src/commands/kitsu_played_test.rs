@@ -6,7 +6,7 @@ use crate::commands::kitsu::{
     allmanga_kitsu_delete, allmanga_kitsu_put, allmanga_kitsu_put_played, watched_at_put,
 };
 
-fn listed_state(tmp: &tempfile::TempDir) -> AppState {
+fn listed_state(tmp: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = crate::commands::play::tests::state_with_proxy_origin();
     state.history_path = tmp.path().join("history");
     crate::history::upsert_and_write(

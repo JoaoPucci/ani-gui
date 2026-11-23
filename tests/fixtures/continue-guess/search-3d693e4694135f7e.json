@@ -1,0 +1,85 @@
+{
+ "data": [
+  {
+   "id": "43907",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2",
+    "titles": {
+     "en": "Mushoku Tensei: Jobless Reincarnation Part 2",
+     "en_jp": "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2",
+     "ja_jp": "無職転生 ～異世界行ったら本気だす～ 第2クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mushoku-tensei-isekai-ittara-honki-dasu-part-2",
+    "startDate": "2021-10-03",
+    "endDate": "2021-12-19",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45492",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2 - Eris no Goblin Toubatsu",
+    "titles": {
+     "en": "Mushoku Tensei: Jobless Reincarnation Part 2 - Eris the Goblin Slayer",
+     "en_jp": "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2 - Eris no Goblin Toubatsu",
+     "ja_jp": "無職転生 ～異世界行ったら本気だす～ 第2クール エリスのゴブリン討伐"
+    },
+    "abbreviatedTitles": [
+     "Mushoku Tensei: Jobless Reincarnation Cour 2 Special",
+     "Mushoku Tensei: Jobless Reincarnation Part 2 Special",
+     "เกิดชาตินี้พี่ต้องเทพ OVA",
+     "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2 Special"
+    ],
+    "slug": "mushoku-tensei-isekai-ittara-honki-dasu-part-2-ova",
+    "startDate": "2022-03-16",
+    "endDate": "2022-03-16",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47694",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mushoku Tensei II: Isekai Ittara Honki Dasu Part 2",
+    "titles": {
+     "en": "Mushoku Tensei: Jobless Reincarnation Season 2 Part 2",
+     "en_jp": "Mushoku Tensei II: Isekai Ittara Honki Dasu Part 2",
+     "ja_jp": "無職転生 Ⅱ ～異世界行ったら本気だす～ 第2クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "Mushoku-Tensei-Isekai-Ittara-Honki-Dasu-Season-2-Part-2",
+    "startDate": "2024-04-07",
+    "endDate": "2024-06-30",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "51093",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mushoku Tensei III: Isekai Ittara Honki Dasu Part 2",
+    "titles": {
+     "en": "Mushoku Tensei: Jobless Reincarnation Season 3 Part 2",
+     "en_jp": "Mushoku Tensei III: Isekai Ittara Honki Dasu Part 2",
+     "ja_jp": "無職転生Ⅲ ～異世界行ったら本気だす～ 第2クール"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mushoku-tensei-iii-isekai-ittara-honki-dasu-part-2",
+    "startDate": "2027-12-31",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "unreleased"
+   }
+  }
+ ]
+}

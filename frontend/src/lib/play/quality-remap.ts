@@ -53,7 +53,7 @@ export interface HoldState {
 }
 
 /** The hold carried to the levels left. A ceiling removed is the
- *  setting's level among them. A held level removed re-seats at the
+ *  target's level among them. A held level removed re-seats at the
  *  nearest loadable level below it that is left — never above where
  *  trouble had stepped the hold — or, with none below, at the nearest
  *  above. A pin whose level was removed moves to the nearest loadable

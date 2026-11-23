@@ -2,8 +2,8 @@
  * Hand-curated credits surfaced by the About page.
  *
  * Scope: the bits the About page is actually about — the upstream
- * binaries the packages ship so playback and downloads work without
- * the user installing anything, and editorial assets (Lottie
+ * binaries the packages ship or fetch so playback and downloads work
+ * without the user installing anything, and editorial assets (Lottie
  * animation, eventually fonts / illustrations). Frontend + backend
  * dep lists are not credited here — they are dev-facing, and
  * surfacing them turned the page into a build dashboard rather than
@@ -26,14 +26,16 @@
 
 import { m } from '$lib/paraglide/messages';
 
-export type BundledToolNoteId = 'curl_impersonate' | 'yt_dlp' | 'ffmpeg';
+export type BundledToolNoteId = 'curl_impersonate' | 'cacert' | 'yt_dlp' | 'ffmpeg';
 
 export interface BundledTool {
-	/** Display label — the upstream's own name. */
+	/** Display label — the upstream's own name, or the dependency's
+	 *  id where it has no product name (ca-certificates). */
 	name: string;
 	/** Version string as it appears in the manifest. `null` when
-	 *  the upstream doesn't version uniformly (ffmpeg is whatever
-	 *  the distro ships). */
+	 *  the platforms don't ship one version (ffmpeg: the Windows
+	 *  installer downloads a pinned build, Linux takes whatever the
+	 *  distro ships). */
 	version: string | null;
 	/** SPDX license id (or a free-text combo for dual-licensed
 	 *  upstreams). */
@@ -45,12 +47,49 @@ export interface BundledTool {
 	 *  `about_bundled_tool_note_<noteId>` key in every locale's
 	 *  about.json. */
 	noteId: BundledToolNoteId;
+	/** Where a binary the Windows installer downloads at install time
+	 *  is built, and its upstream source. Present only for those. */
+	provenance?: BuildProvenance;
+}
+
+/** The published build and the upstream source for one binary the
+ *  Windows installer downloads at install time. */
+export interface BuildProvenance {
+	/** The build's version, as the fetcher pins it. */
+	version: string;
+	/** The page the build is published on — the release the
+	 *  installer downloads it from. */
+	buildUrl: string;
+	/** The upstream source at the matching tag. */
+	sourceUrl: string;
+}
+
+/** The ffmpeg build the Windows installer downloads at install time.
+ *  Must equal the version `INSTALL_TIME_DEPS` in fetch-windows-deps.mjs
+ *  pins; credits.test.ts imports the fetcher and holds the two
+ *  together. */
+export const FFMPEG_WINDOWS_BUILD = '7.1.1';
+
+/** The build page and source for gyan.dev's ffmpeg essentials build `version`:
+ *  its GitHub release, and FFmpeg's own `n<version>` tag. Derived from
+ *  the version alone so the links cannot name a different build. */
+export function ffmpegProvenance(version: string): BuildProvenance {
+	return {
+		version,
+		buildUrl: `https://github.com/GyanD/codexffmpeg/releases/tag/${version}`,
+		sourceUrl: `https://github.com/FFmpeg/FFmpeg/tree/n${version}`
+	};
 }
 
 /** Tools the packages bundle or recommend so playback and downloads
  *  work without the user installing anything by hand. Versions track
  *  what `fetch-linux-deps.mjs` / `fetch-windows-deps.mjs` pin — the
- *  two stage the same set, so one version here covers both. */
+ *  two stage the same set, so one version here covers both. ffmpeg is
+ *  the exception: no package carries it — the Windows installer
+ *  downloads it at install time, and Linux takes the distribution's —
+ *  so its version is `null`. ca-certificates is the other: only the
+ *  Windows package stages it, so its version is that bundle's date,
+ *  and Linux uses the distribution's. */
 export const BUNDLED_TOOLS: BundledTool[] = [
 	{
 		// The transport the native resolver spawns. The provider
@@ -61,6 +100,17 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		license: 'MIT',
 		url: 'https://github.com/lexiforest/curl-impersonate',
 		noteId: 'curl_impersonate'
+	},
+	{
+		// Windows only: the CA bundle that transport verifies with,
+		// beside the Windows certificate store. A fresh Windows has not
+		// downloaded most root certificates yet, and only Windows' own
+		// crypto stack makes it, which the transport never uses.
+		name: 'ca-certificates',
+		version: '2026-11-05',
+		license: 'MPL-2.0',
+		url: 'https://curl.se/docs/caextract.html',
+		noteId: 'cacert'
 	},
 	{
 		// The downloader. Preferred over ffmpeg when both are present:
@@ -78,7 +128,10 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		version: null,
 		license: 'LGPL-2.1+ / GPL',
 		url: 'https://ffmpeg.org/',
-		noteId: 'ffmpeg'
+		noteId: 'ffmpeg',
+		// The build the Windows installer downloads at install time
+		// (Linux takes the distribution's).
+		provenance: ffmpegProvenance(FFMPEG_WINDOWS_BUILD)
 	}
 ];
 

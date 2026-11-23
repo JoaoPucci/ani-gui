@@ -4,6 +4,8 @@ import { http, HttpResponse } from 'msw';
 import { API_BASE, server } from '../../acceptance/setup';
 import { send, useHandlers, wait } from './helpers';
 
+import { sessionAnswer, wire } from '../../answers';
+import type { CreateSessionResponse } from '../../../src/lib/api';
 /** A play answered at once, with a body that takes `ms` to arrive. */
 function slowBodiedPlay(ms: number, body: string) {
 	server.use(
@@ -27,11 +29,13 @@ function slowBodiedPlay(ms: number, body: string) {
 	}).catch(() => {});
 }
 
-const SESSION = JSON.stringify({
-	session_id: 's-1',
-	media_url: `${API_BASE}/s/s-1/file.mp4`,
-	media_kind: 'mp4'
-});
+const SESSION = wire<CreateSessionResponse>(
+	sessionAnswer({
+		session_id: 's-1',
+		media_url: `${API_BASE}/s/s-1/file.mp4`,
+		media_kind: 'mp4'
+	})
+);
 
 it('leaves a request unanswered while a play answer is still being read', async () => {
 	// The other request is answered after the page unmounted, while the

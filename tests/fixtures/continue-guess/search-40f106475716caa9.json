@@ -1,0 +1,73 @@
+{
+ "data": [
+  {
+   "id": "42586",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Mugen Ressha-hen",
+    "titles": {
+     "en": "Demon Slayer -Kimetsu no Yaiba- The Movie: Mugen Train",
+     "en_jp": "Kimetsu no Yaiba: Mugen Ressha-hen",
+     "ja_jp": "劇場版 鬼滅の刃 無限列車編"
+    },
+    "abbreviatedTitles": [
+     "Gekijouban Kimetsu no Yaiba: Mugen Ressha-hen",
+     "Kimetsu no Yaiba: Infinity Train"
+    ],
+    "slug": "kimetsu-no-yaiba-movie-mugen-ressha-hen",
+    "startDate": "2020-10-16",
+    "endDate": "2020-10-16",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45249",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Mugen Ressha-hen",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Mugen Train Arc",
+     "en_jp": "Kimetsu no Yaiba: Mugen Ressha-hen",
+     "ja_jp": "鬼滅の刃 無限列車編"
+    },
+    "abbreviatedTitles": [
+     "Kimetsu no Yaiba Movie: Mugen Ressha-hen (TV)",
+     "The Demon Slayer: Kimetsu no Yaiba Mugen Train Arc TV"
+    ],
+    "slug": "kimetsu-no-yaiba-mugen-ressha-hen",
+    "startDate": "2021-10-10",
+    "endDate": "2021-11-28",
+    "episodeCount": 7,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49001",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kimetsu no Yaiba: Mugenjou-hen Movie 1 - Akaza Sairai",
+    "titles": {
+     "en": "Demon Slayer: Kimetsu no Yaiba - Infinity Castle - Part 1: Akaza Returns",
+     "en_jp": "Kimetsu no Yaiba: Mugenjou-hen Movie 1 - Akaza Sairai",
+     "en_us": "Demon Slayer: Kimetsu no Yaiba Infinity Castle I",
+     "ja_jp": "劇場版「鬼滅の刃」無限城編 第一章 猗窩座再来"
+    },
+    "abbreviatedTitles": [
+     "Demon Slayer: Kimetsu no Yaiba the Movie - Infinity Castle",
+     "Demon Slayer: Kimetsu no Yaiba La Forteresse infinie",
+     "Demon Slayer: Kimetsu no Yaiba Castelo Infinito",
+     "en: Demon Slayer: Kimetsu no Yaiba - Infinity Castle Part 1 - Akaza's Return"
+    ],
+    "slug": "Kimetsu-no-Yaiba-Mugenjou-hen",
+    "startDate": "2025-07-18",
+    "endDate": "2025-07-18",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

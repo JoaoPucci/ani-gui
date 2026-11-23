@@ -76,11 +76,21 @@ export function isEpisodeUnavailable(e: unknown): boolean {
 	return classifierText(e).includes('episode_unavailable');
 }
 
+/** Whether a play failure is the resolver failing to read an answer
+ *  the source did send. Read from the kind alone: the detail is free
+ *  text for the log and may contain any word. */
+function isUnreadableAnswer(e: unknown): boolean {
+	return typeof e === 'object' && e !== null && (e as { kind?: unknown }).kind === 'parse_failed';
+}
+
 /** User-facing copy for a play-call failure. The message branches
  *  match (in order): rate_limited / upstream 429 → busy source (with
  *  the upstream's own retry hint when it sent one); upstream 5xx →
  *  source down; upstream 404/410 → catalogue miss; other upstream →
- *  the source answered with an error; episode_unavailable → the show
+ *  the source answered with an error; parse_failed → the source
+ *  answered in a shape this version cannot read, which an update may
+ *  fix (chosen by the kind alone, so no word in the log detail can
+ *  pick another branch); episode_unavailable → the show
  *  is there and this episode is not, suggesting the other audio only
  *  when `ctx.otherAudio` is true; stream_server_failed → the show
  *  is there and its video server did not serve the episode (the
@@ -95,6 +105,13 @@ export function describePlayFailure(e: unknown, ctx: PlayFailureContext): string
 	if (sourceDown !== null) return sourceDown;
 	const answered = describeSourceAnswer(e);
 	if (answered !== null) return answered;
+	if (isUnreadableAnswer(e)) {
+		// The source answered, and this version could not read what it
+		// sent: the provider changed shape. Retrying the same build reads
+		// the same answer the same way, so the generic try-again copy
+		// would send the user after a retry that cannot help.
+		return m.play_play_failure_unreadable();
+	}
 	const raw = classifierText(e);
 	if (isEpisodeUnavailable(e)) {
 		// The show is in the catalogue; this episode has no stream in

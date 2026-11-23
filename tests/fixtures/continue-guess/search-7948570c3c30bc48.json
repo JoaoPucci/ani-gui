@@ -1,0 +1,27 @@
+{
+ "data": [
+  {
+   "id": "8739",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo no Kimyou na Bouken: Stardust Crusaders 2nd Season",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Stardust Crusaders - Battle in Egypt",
+     "en_jp": "JoJo no Kimyou na Bouken: Stardust Crusaders 2nd Season",
+     "en_us": "JoJo's Bizarre Adventure: Stardust Crusaders - Battle in Egypt",
+     "ja_jp": "ジョジョの奇妙な冒険 スターダストクルセイダース"
+    },
+    "abbreviatedTitles": [
+     "JoJo's Bizarre Adventure Part 3",
+     "JoJo's Bizarre Adventure: Stardust Crusaders - Egypt Arc"
+    ],
+    "slug": "jojo-s-bizarre-adventure-stardust-crusaders-2",
+    "startDate": "2015-01-10",
+    "endDate": "2015-06-20",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

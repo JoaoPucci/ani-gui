@@ -1,0 +1,133 @@
+{
+ "data": [
+  {
+   "id": "46231",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ore Dake Level Up na Ken",
+    "titles": {
+     "en": "Solo Leveling",
+     "en_jp": "Ore Dake Level Up na Ken",
+     "ja_jp": "俺だけレベルアップな件"
+    },
+    "abbreviatedTitles": [
+     "나 혼자만 레벨업",
+     "Na Honjaman Level Up"
+    ],
+    "slug": "solo-leveling",
+    "startDate": "2024-01-06",
+    "endDate": "2024-03-30",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48671",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ore dake Level Up na Ken: Season 2 - Arise from the Shadow",
+    "titles": {
+     "en": "Solo Leveling Season 2 -Arise from the Shadow-",
+     "en_jp": "Ore dake Level Up na Ken: Season 2 - Arise from the Shadow",
+     "ja_jp": "俺だけレベルアップな件 Season 2 -Arise from the Shadow-"
+    },
+    "abbreviatedTitles": [
+     "Na Honjaman Level Up 2",
+     "나 혼자만 레벨업 2",
+     "俺だけレベルアップな件 第2期",
+     "Ore dake Level Up na Ken 2nd Season"
+    ],
+    "slug": "Solo-Leveling-Season-2-Arise-from-the-Shadow",
+    "startDate": "2025-01-04",
+    "endDate": "2025-03-29",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48572",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ore dake Level Up na Ken: How to Get Stronger",
+    "titles": {
+     "en": "Solo Leveling: How to Get Stronger",
+     "en_jp": "Ore dake Level Up na Ken: How to Get Stronger",
+     "ja_jp": "俺だけレベルアップな件 How to Get Stronger"
+    },
+    "abbreviatedTitles": [
+     "Solo Leveling Recap",
+     "Ore dake Level Up na Ken Recap",
+     "Ore dake Level Up na Ken Episode 7.5",
+     "Na Honjaman Level Up",
+     "나 혼자만 레벨업",
+     "I Level Up Alone"
+    ],
+    "slug": "ore-dake-level-up-na-ken-how-to-get-stronger",
+    "startDate": "2024-02-25",
+    "endDate": "2024-02-25",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49220",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ore dake Level Up na Ken: ReAwakening",
+    "titles": {
+     "en": "Solo Leveling: ReAwakening",
+     "en_jp": "Ore dake Level Up na Ken: ReAwakening",
+     "ja_jp": "俺だけレベルアップな件 -ReAwakening-"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ore-dake-level-up-na-ken-reawakening",
+    "startDate": "2024-11-29",
+    "endDate": "2024-11-29",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50837",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ore dake Level Up na Ken: Beyond the System",
+    "titles": {
+     "en": "Solo Leveling: Beyond the System",
+     "en_jp": "Ore dake Level Up na Ken: Beyond the System",
+     "ja_jp": "俺だけレベルアップな件 - Beyond the System -"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ore-dake-level-up-na-ken-beyond-the-system",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "tba"
+   }
+  },
+  {
+   "id": "46353",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Echo",
+    "titles": {
+     "en": "Echo",
+     "en_jp": "Echo",
+     "ja_jp": "Echo"
+    },
+    "abbreviatedTitles": [],
+    "slug": "echo",
+    "startDate": "2022-03-02",
+    "endDate": "2022-03-02",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

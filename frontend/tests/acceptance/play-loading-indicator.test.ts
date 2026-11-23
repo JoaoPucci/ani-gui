@@ -1,7 +1,9 @@
 // Acceptance: the player's loading indicator never sits over its
 // error.
 //
-// The indicator shows while an episode switch is on its way. A
+// In fullscreen the indicator is the start veil, which shows the next
+// episode while a switch is on its way (windowed, the page-wide
+// loading overlay has the switch, and the frame draws nothing). A
 // playback error can land inside that window — the old stream is
 // still attached, and a switch in flight rules out the automatic
 // recovery — and the frame then shows the error in place of the
@@ -34,6 +36,16 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { playerVideo, playerVideoInSlot } from './player-video';
 
+import type {
+	AiringStatus,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -89,56 +101,79 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
 function useShowHandlers() {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-		),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
+			HttpResponse.json<AiringStatus>({
+				aired: 12,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
 			})
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+			HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			)
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
 	);
 }
 
-// The indicator stays mounted across a switch and the hold that
-// follows it and is toggled on and off, so a short gap between the two
-// never restarts it; `player-spinner-on` is its showing state. An
-// error unmounts it outright.
-const indicator = () => target.querySelector('.player-spinner');
-const indicatorOn = () => target.querySelector('.player-spinner.player-spinner-on');
+// The frame names the veil's mode on `data-start-veil`, which a fading
+// veil does not outlive; an error unmounts the veil outright.
+const frame = () => target.querySelector('section.player-frame') as HTMLElement | null;
+const indicator = () => target.querySelector('.start-veil');
+const indicatorOn = () =>
+	(frame()?.getAttribute('data-start-veil') ?? 'off') !== 'off' ? frame() : null;
+
+/** The player frame goes fullscreen, as its fullscreen button does. */
+function frameFullscreen() {
+	Object.defineProperty(document, 'fullscreenElement', {
+		configurable: true,
+		get: () => frame()
+	});
+	document.dispatchEvent(new Event('fullscreenchange'));
+}
+afterEach(() => {
+	delete (document as unknown as { fullscreenElement?: unknown }).fullscreenElement;
+});
 const errorPanel = () => target.querySelector('.player-error');
 
 const session = (id: string) =>
-	JSON.stringify({ session_id: id, media_url: `${API_BASE}/s/${id}/file.mp4`, media_kind: 'mp4' });
+	wire<CreateSessionResponse>(
+		sessionAnswer({ session_id: id, media_url: `${API_BASE}/s/${id}/file.mp4`, media_kind: 'mp4' })
+	);
 const busy = () =>
 	target.querySelector('section.player-frame')?.getAttribute('aria-busy') === 'true';
 
@@ -156,6 +191,7 @@ describe('play route — the loading indicator never sits over the error', () =>
 
 		// The switch's stream never answers, so the switch stays on
 		// its way for the rest of the scenario.
+		frameFullscreen();
 		(target.querySelector('li[data-ep-num="3"] button') as HTMLButtonElement).click();
 		await until(() => indicatorOn() !== null, 'the indicator during the switch');
 
@@ -188,6 +224,13 @@ describe('play route — the loading indicator runs from a switch into the hold 
 			.at(-1)!
 			.dispatch('done', session('session-2'));
 		await new Promise((r) => setTimeout(r, 20));
+		// Episode 1 is playing when the viewer switches: a stream still
+		// on its way would keep the indicator on by itself.
+		const video = playerVideo();
+		Object.defineProperty(video, 'paused', { configurable: true, get: () => false });
+		video.dispatchEvent(new Event('playing'));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(indicatorOn()).toBeNull();
 
 		let land: () => void = () => {};
 		vi.mocked(goto).mockImplementationOnce(
@@ -196,6 +239,7 @@ describe('play route — the loading indicator runs from a switch into the hold 
 					land = r;
 				})
 		);
+		frameFullscreen();
 		(target.querySelector('li[data-ep-num="2"] button') as HTMLButtonElement).click();
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
 		await new Promise((r) => setTimeout(r, 20));

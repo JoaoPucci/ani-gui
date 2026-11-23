@@ -1,0 +1,45 @@
+{
+ "data": [
+  {
+   "id": "46561",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Kidou Senshi Gundam: Suisei no Majo Season 2",
+    "titles": {
+     "en": "Mobile Suit Gundam: The Witch from Mercury Season 2",
+     "en_jp": "Kidou Senshi Gundam: Suisei no Majo Season 2",
+     "ja_jp": "機動戦士ガンダム 水星の魔女 Season2"
+    },
+    "abbreviatedTitles": [
+     "G-Witch 2",
+     "Mobile Suit Gundam: The Witch from Mercury Cour 2",
+     "Kidou Senshi Gundam: Suisei no Majo Part 2",
+     "機動戦士ガンダム 水星の魔女 2クール"
+    ],
+    "slug": "kidou-senshi-gundam-suisei-no-majo-2",
+    "startDate": "2023-04-09",
+    "endDate": "2023-07-02",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47488",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Slash",
+    "titles": {
+     "en_jp": "Slash"
+    },
+    "abbreviatedTitles": [],
+    "slug": "slash",
+    "startDate": "2023-05-22",
+    "endDate": "2023-05-22",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

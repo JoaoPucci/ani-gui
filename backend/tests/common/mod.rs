@@ -1,10 +1,12 @@
 //! Shared by the integration tests that run the real backend binary.
 //!
-//! On Linux and macOS the backend's data lands under the `home` each
-//! test passes. On Windows the platform directories come from the
-//! known-folder API rather than the environment, so a run there uses
-//! the dev profile's directories (`ani-gui-dev`, as a debug build
-//! always does) — the same ones `pnpm dev` uses.
+//! The backend's whole profile — config, cache, state, logs and the
+//! default download folder — lands under the `home` each test passes,
+//! on every platform: [`command`] sets `ANI_GUI_TEST_PROFILE_ROOT` to
+//! it, which the backend honours ahead of the XDG variables, `HOME` and
+//! the platform's folder APIs (the known-folder API on Windows, which no
+//! other variable redirects). Under that root the layout is fixed; see
+//! [`profile`].
 
 // Each test crate uses its own subset.
 #![allow(dead_code)]
@@ -28,11 +30,30 @@ pub struct Backend {
     /// The other lanes it announced ahead of that line, by name, each
     /// an origin of its own.
     pub lanes: std::collections::BTreeMap<String, String>,
+    /// The launch's secret it printed last, which its API answers no
+    /// request without.
+    pub secret: String,
+}
+
+/// Where, under a test's `home`, the backend keeps each part of its
+/// profile when [`command`] started it.
+pub mod profile {
+    use std::path::{Path, PathBuf};
+
+    /// `<home>/cache/metadata.sqlite`.
+    pub fn metadata_db(home: &Path) -> PathBuf {
+        home.join("cache").join("metadata.sqlite")
+    }
+
+    /// `<home>/config/config.toml`.
+    pub fn config_file(home: &Path) -> PathBuf {
+        home.join("config").join("config.toml")
+    }
 }
 
 /// A command for the backend at `exe`, its data under `home`, stdin a
 /// pipe the test holds the way Electron does, logging at the level it
-/// ships with. Whether the backend watches that pipe is the caller's
+/// ships with, as a test run (`ANI_GUI_UNATTENDED=1`). Whether the backend watches that pipe is the caller's
 /// to set. Stderr is a pipe [`start`] drains, so a backend that never
 /// completes its handshake reports what it wrote there; a caller that
 /// redirects it gives that up.
@@ -46,10 +67,19 @@ pub fn command(exe: &Path, home: &Path) -> Command {
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_STATE_HOME", home.join("state"))
         .env("XDG_DATA_HOME", home.join("data"))
+        // The one that holds on every platform: the backend roots its
+        // whole profile here, the variables above notwithstanding.
+        .env(ani_gui::config::paths::TEST_PROFILE_ROOT_ENV, home)
         // Pinned, not inherited: tests that close the backend's output
         // rely on it logging at its default level — quieter and they
         // prove nothing, louder and an unread pipe can fill.
         .env("RUST_LOG", "ani_gui=info")
+        // A test run: the backend takes its flags from the test (none
+        // here, so the defaults) and never asks GitHub for the live
+        // file, which a flipped flag or a slow CDN would otherwise let
+        // into the result. See `flags::launch`.
+        .env("ANI_GUI_UNATTENDED", "1")
+        .env_remove("ANI_GUI_TEST_FLAGS_FILE")
         .env_remove("ANI_GUI_PARENT_STDIN");
     cmd
 }
@@ -87,6 +117,7 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
     type Handshake = (
         String,
         std::collections::BTreeMap<String, String>,
+        String,
         BufReader<ChildStdout>,
     );
     let said: Arc<Mutex<String>> = Arc::default();
@@ -96,9 +127,9 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
         let mut output = BufReader::new(stdout);
         let mut api_base = None;
         let mut lanes = std::collections::BTreeMap::new();
-        let mut secret_seen = false;
+        let mut secret = None;
         let mut line = String::new();
-        while api_base.is_none() || !secret_seen {
+        while api_base.is_none() || secret.is_none() {
             line.clear();
             match output.read_line(&mut line) {
                 Ok(n) if n > 0 => heard.lock().expect("stdout so far").push_str(&line),
@@ -117,12 +148,19 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
                     lanes.insert(name.to_string(), base.trim().to_string());
                 }
             }
-            secret_seen |= line.starts_with("ANI_GUI_INTERNAL_SECRET ");
+            if let Some(s) = line.strip_prefix("ANI_GUI_INTERNAL_SECRET ") {
+                secret = Some(s.trim().to_string());
+            }
         }
-        let _ = tx.send((api_base.expect("checked by the loop"), lanes, output));
+        let _ = tx.send((
+            api_base.expect("checked by the loop"),
+            lanes,
+            secret.expect("checked by the loop"),
+            output,
+        ));
     });
 
-    let (api_base, lanes, output) = match rx.recv_timeout(HANDSHAKE_TIMEOUT) {
+    let (api_base, lanes, secret, output) = match rx.recv_timeout(HANDSHAKE_TIMEOUT) {
         Ok(handshake) => handshake,
         // The reader dropped its sender: the output ended first.
         // Output that ended usually means an exit on its way, so the
@@ -148,6 +186,7 @@ pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout
             child,
             api_base,
             lanes,
+            secret,
         },
         output,
     )

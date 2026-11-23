@@ -1,0 +1,138 @@
+{
+ "data": [
+  {
+   "id": "43078",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "BLEACH: Sennen Kessen-hen",
+    "titles": {
+     "en": "BLEACH: Thousand-Year Blood War",
+     "en_jp": "BLEACH: Sennen Kessen-hen",
+     "ja_jp": "BLEACH 千年血戦篇"
+    },
+    "abbreviatedTitles": [
+     "BLEACH: The Blood Warfare",
+     "BLEACH: Thousand-Year Blood War Part 1 - The Blood Warfare",
+     "BLEACH: Thousand-Year Blood War Part 1 - The Warfare"
+    ],
+    "slug": "bleach-sennen-kessen-hen",
+    "startDate": "2022-10-10",
+    "endDate": "2022-12-26",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46903",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan",
+    "titles": {
+     "en": "BLEACH: Thousand-Year Blood War Part 2 - The Separation",
+     "en_jp": "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan",
+     "ja_jp": "BLEACH 千年血戦篇-訣別譚-"
+    },
+    "abbreviatedTitles": [
+     "BLEACH: Thousand-Year Blood War - The Separation -",
+     "BLEACH: Thousand-Year Blood War Part 2",
+     "BLEACH 千年血戦篇 2クール"
+    ],
+    "slug": "bleach-sennen-kessen-hen-ketsubetsutan",
+    "startDate": "2023-07-08",
+    "endDate": "2023-09-30",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48015",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "BLEACH: Sennen Kessen-hen - Soukoku-tan",
+    "titles": {
+     "en": "BLEACH: Thousand-Year Blood War Part 3 - The Conflict",
+     "en_jp": "BLEACH: Sennen Kessen-hen - Soukoku-tan",
+     "ja_jp": "BLEACH 千年血戦篇-相剋譚-"
+    },
+    "abbreviatedTitles": [
+     "BLEACH: Thousand-Year Blood War - The Conflict -",
+     "BLEACH: Thousand-Year Blood War Part 3",
+     "BLEACH 千年血戦篇 3クール"
+    ],
+    "slug": "bleach-sennen-kessen-hen-soukokutan",
+    "startDate": "2024-10-05",
+    "endDate": "2024-12-28",
+    "episodeCount": 14,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49444",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "BLEACH: Sennen Kessen-hen - Kashin-tan",
+    "titles": {
+     "en": "BLEACH: Thousand-Year Blood War Part 4 - The Calamity",
+     "en_jp": "BLEACH: Sennen Kessen-hen - Kashin-tan",
+     "ja_jp": "BLEACH 千年血戦篇-禍進譚-"
+    },
+    "abbreviatedTitles": [
+     "BLEACH 千年血戦篇 第4クール",
+     "BLEACH: Thousand-Year Blood War The Final Part",
+     "BLEACH: Thousand-Year Blood War Final Part - The Calamity",
+     "BLEACH: Thousand-Year Blood War - The Calamity"
+    ],
+    "slug": "bleach-sennen-kessen-hen-kashintan",
+    "startDate": "2026-07-25",
+    "endDate": "2026-10-26",
+    "episodeCount": 10,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48914",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan Recap",
+    "titles": {
+     "en": "BLEACH: Thousand-Year Blood War - The Separation Recap",
+     "en_jp": "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan Recap",
+     "ja_jp": "BLEACH 千年血戦篇-訣別譚-"
+    },
+    "abbreviatedTitles": [
+     "Bleach: Sennen Kessen-hen - Ketsubetsu-tan Episode 21.5",
+     "BLEACH: The Blood Warfare, Separation 〔Interlude〕"
+    ],
+    "slug": "bleach-sennen-kessen-hen-ketsubetsu-tan-recap",
+    "startDate": "2023-09-02",
+    "endDate": "2023-09-02",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45543",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Rapport",
+    "titles": {
+     "en": "Rapport",
+     "en_jp": "Rapport",
+     "ja_jp": "Rapport"
+    },
+    "abbreviatedTitles": [],
+    "slug": "rapport",
+    "startDate": "2021-11-23",
+    "endDate": "2021-11-23",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

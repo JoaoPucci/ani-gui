@@ -35,3 +35,13 @@ export function pickMove(
 	const reason = choice === 'auto' ? 'auto' : 'pick';
 	return { level: governor.level, from: governor.level, reason, via: 'next' };
 }
+
+/** The governor a menu choice goes to; null with no stream, or with a
+ *  stream of one level, which has nothing to choose — its menu entry
+ *  must not re-pin the run on that level either. */
+export function choosable(
+	governor: QualityGovernor | null,
+	track: QualityTrack
+): QualityGovernor | null {
+	return governor && track.declared().length > 1 ? governor : null;
+}

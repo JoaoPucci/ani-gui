@@ -1,0 +1,132 @@
+{
+ "data": [
+  {
+   "id": "46229",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mashle",
+    "titles": {
+     "en": "Mashle: Magic and Muscles",
+     "en_jp": "Mashle",
+     "ja_jp": "マッシュル-MASHLE-"
+    },
+    "abbreviatedTitles": [],
+    "slug": "mashle",
+    "startDate": "2023-04-07",
+    "endDate": "2023-06-30",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47671",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "MASHLE Kami Shinkakusha Kouho Senbatsu Shiken-hen",
+    "titles": {
+     "en": "Mashle: Magic and Muscles Season 2",
+     "en_jp": "MASHLE Kami Shinkakusha Kouho Senbatsu Shiken-hen",
+     "ja_jp": "マッシュル-MASHLE- 神覚者候補選抜試験編"
+    },
+    "abbreviatedTitles": [
+     "MASHLE 2nd Season",
+     "Mashle: Divine Visionary Selection Exam Arc",
+     "Mashle: Magic and Muscles - The Divine Visionary Candidate Exam Arc."
+    ],
+    "slug": "mashle-season-2",
+    "startDate": "2024-01-06",
+    "endDate": "2024-03-30",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48903",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "MASHLE: Sanma Taisou Shinkakusha Saishuu Shiken-hen",
+    "titles": {
+     "en": "Mashle: Magic and Muscles Season 3",
+     "en_jp": "MASHLE: Sanma Taisou Shinkakusha Saishuu Shiken-hen",
+     "ja_jp": "マッシュル-MASHLE- 三魔対争神覚者最終試験編"
+    },
+    "abbreviatedTitles": [
+     "MASHLE: MAGIC AND MUSCLES Season 3",
+     "MASHLE 3rd Season",
+     "マッシュル-MASHLE- 第3期"
+    ],
+    "slug": "mashle-season-3",
+    "startDate": "2027-01-31",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "upcoming"
+   }
+  },
+  {
+   "id": "47466",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mashle: Mash Burnedead to Fushigi na Tegami",
+    "titles": {
+     "en": "Mashle: Magic and Muscles - Mash Burnedead and the Mysterious Letter",
+     "en_jp": "Mashle: Mash Burnedead to Fushigi na Tegami",
+     "ja_jp": "マッシュル-MASHLE- マッシュ・バーンデッドと不思議な手紙"
+    },
+    "abbreviatedTitles": [
+     "Mashle Recap"
+    ],
+    "slug": "mashle-mash-burnedead-to-fushigi-na-tegami",
+    "startDate": "2023-05-19",
+    "endDate": "2023-05-19",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "51114",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mash Burnedead-tachi to School Life Special",
+    "titles": {
+     "en": "Mashle: Magic and Muscles Picture Drama Special",
+     "en_jp": "Mash Burnedead-tachi to School Life Special",
+     "ja_jp": "マッシュ・バーンデッドたちと寮生活[スクールライフ]"
+    },
+    "abbreviatedTitles": [
+     "Mashle: Picture Drama Special"
+    ],
+    "slug": "mash-burnedead-tachi-to-school-life-special",
+    "startDate": "2023-10-25",
+    "endDate": "2023-10-25",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "51113",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mash Burnedead-tachi to School Life",
+    "titles": {
+     "en": "Mashle: Magic and Muscles Picture Drama",
+     "en_jp": "Mash Burnedead-tachi to School Life",
+     "ja_jp": "マッシュ・バーンデッドたちと寮生活[スクールライフ]"
+    },
+    "abbreviatedTitles": [
+     "Mashle: Picture Drama"
+    ],
+    "slug": "mash-burnedead-tachi-to-school-life",
+    "startDate": "2023-08-13",
+    "endDate": "2023-10-25",
+    "episodeCount": 12,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

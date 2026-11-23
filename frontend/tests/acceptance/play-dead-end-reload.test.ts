@@ -54,6 +54,17 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
 
+import type {
+	AiringStatus,
+	AvailabilityBatchResponse,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, sessionAnswer } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Delisted Show';
 
@@ -117,37 +128,41 @@ function useHandlers(s: Scenario): Seen {
 	const mode = s.mode ?? 'sub';
 	const airing = s.aired ?? null;
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig(mode))),
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig(mode))),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({
+			HttpResponse.json<KitsuAnimeRef>({
 				...kitsuRef(KITSU_ID, TITLE, 12),
 				status: airing === null ? 'finished' : 'current'
 			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, async () => {
 			await s.airingHeld;
-			return HttpResponse.json(
+			return HttpResponse.json<AiringStatus>(
 				airing === null
 					? null
 					: { aired: airing, next_episode: airing + 1, next_airing_at: null, upcoming: [] }
 			);
 		}),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 		http.post(`${API_BASE}/api/availability`, () =>
-			HttpResponse.json({ ...s.availability, extra_episodes: [] })
+			HttpResponse.json<AvailabilityResponse>(
+				availabilityAnswer({ ...s.availability, extra_episodes: [] })
+			)
 		),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const body = (await request.json()) as { mode: string };
-			return HttpResponse.json(body.mode === mode ? NOTHING_CACHED : (s.other ?? NOTHING_CACHED));
+			return HttpResponse.json<AvailabilityBatchResponse>(
+				body.mode === mode ? NOTHING_CACHED : (s.other ?? NOTHING_CACHED)
+			);
 		}),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => {
 			seen.evictions += 1;
 			return new HttpResponse(null, { status: 204 });
 		}),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl'))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([])),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl'))
 	);
 	if (s.reloadResolves) {
 		server.use(
@@ -156,11 +171,13 @@ function useHandlers(s: Scenario): Seen {
 				// answered, and only the resolve the Reload asked for counts.
 				const body = (await request.json()) as { prefetch?: boolean };
 				if (!body.prefetch) seen.resolves += 1;
-				return HttpResponse.json({
-					session_id: 'session-2',
-					media_url: `${API_BASE}/s/session-2/file.mp4`,
-					media_kind: 'mp4'
-				});
+				return HttpResponse.json<CreateSessionResponse>(
+					sessionAnswer({
+						session_id: 'session-2',
+						media_url: `${API_BASE}/s/session-2/file.mp4`,
+						media_kind: 'mp4'
+					})
+				);
 			})
 		);
 	}
@@ -179,9 +196,14 @@ async function availabilityApplied(read: PageFetch[]) {
 
 /** Mount on episode `episode`'s session, wait for what the page learns
  *  about the show, then fail the stream with MediaError `code`. */
-async function failStream(episode: number, code: number) {
+async function failStream(episode: number, code: number, query: Record<string, string> = {}) {
 	const { read } = watchPageFetches();
-	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: String(episode), kind: 'mp4' });
+	setUrl(`/play/${KITSU_ID}`, {
+		session: 'session-1',
+		episode: String(episode),
+		kind: 'mp4',
+		...query
+	});
 	app = mount(PlayPage, { target });
 	await until(() => playerVideoInSlot(), 'the video in its slot');
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
@@ -218,6 +240,20 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		await failStream(1, DECODE);
 		await bodyBecomes(m.detail_unavailable_message());
 		expectDeadEnd();
+	});
+
+	it("a guessed card's session goes back to the show page with the card's row", async () => {
+		// The show page a guessed card leads to can say what history
+		// title it was matched from; the way back from a dead end is one
+		// of the links up to it.
+		const ROW = 'hianime:finished-show-7';
+		useHandlers({ availability: { available: false, episode_count: null } });
+		await failStream(1, DECODE, { guess: '1', row: ROW });
+		await bodyBecomes(m.detail_unavailable_message());
+		const back = overlay()?.querySelector<HTMLAnchorElement>('a.player-error-action');
+		expect(back?.getAttribute('href')).toBe(
+			`/anime/${KITSU_ID}?guessed=${encodeURIComponent(ROW)}`
+		);
 	});
 
 	it('a show delisted in dub that the cache has subtitled names the other audio', async () => {
@@ -373,7 +409,13 @@ describe('play route — the player-error overlay offers Reload only where it ca
 		server.use(
 			http.post(`${API_BASE}/api/availability`, async () => {
 				await listingHeld;
-				return HttpResponse.json({ available: false, episode_count: null, extra_episodes: [] });
+				return HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: false,
+						episode_count: null,
+						extra_episodes: []
+					})
+				);
 			}),
 			http.post(`${API_BASE}/api/play/cache/evict`, async () => {
 				seen.evictions += 1;

@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use super::parts::parts_dir;
 use super::*;
 use crate::scraper::table_provider::TableProvider;
 
@@ -274,11 +276,12 @@ fn native_test_state(
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
         config_path: td.path().join("config.toml"),
-        state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+        state_dir: td.path().join("state"),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 
@@ -349,12 +352,143 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
         "both iterations announce: {progress:?}"
     );
     assert!(
-        dest.path().join("Range Show Episode 1.mp4").exists(),
+        dest.path()
+            .join("Range Show")
+            .join("Range Show Episode 1.mp4")
+            .exists(),
         "first run publishes episode 1"
     );
     assert!(
-        dest.path().join("Range Show Episode 2.mp4").exists(),
+        dest.path()
+            .join("Range Show")
+            .join("Range Show Episode 2.mp4")
+            .exists(),
         "second run publishes episode 2"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_names_each_episode_by_the_file_safe_title() {
+    // The range loop builds its own names: a title with a colon must
+    // come out as the single-episode path spells it, or Windows writes
+    // each episode into a hidden stream of a file named up to the colon.
+    let server = std::sync::Arc::new(
+        TableProvider::one_show(
+            "",
+            ("range-colon-22", "Range Show: Beerus"),
+            &[(2201, 1)],
+            &[],
+            "",
+        )
+        .stream(2201, "sub", "https://cdn.example/m/2201/master.m3u8"),
+    );
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show: Beerus",
+        "episode": "1-1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_| {})
+        .await
+        .expect("the range downloads");
+    let names: Vec<String> = std::fs::read_dir(dest.path().join("Range Show - Beerus"))
+        .expect("dest")
+        .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+        .collect();
+    assert!(
+        dest.path()
+            .join("Range Show - Beerus")
+            .join("Range Show - Beerus Episode 1.mp4")
+            .exists(),
+        "the episode is published under the file-safe title: {names:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_downloaded_episode_of_a_dotted_title_and_its_subtitles_are_visible() {
+    // Linux and macOS hide a name that starts with a dot: ".hack//Sign"
+    // saved its episode as ".hack--Sign Episode 1.mp4", beside a
+    // ".hack--Sign Episode 1.en.vtt", and the user saw neither.
+    use crate::scraper::provider::{StreamSource, SubtitleTrack};
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let subs = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n"))
+        .mount(&subs)
+        .await;
+    let server = std::sync::Arc::new(
+        TableProvider::one_show("", ("dot-hack-23", ".hack//Sign"), &[(2301, 1)], &[], "")
+            .stream_from(
+                2301,
+                "sub",
+                StreamSource {
+                    master_url: "https://cdn.example/m/2301/master.m3u8".into(),
+                    referer: None,
+                    subtitles: vec![SubtitleTrack {
+                        lang: "en".into(),
+                        label: "English".into(),
+                        default: true,
+                        url: format!("{}/subs/en.vtt", subs.uri()),
+                    }],
+                },
+            ),
+    );
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": ".hack//Sign",
+        "episode": "1-1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let path_env = bin.path().display().to_string();
+    download_with_tools(&state, &args, &path_env, |_| {})
+        .await
+        .expect("the range downloads");
+    // The show's folder drops the dots too, and the episode lands in it.
+    let names_in = |dir: &std::path::Path| -> Vec<String> {
+        std::fs::read_dir(dir)
+            .map(|d| {
+                d.filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let show = dest.path().join("hack--Sign");
+    let names = names_in(&show);
+    for name in ["hack--Sign Episode 1.mp4", "hack--Sign Episode 1.en.vtt"] {
+        assert!(
+            show.join(name).is_file(),
+            "{name} is published under a visible name: {names:?}"
+        );
+    }
+    let chosen = names_in(dest.path());
+    assert!(
+        !names.iter().chain(&chosen).any(|n| n.starts_with(".hack")),
+        "nothing of the episode is hidden: {chosen:?} {names:?}"
     );
 }
 
@@ -442,7 +576,10 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
         "the bundled yt-dlp carried the transfer: {calls}"
     );
     assert!(
-        dest.path().join("Range Show Episode 1.mp4").exists(),
+        dest.path()
+            .join("Range Show")
+            .join("Range Show Episode 1.mp4")
+            .exists(),
         "and its output was published under the episode's name"
     );
 }
@@ -1035,6 +1172,7 @@ fn download_args_alt_titles_accepts_newline_joined_string_for_sse_query_path() {
 #[test]
 fn resolve_dest_prefers_explicit_args_over_paths_helper() {
     let a = DownloadArgs {
+        locale: None,
         title: "x".into(),
         episode: "1".into(),
         mode: "sub".into(),
@@ -1046,6 +1184,7 @@ fn resolve_dest_prefers_explicit_args_over_paths_helper() {
         kitsu_id: None,
         download_dir: Some("/tmp/explicit".into()),
         version: None,
+        caption: None,
     };
     let p = resolve_dest(&a).expect("ok");
     assert_eq!(p, PathBuf::from("/tmp/explicit"));
@@ -1163,7 +1302,10 @@ async fn the_ffmpeg_retry_never_meets_what_ytdlp_left() {
     let state = native_test_state(&td, &server);
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    let target = dest.path().join("Range Show Episode 1.mp4");
+    let target = dest
+        .path()
+        .join("Range Show")
+        .join("Range Show Episode 1.mp4");
     let seen = dest.path().join("outputs");
     stage_tool(
         bin.path(),
@@ -1814,16 +1956,17 @@ async fn a_scratch_that_survived_its_removal_is_still_the_guards_to_take() {
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Show Episode 1.mp4");
     std::fs::write(&target, b"the episode").expect("episode");
-    let scratch = Scratch::new(dest.path());
+    let scratch = Scratch::new(dest.path()).expect("scratch");
     std::fs::write(&scratch.path, b"the whole episode").expect("scratch");
     let scratch_path = scratch.path.clone();
     // A directory nothing can unlink from: every read inside
     // publication succeeds and the removal fails.
+    let folder = scratch_path.parent().expect("working folder").to_path_buf();
     let chmod = |mode: u32| {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(dest.path()).expect("meta").permissions();
+        let mut perms = std::fs::metadata(&folder).expect("meta").permissions();
         perms.set_mode(mode);
-        std::fs::set_permissions(dest.path(), perms).expect("chmod");
+        std::fs::set_permissions(&folder, perms).expect("chmod");
     };
     chmod(0o555);
 
@@ -1863,13 +2006,14 @@ async fn a_retired_scratch_the_retry_could_not_remove_is_swept_at_the_end() {
     // for good. A name this guard condemned stays its to remove
     // until the end.
     let dest = tempfile::tempdir().expect("dest");
-    let mut scratch = Scratch::new(dest.path());
+    let mut scratch = Scratch::new(dest.path()).expect("scratch");
     let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
     std::fs::write(&old_partial, b"most of an episode").expect("partial");
 
-    dir_chmod(dest.path(), 0o555);
-    scratch.renew(dest.path());
-    dir_chmod(dest.path(), 0o755);
+    let folder = scratch.path.parent().expect("working folder").to_path_buf();
+    dir_chmod(&folder, 0o555);
+    scratch.renew();
+    dir_chmod(&folder, 0o755);
     assert!(
         old_partial.exists(),
         "the retirement's own removal failed, which is the premise"
@@ -1891,13 +2035,14 @@ async fn publication_does_not_orphan_what_a_retry_left_behind() {
     // ever remove it.
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Retried Show Episode 1.mp4");
-    let mut scratch = Scratch::new(dest.path());
+    let mut scratch = Scratch::new(dest.path()).expect("scratch");
     let old_partial = std::path::PathBuf::from(format!("{}.part", scratch.path.display()));
     std::fs::write(&old_partial, b"the condemned first attempt").expect("partial");
 
-    dir_chmod(dest.path(), 0o555);
-    scratch.renew(dest.path());
-    dir_chmod(dest.path(), 0o755);
+    let folder = scratch.path.parent().expect("working folder").to_path_buf();
+    dir_chmod(&folder, 0o555);
+    scratch.renew();
+    dir_chmod(&folder, 0o755);
     assert!(old_partial.exists(), "the retirement's removal failed");
 
     std::fs::write(&scratch.path, b"the whole episode").expect("retry output");
@@ -2083,16 +2228,11 @@ async fn a_refusal_names_the_file_after_a_stable_key() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
-    // The sweep exists for the kill and the failure, where the tool's
-    // derived files sit orphaned beside a scratch nothing will rename.
-    // A publication that succeeded already consumed the scratch, so
-    // the sweep has nothing to find — but finding nothing still reads
-    // every entry in the destination, once per episode of a range
-    // download, on whatever filesystem the user chose. The walk is
-    // observable by what it removes: a file the tool derived from the
-    // scratch name must survive a download that ended with the
-    // episode published.
+async fn a_successful_download_leaves_only_the_episode() {
+    // A file the tool derived from the scratch name and left behind
+    // is in the working folder with it, under the download's key, and
+    // goes when the download does — published or not. The destination
+    // itself is never walked: what is read is the working folder.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(
@@ -2130,17 +2270,17 @@ async fn a_successful_download_does_not_sweep_the_folder_it_landed_in() {
         Some("video"),
         "the episode is published"
     );
-    let probes = std::fs::read_dir(dest.path())
+    // What the tool derived from the scratch name lives in the
+    // working folder with it, and goes with it: the folder the user
+    // sees holds the episode and nothing else, and no walk of it was
+    // needed to get there.
+    let left: Vec<String> = std::fs::read_dir(dest.path())
         .expect("dest")
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_name().to_string_lossy().ends_with(".probe"))
-        .count();
-    assert_eq!(
-        probes, 1,
-        "a download that ended published does not go back over the \
-         destination — what the tool derived from the scratch name is \
-         the proof the walk did not happen"
-    );
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n != ".ani-gui-locks")
+        .collect();
+    assert_eq!(left, vec!["Swept Show Episode 1.mp4".to_string()]);
 }
 
 #[cfg(unix)]
@@ -2238,7 +2378,7 @@ async fn cancelling_takes_the_tools_own_temporaries_with_it() {
     // Everything the tool writes is on disk before the cancel: a cancel
     // that comes before it has nothing to leave behind, and proves
     // nothing.
-    until_dir(dest.path(), "the tool's temporaries", |names| {
+    until_dir(&parts_dir(dest.path()), "the tool's temporaries", |names| {
         [".part", ".ytdl", ".part-Frag7"]
             .iter()
             .all(|end| names.iter().any(|n| n.ends_with(end)))
@@ -2265,11 +2405,15 @@ async fn until_dir(
 ) -> Vec<String> {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {
+        // A folder not created yet has no names in it.
         let names: Vec<String> = std::fs::read_dir(dir)
-            .expect("dir")
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
         if cond(&names) {
             return names;
         }
@@ -2282,23 +2426,39 @@ async fn until_dir(
 }
 
 /// Every file in `dir` this app's transfer could have put there. The
-/// scratch name is `.ani-gui-<pid>-<uuid>…`, and nothing a tool
+/// scratch name is `.ani-gui-<pid>-<id>-<n>…`, and nothing a tool
 /// derives from it loses that prefix.
 ///
 /// Files only, because `.ani-gui-locks` shares the prefix and is not
 /// transfer data — it is the lock directory, which has to sit on the
-/// destination's own volume and outlives any one download. The
+/// destination's own volume and stays while any download in it runs. The
 /// production sweep is narrower still: it matches the full scratch
 /// file name, which no other entry can begin with.
+///
+/// The scratch and everything derived from it live in the working
+/// folder, so its files count too, and so does the folder itself: a
+/// download that is over leaves none of it.
 #[cfg(unix)]
 fn ours_in(dir: &std::path::Path) -> Vec<String> {
-    std::fs::read_dir(dir)
-        .expect("dest")
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.starts_with(".ani-gui-"))
-        .collect()
+    let files = |dir: &std::path::Path| -> Vec<String> {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .filter(|n| n.starts_with(".ani-gui-"))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut ours = files(dir);
+    let parts = parts_dir(dir);
+    if parts.exists() {
+        ours.push(format!("{}/", super::parts::PARTS_DIR));
+        ours.extend(files(&parts));
+    }
+    ours
 }
 
 #[cfg(unix)]
@@ -2337,8 +2497,8 @@ async fn cancelling_a_download_takes_its_scratch_file_with_it() {
     });
     // The partial file is on disk before the cancel: a cancel that
     // comes before it has nothing to leave behind, and proves nothing.
-    until_dir(dest.path(), "the partial file", |names| {
-        names.iter().any(|n| n.contains("part"))
+    until_dir(&parts_dir(dest.path()), "the partial file", |names| {
+        names.iter().any(|n| n.contains(".part"))
     })
     .await;
     running.abort();
@@ -2346,12 +2506,7 @@ async fn cancelling_a_download_takes_its_scratch_file_with_it() {
     // swept, before the join returns.
     let _ = running.await;
 
-    let leftovers: Vec<String> = std::fs::read_dir(dest.path())
-        .expect("dest")
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.contains("part"))
-        .collect();
+    let leftovers = ours_in(dest.path());
     assert!(
         leftovers.is_empty(),
         "a cancelled transfer must not leave its partial file behind: {leftovers:?}"
@@ -2993,9 +3148,10 @@ async fn a_sidecar_the_user_already_has_is_preserved() {
 #[tokio::test]
 async fn a_sidecar_scratch_that_survived_its_removal_is_still_the_claims_to_take() {
     let dest = tempfile::tempdir().expect("dest");
-    let pen = tempfile::tempdir_in(dest.path()).expect("pen");
+    let hold = super::parts::Hold::take(dest.path(), false).expect("hold");
+    let pen = hold.dir().to_path_buf();
     let target = dest.path().join("Show Episode 9.en.vtt");
-    let scratch = pen.path().join(".ani-gui-9-9.part.vtt");
+    let scratch = hold.part(".part.vtt");
     std::fs::write(&scratch, b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n").expect("scratch");
     let mut claim = SidecarClaim {
         target: target.clone(),
@@ -3003,10 +3159,11 @@ async fn a_sidecar_scratch_that_survived_its_removal_is_still_the_claims_to_take
         file: None,
         installed: false,
         finished: false,
+        _hold: hold,
     };
     // The link needs the target's directory writable and the removal
     // the scratch's; only the latter is refused.
-    dir_chmod(pen.path(), 0o555);
+    dir_chmod(&pen, 0o555);
     let got = claim.install();
     assert!(got.is_ok(), "the track is delivered: {got:?}");
     assert_eq!(
@@ -3018,7 +3175,7 @@ async fn a_sidecar_scratch_that_survived_its_removal_is_still_the_claims_to_take
         scratch.exists(),
         "the removal failed inside the install, so the scratch is still here"
     );
-    dir_chmod(pen.path(), 0o755);
+    dir_chmod(&pen, 0o755);
     drop(claim);
     assert!(
         !scratch.exists(),
@@ -3677,10 +3834,11 @@ mod sidecar_suffix_props {
 
 // ── the sidecar phase is bounded in count and in flight ────────────
 
-/// A listing is a handful of languages; one that lists more tracks
-/// than the cap is malformed or hostile, and only the first cap-many
-/// are fetched — in listing order, so a well-formed listing that is
-/// merely long keeps its first tracks.
+/// The sidecar writer is a backstop behind the resolve, which has
+/// already cut every listing it builds to the cap by the user's
+/// preference: a listing that reaches the writer longer than the cap
+/// did not come through the resolve, and only its first cap-many are
+/// fetched, in listing order.
 #[tokio::test]
 async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
     use crate::proxy::upstream::SUBTITLE_TRACK_CAP;
@@ -3707,14 +3865,26 @@ async fn a_listing_beyond_the_track_cap_writes_only_the_first_cap_many() {
             url: format!("{}/subs/l{i:02}.vtt", server.uri()),
         })
         .collect();
-    let written = write_sidecar_subtitles(
+    // The host's budget would pace the fetches past its burst at a
+    // token a second and a half, and this test is about the cap, not
+    // the pacing: the host here lets every request through at once.
+    let budget = crate::proxy::host_budget::HostBudget::new(
+        u32::try_from(total).expect("small"),
+        crate::proxy::host_budget::SEGMENT_REFILL,
+    );
+    let staged = stage_sidecar_subtitles_with(
         &reqwest::Client::new(),
+        &budget,
+        &crate::commands::download_pacing::SidecarGate::never(),
         &tracks,
         None,
         dest.path(),
         "Show Episode 16",
+        SIDECAR_PHASE_DEADLINE,
+        SIDECAR_FETCH_CONCURRENCY,
     )
     .await;
+    let written = crate::commands::download_transfer::install_staged(staged);
     let expected: Vec<std::path::PathBuf> = (0..SUBTITLE_TRACK_CAP)
         .map(|i| dest.path().join(format!("Show Episode 16.l{i:02}.vtt")))
         .collect();
@@ -7847,12 +8017,16 @@ async fn every_episode_of_a_range_falls_through_to_a_version_that_carries_it() {
     // Each file is named after the version that served it.
     assert!(
         dest.path()
+            .join("The Show")
             .join("The Show (Uncensored) Episode 1.mp4")
             .exists(),
         "episode 1 named for the uncensored copy that served it"
     );
     assert!(
-        dest.path().join("The Show Episode 2.mp4").exists(),
+        dest.path()
+            .join("The Show")
+            .join("The Show Episode 2.mp4")
+            .exists(),
         "episode 2 named for the plain copy that served it"
     );
 }
@@ -7930,11 +8104,15 @@ async fn a_range_keeps_its_version_after_one_episode_falls_through() {
     // The first episode's file is named after the copy that served it,
     // not the version the range was asked for.
     assert!(
-        dest.path().join("The Show Episode 1.mp4").exists(),
+        dest.path()
+            .join("The Show")
+            .join("The Show Episode 1.mp4")
+            .exists(),
         "episode 1 named for the plain copy that served it"
     );
     assert!(
         dest.path()
+            .join("The Show")
             .join("The Show (Uncensored) Episode 2.mp4")
             .exists(),
         "episode 2 named for the uncensored copy that served it"
@@ -8097,8 +8275,16 @@ async fn a_download_asked_for_by_a_former_number_is_named_for_the_episode_it_is(
     let dest = tempfile::tempdir().expect("dest");
     let ran = dest.path().join("ran");
     download_stitched("2.5", dest.path(), &ran).await;
-    assert!(dest.path().join("Stitched Show Episode 1.5.mp4").exists());
-    assert!(!dest.path().join("Stitched Show Episode 2.5.mp4").exists());
+    assert!(dest
+        .path()
+        .join("Stitched Show")
+        .join("Stitched Show Episode 1.5.mp4")
+        .exists());
+    assert!(!dest
+        .path()
+        .join("Stitched Show")
+        .join("Stitched Show Episode 2.5.mp4")
+        .exists());
 }
 
 #[cfg(unix)]
@@ -8133,7 +8319,11 @@ async fn a_file_under_a_former_number_another_row_carries_now_is_not_the_episode
     download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
         .await
         .expect("downloaded");
-    assert!(dest.path().join("Stitched Show Episode 1.5.mp4").exists());
+    assert!(dest
+        .path()
+        .join("Stitched Show")
+        .join("Stitched Show Episode 1.5.mp4")
+        .exists());
 }
 
 /// A download whose numbering repair stands behind the availability
@@ -8293,5 +8483,336 @@ async fn a_download_puts_every_copys_stamp_right() {
             Some((1, "12.5".to_string())),
             "{slug}: the stamp names the recap by its tag now"
         );
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_stream_that_is_not_an_http_url_is_refused_before_any_tool_runs() {
+    // yt-dlp takes the stream as a bare argument among its options; a
+    // value from the provider's answer such as `--exec=…` would read
+    // as one.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = bin.path().join("ran");
+    let touch = format!("touch '{}'\nexit 0", ran.display());
+    stage_tool(bin.path(), "yt-dlp", &touch);
+    stage_tool(bin.path(), "ffmpeg", &touch);
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "--exec=touch /tmp/x".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(matches!(got, Err(AniError::ParseFailed { .. })), "{got:?}");
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(!ran.exists(), "no download tool may have run");
+}
+
+// ── one folder per show ─────────────────────────────────────────────
+
+/// A provider with one show, `title`, whose episodes 1 and 2 stream in
+/// sub, the second with an English sidecar track at `subs`.
+#[cfg(unix)]
+fn show_with_two_episodes(slug: &str, title: &str, subs: &str) -> std::sync::Arc<TableProvider> {
+    let id = crate::scraper::provider::slug_numeric_id(slug).expect("slug");
+    let (one, two) = (id * 100 + 1, id * 100 + 2);
+    std::sync::Arc::new(
+        TableProvider::one_show("", (slug, title), &[(one, 1), (two, 2)], &[], "")
+            .stream(
+                one,
+                "sub",
+                &format!("https://cdn.example/m/{one}/master.m3u8"),
+            )
+            .stream_from(
+                two,
+                "sub",
+                StreamSource {
+                    master_url: format!("https://cdn.example/m/{two}/master.m3u8"),
+                    referer: None,
+                    subtitles: vec![crate::scraper::provider::SubtitleTrack {
+                        lang: "en".into(),
+                        label: "English".into(),
+                        default: true,
+                        url: subs.to_string(),
+                    }],
+                },
+            ),
+    )
+}
+
+/// Download `episode` of the one show `server` lists into `chosen`,
+/// with a yt-dlp that writes its output and logs each run to `ran`.
+#[cfg(unix)]
+async fn download_into(
+    server: &std::sync::Arc<TableProvider>,
+    title: &str,
+    episode: &str,
+    chosen: &std::path::Path,
+    ran: &std::path::Path,
+) -> DownloadResponse {
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, server);
+    let bin = tempfile::tempdir().expect("bin");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo ran >> {ran}\n{writer}\nexit 0",
+            ran = crate::stub_file::sh_quote(ran),
+            writer = writes_its_output("video")
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": title,
+        "episode": episode,
+        "mode": "sub",
+        "download_dir": chosen.to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded")
+}
+
+/// Every entry under `dir`, as paths relative to it, sorted — hidden
+/// ones included, so a scratch file or a lock folder a finished
+/// download left behind is part of the layout it is checked against.
+#[cfg(unix)]
+fn tree(dir: &std::path::Path) -> Vec<String> {
+    fn walk(root: &std::path::Path, at: &std::path::Path, out: &mut Vec<String>) {
+        for entry in std::fs::read_dir(at).expect("read").flatten() {
+            let path = entry.path();
+            let rel = path.strip_prefix(root).expect("under root");
+            out.push(rel.to_string_lossy().into_owned());
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                walk(root, &path, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
+    out
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn each_show_downloads_into_a_folder_of_its_own_with_its_sidecars() {
+    // Two episodes of one show and one of another, into one chosen
+    // folder: each show gets a folder named for it, each episode and
+    // its sidecar go in its show's folder, and the dock's "open folder"
+    // is handed the show's folder.
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let subs = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n"))
+        .mount(&subs)
+        .await;
+    let subs_url = format!("{}/en.vtt", subs.uri());
+    let chosen = tempfile::tempdir().expect("chosen");
+    let logs = tempfile::tempdir().expect("logs");
+    let ran = logs.path().join("ran");
+    let rezero = show_with_two_episodes("rezero-31", "Re:Zero", &subs_url);
+    let frieren = show_with_two_episodes("frieren-32", "Frieren", &subs_url);
+
+    let first = download_into(&rezero, "Re:Zero", "1", chosen.path(), &ran).await;
+    let second = download_into(&rezero, "Re:Zero", "2", chosen.path(), &ran).await;
+    let other = download_into(&frieren, "Frieren", "1", chosen.path(), &ran).await;
+
+    assert_eq!(
+        tree(chosen.path()),
+        vec![
+            "Frieren",
+            "Frieren/Frieren Episode 1.mp4",
+            "Re - Zero",
+            "Re - Zero/Re - Zero Episode 1.mp4",
+            "Re - Zero/Re - Zero Episode 2.en.vtt",
+            "Re - Zero/Re - Zero Episode 2.mp4",
+        ]
+    );
+    let folder = |name: &str| chosen.path().join(name).to_string_lossy().into_owned();
+    assert_eq!(first.dest_dir, folder("Re - Zero"));
+    assert_eq!(second.dest_dir, folder("Re - Zero"));
+    assert_eq!(other.dest_dir, folder("Frieren"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_episode_an_earlier_version_left_in_the_chosen_folder_stays_and_is_already_here() {
+    // Before show folders, episodes landed straight in the chosen
+    // folder. That file is the episode: it is not moved or copied, no
+    // tool runs, and "open folder" opens the folder it is in. The next
+    // episode goes in the show's folder.
+    let chosen = tempfile::tempdir().expect("chosen");
+    let logs = tempfile::tempdir().expect("logs");
+    let ran = logs.path().join("ran");
+    let earlier = chosen.path().join("Frieren Episode 1.mp4");
+    std::fs::write(&earlier, b"kept").expect("seed");
+    let server = show_with_two_episodes("frieren-33", "Frieren", "https://subs.invalid/en.vtt");
+
+    let found = download_into(&server, "Frieren", "1", chosen.path(), &ran).await;
+    assert!(!ran.exists(), "no tool runs for an episode already there");
+    assert_eq!(found.dest_dir, chosen.path().to_string_lossy());
+    assert_eq!(std::fs::read(&earlier).expect("still there"), b"kept");
+    assert_eq!(tree(chosen.path()), vec!["Frieren Episode 1.mp4"]);
+
+    let next = download_into(&server, "Frieren", "2", chosen.path(), &ran).await;
+    assert_eq!(
+        next.dest_dir,
+        chosen.path().join("Frieren").to_string_lossy()
+    );
+    assert!(chosen
+        .path()
+        .join("Frieren/Frieren Episode 2.mp4")
+        .is_file());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_goes_in_the_shows_folder_and_opens_it() {
+    let server = stub_range_show();
+    let chosen = tempfile::tempdir().expect("chosen");
+    let logs = tempfile::tempdir().expect("logs");
+    let ran = logs.path().join("ran");
+    // Episode 1 from before show folders, in the chosen folder.
+    std::fs::write(chosen.path().join("Range Show Episode 1.mp4"), b"kept").expect("seed");
+    let got = download_into(&server, "Range Show", "1-2", chosen.path(), &ran).await;
+    assert_eq!(
+        got.dest_dir,
+        chosen.path().join("Range Show").to_string_lossy(),
+        "the reveal opens the show's folder, where the new episode went"
+    );
+    assert_eq!(
+        tree(chosen.path()),
+        vec![
+            "Range Show",
+            "Range Show Episode 1.mp4",
+            "Range Show/Range Show Episode 2.mp4",
+        ]
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_whose_every_episode_was_already_there_opens_the_chosen_folder() {
+    let server = stub_range_show();
+    let chosen = tempfile::tempdir().expect("chosen");
+    let logs = tempfile::tempdir().expect("logs");
+    let ran = logs.path().join("ran");
+    for ep in [1, 2] {
+        std::fs::write(
+            chosen.path().join(format!("Range Show Episode {ep}.mp4")),
+            b"kept",
+        )
+        .expect("seed");
+    }
+    let got = download_into(&server, "Range Show", "1-2", chosen.path(), &ran).await;
+    assert!(!ran.exists(), "nothing to fetch");
+    assert_eq!(got.dest_dir, chosen.path().to_string_lossy());
+    assert!(
+        !chosen.path().join("Range Show").exists(),
+        "no empty show folder"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_into_a_show_folder_sweeps_the_locks_earlier_versions_left_in_the_chosen_one() {
+    // Every version before show folders took its lock beside a flat
+    // episode, so their leftovers sit in the chosen folder's lock
+    // directory, which a download into a show's folder never locks in.
+    // The first download into a chosen folder sweeps it all the same.
+    for episode in ["1", "1-2"] {
+        let chosen = tempfile::tempdir().expect("chosen");
+        let logs = tempfile::tempdir().expect("logs");
+        let ran = logs.path().join("ran");
+        let locks = chosen.path().join(".ani-gui-locks");
+        std::fs::create_dir(&locks).expect("lock dir");
+        std::fs::write(locks.join("Old Show Episode 3.mp4"), b"").expect("leftover");
+        let server = show_with_two_episodes(
+            if episode == "1" {
+                "sweep-show-34"
+            } else {
+                "sweep-range-35"
+            },
+            "Sweep Show",
+            "https://subs.invalid/en.vtt",
+        );
+        download_into(&server, "Sweep Show", episode, chosen.path(), &ran).await;
+        assert!(
+            !locks.exists(),
+            "{episode}: the earlier version's leftover and its directory are gone: {:?}",
+            tree(chosen.path())
+        );
+        assert!(chosen
+            .path()
+            .join("Sweep Show/Sweep Show Episode 1.mp4")
+            .is_file());
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_sweeps_the_scratch_earlier_versions_left_in_the_chosen_and_show_folders() {
+    // Versions up to 0.18.0 wrote a transfer's scratch beside the
+    // episode, and a quit that ended the backend outright left it in
+    // view on Windows. A download into a folder removes those more than
+    // a day old, in the chosen folder and in the show's; one written
+    // since stays, as does everything else.
+    let stale = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 60 * 60);
+    let fresh = std::time::SystemTime::now();
+    let hex = "0123456789abcdef0123456789abcdef";
+    let write_at = |path: &std::path::Path, at: std::time::SystemTime| {
+        std::fs::write(path, b"most of an episode").expect("seed");
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .expect("open")
+            .set_modified(at)
+            .expect("mtime");
+    };
+    for (episode, slug) in [("1", "old-scratch-36"), ("1-2", "old-scratch-range-37")] {
+        let chosen = tempfile::tempdir().expect("chosen");
+        let logs = tempfile::tempdir().expect("logs");
+        let ran = logs.path().join("ran");
+        let show = chosen.path().join("Sweep Show");
+        std::fs::create_dir(&show).expect("show folder");
+        let in_chosen = chosen
+            .path()
+            .join(format!(".ani-gui-77-{hex}.part.mp4.part"));
+        let in_show = show.join(format!(".ani-gui-78-{hex}.part.vtt"));
+        let recent = chosen
+            .path()
+            .join(format!(".ani-gui-79-{hex}.part.mp4.ytdl"));
+        write_at(&in_chosen, stale);
+        write_at(&in_show, stale);
+        write_at(&recent, fresh);
+        let server = show_with_two_episodes(slug, "Sweep Show", "https://subs.invalid/en.vtt");
+        download_into(&server, "Sweep Show", episode, chosen.path(), &ran).await;
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        while in_chosen.exists() || in_show.exists() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "{episode}: the leftovers are gone: {:?}",
+                tree(chosen.path())
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            recent.exists(),
+            "{episode}: one written within the day stays"
+        );
+        assert!(show.join("Sweep Show Episode 1.mp4").is_file());
     }
 }

@@ -1,0 +1,47 @@
+{
+ "data": [
+  {
+   "id": "48671",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ore dake Level Up na Ken: Season 2 - Arise from the Shadow",
+    "titles": {
+     "en": "Solo Leveling Season 2 -Arise from the Shadow-",
+     "en_jp": "Ore dake Level Up na Ken: Season 2 - Arise from the Shadow",
+     "ja_jp": "俺だけレベルアップな件 Season 2 -Arise from the Shadow-"
+    },
+    "abbreviatedTitles": [
+     "Na Honjaman Level Up 2",
+     "나 혼자만 레벨업 2",
+     "俺だけレベルアップな件 第2期",
+     "Ore dake Level Up na Ken 2nd Season"
+    ],
+    "slug": "Solo-Leveling-Season-2-Arise-from-the-Shadow",
+    "startDate": "2025-01-04",
+    "endDate": "2025-03-29",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50837",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ore dake Level Up na Ken: Beyond the System",
+    "titles": {
+     "en": "Solo Leveling: Beyond the System",
+     "en_jp": "Ore dake Level Up na Ken: Beyond the System",
+     "ja_jp": "俺だけレベルアップな件 - Beyond the System -"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ore-dake-level-up-na-ken-beyond-the-system",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "tba"
+   }
+  }
+ ]
+}

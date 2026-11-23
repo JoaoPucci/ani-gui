@@ -36,7 +36,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
 
     // Reuse the long-term cache the same way play_external does — the
     // embedded player likely just resolved this exact (title, mode,
-    // quality, episode) tuple. Without it, the user waits another
+    // episode) tuple. Without it, the user waits another
     // ~30s for a fresh resolve.
     // Syncplay wraps whichever player the user already configured
     // for "Open in external" — most users have one media player
@@ -47,7 +47,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
 
     // Reuse the long-term cache the same way play_external does — the
     // embedded player likely just resolved this exact (title, mode,
-    // quality, episode) tuple. The cached referer rides along so
+    // episode) tuple. The cached referer rides along so
     // Syncplay's wrapped player gets the same flags it would have
     // under play_external.
     if let Some((launch, watch)) = try_launch_args_from_cache(state, args, &cfg).await {
@@ -57,13 +57,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             player_kind,
             cfg.external_player,
         ))?;
-        crate::commands::play_native_record::record_watch_requested_at(
-            state,
-            &watch,
-            args.kitsu_id.as_deref(),
-            asked.begun,
-        )
-        .await;
+        crate::commands::play_handoff::record_handoff_watch(state, args, &watch, asked.begun).await;
         return Ok(());
     }
 
@@ -76,13 +70,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         cfg.external_player,
     ))?;
     // The spawn is the watch: recorded once Syncplay has started.
-    crate::commands::play_native_record::record_watch_requested_at(
-        state,
-        &watch,
-        args.kitsu_id.as_deref(),
-        asked.begun,
-    )
-    .await;
+    crate::commands::play_handoff::record_handoff_watch(state, args, &watch, asked.begun).await;
     Ok(())
 }
 
@@ -102,6 +90,7 @@ pub(crate) fn syncplay_launch_for(
         player_kind,
         player_binary,
         subtitle_urls: launch.subtitle_urls,
+        subtitles_off: launch.subtitles_off,
     }
 }
 

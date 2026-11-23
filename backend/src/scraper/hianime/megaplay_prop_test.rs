@@ -7,6 +7,69 @@ use crate::scraper::provider::SUBTITLE_URL_CAP;
 use base64::Engine as _;
 use proptest::prelude::*;
 
+/// Codes a CDN names its files by, with the tag each reads as —
+/// written out here rather than read from the reader, so the
+/// properties check the reader against the standard's mapping.
+const CODES: &[(&str, &str)] = &[
+    ("eng", "en"),
+    ("spa", "es"),
+    ("por", "pt"),
+    ("fre", "fr"),
+    ("fra", "fr"),
+    ("ger", "de"),
+    ("deu", "de"),
+    ("jpn", "ja"),
+    ("chi", "zh"),
+    ("zho", "zh"),
+    ("ara", "ar"),
+    ("rus", "ru"),
+    ("ita", "it"),
+    ("kor", "ko"),
+    ("tha", "th"),
+    ("may", "ms"),
+    ("nob", "nb"),
+    ("dut", "nl"),
+    ("cze", "cs"),
+    ("gre", "el"),
+    ("rum", "ro"),
+    ("ukr", "uk"),
+];
+
+/// A code a CDN names a file by, with its tag.
+fn known_code() -> impl Strategy<Value = (&'static str, &'static str)> {
+    proptest::sample::select(CODES)
+}
+
+/// Whether `tag` is a well-formed BCP 47 tag of the shapes the reader
+/// emits: a two- or three-letter language, then optionally a script
+/// (`Hant`), then optionally a region (`BR`, `419`).
+fn is_tag(tag: &str) -> bool {
+    let mut parts = tag.split('-').peekable();
+    let Some(language) = parts.next() else {
+        return false;
+    };
+    if !((2..=3).contains(&language.len()) && language.bytes().all(|b| b.is_ascii_lowercase())) {
+        return false;
+    }
+    if let Some(script) = parts.peek().copied() {
+        let mut b = script.bytes();
+        if script.len() == 4
+            && b.next().is_some_and(|c| c.is_ascii_uppercase())
+            && b.all(|c| c.is_ascii_lowercase())
+        {
+            parts.next();
+        }
+    }
+    if let Some(region) = parts.next() {
+        let letters = region.len() == 2 && region.bytes().all(|b| b.is_ascii_uppercase());
+        let digits = region.len() == 3 && region.bytes().all(|b| b.is_ascii_digit());
+        if !(letters || digits) {
+            return false;
+        }
+    }
+    parts.next().is_none()
+}
+
 /// The constants the site's player script opens its sources answer
 /// with, written out here rather than read from the reader: the
 /// property drives the site's own cipher from the outside, so a
@@ -157,14 +220,15 @@ proptest! {
 
     /// The response round-trips: the master as given, and exactly
     /// the captions tracks with a fetchable file, in order, each with
-    /// the language its file name ends in.
+    /// the language its file name's code names. The labels name no
+    /// language, so the file name alone speaks.
     #[test]
     fn the_sources_response_round_trips_the_master_and_the_captions(
         master in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}/master\\.m3u8",
         tracks in proptest::collection::vec(
             (
-                "[a-z]{3}",
-                "[A-Za-z ()]{1,20}",
+                known_code(),
+                "[0-9 ()]{1,20}",
                 proptest::bool::ANY,
                 "(captions|subtitles|thumbnails)",
                 proptest::bool::ANY,
@@ -175,7 +239,7 @@ proptest! {
         let listed: Vec<String> = tracks
             .iter()
             .enumerate()
-            .map(|(i, (code, label, default, kind, fetchable))| {
+            .map(|(i, ((code, _), label, default, kind, fetchable))| {
                 let file = if *fetchable {
                     format!("https://c.example/subs/track_{i}_{code}.vtt")
                 } else {
@@ -191,7 +255,7 @@ proptest! {
         let expected: Vec<(String, String, bool)> = tracks
             .iter()
             .filter(|(_, _, _, kind, fetchable)| *fetchable && kind != "thumbnails")
-            .map(|(code, label, default, _, _)| (code.clone(), label.clone(), *default))
+            .map(|((_, tag), label, default, _, _)| ((*tag).to_string(), label.clone(), *default))
             .collect();
         let got: Vec<(String, String, bool)> = payload
             .subtitles
@@ -247,7 +311,7 @@ proptest! {
         master in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}/master\\.m3u8",
         rows in proptest::collection::vec(
             prop_oneof![
-                "[a-z]{3}".prop_map(|code| (Some(code), true)),
+                known_code().prop_map(|code| (Some(code), true)),
                 Just((None, false)),
             ],
             0..6,
@@ -258,7 +322,7 @@ proptest! {
             .iter()
             .enumerate()
             .map(|(i, (code, _))| match code {
-                Some(code) => serde_json::json!({
+                Some((code, _)) => serde_json::json!({
                     "file": format!("https://c.example/subs/track_{i}_{code}.vtt"),
                     "label": format!("Track {i}"),
                     "kind": "captions",
@@ -282,7 +346,7 @@ proptest! {
         prop_assert_eq!(&payload.src, &master);
         let expected: Vec<String> = rows
             .iter()
-            .filter_map(|(code, _)| code.clone())
+            .filter_map(|(code, _)| code.map(|(_, tag)| tag.to_string()))
             .collect();
         let got: Vec<String> = payload.subtitles.iter().map(|t| t.lang.clone()).collect();
         prop_assert_eq!(got, expected);
@@ -311,25 +375,92 @@ proptest! {
         prop_assert!(refused, "null sources in the clear: {null}");
     }
 
-    /// The language is the three-letter tail of the file's stem when
-    /// it has one, whatever precedes it and whatever query follows;
-    /// otherwise the trimmed label, or `und` when the label is blank.
+    /// Every file name of either naming the CDNs use reads as its
+    /// code's tag — `track_<n>_[<words>_]<code>.vtt`, `<code>-<n>.vtt`,
+    /// and the two together — whatever query follows and whichever
+    /// case the extension is in, beside a label that names no
+    /// language.
     #[test]
-    fn the_language_is_the_stems_tail_or_the_label(
-        prefix in "[a-z0-9]{1,8}(_[A-Za-z]{1,10}){0,2}",
-        code in "[a-z]{3}",
+    fn every_file_naming_reads_as_its_codes_tag(
+        (code, tag) in known_code(),
+        form in 0u8..3,
+        n in 0u32..100,
+        place in "[0-9]{1,3}",
+        words in "([A-Z][a-z]{1,8}_){0,2}",
+        ext in "(vtt|VTT)",
         query in "(\\?[a-z]=[0-9]{1,3})?",
-        label in "[A-Za-z ()]{0,16}",
+        label in "[0-9 ]{0,8}",
     ) {
-        let file = format!("https://c.example/subs/{prefix}_{code}.vtt{query}");
-        prop_assert_eq!(lang_of_track(&file, &label), code);
-        let plain = format!("https://c.example/subs/{prefix}.vtt{query}");
-        let expected = if label.trim().is_empty() { "und".to_string() } else { label.trim().to_string() };
-        // A stem whose own tail happens to be three lowercase letters
-        // reads as a code; the property covers the other stems.
-        let tail = prefix.rsplit('_').next().unwrap_or("");
-        prop_assume!(!(tail.len() == 3 && tail.bytes().all(|b| b.is_ascii_lowercase())));
-        prop_assert_eq!(lang_of_track(&plain, &label), expected);
+        let name = match form {
+            0 => format!("track_{n}_{words}{code}"),
+            1 => format!("{code}-{place}"),
+            _ => format!("track_{n}_{code}-{place}"),
+        };
+        let file = format!("https://c.example/subs/{name}.{ext}{query}");
+        prop_assert_eq!(lang_of_track(&file, &label), tag);
+    }
+
+    /// Every label the reader's table names reads as its tag beside a
+    /// file name with no code, its region or script from the
+    /// parenthesis the site writes them in, whatever the label's case.
+    #[test]
+    fn every_label_in_the_table_reads_as_its_tag(
+        (name, tag) in proptest::sample::select(&[
+            ("Arabic", "ar"), ("Chinese", "zh"), ("Croatian", "hr"), ("Czech", "cs"),
+            ("Danish", "da"), ("Dutch", "nl"), ("English", "en"), ("Finnish", "fi"),
+            ("French", "fr"), ("German", "de"), ("Greek", "el"), ("Hebrew", "he"),
+            ("Hungarian", "hu"), ("Indonesian", "id"), ("Italian", "it"), ("Japanese", "ja"),
+            ("Korean", "ko"), ("Malay", "ms"), ("Norwegian", "no"), ("Polish", "pl"),
+            ("Portuguese", "pt"), ("Romanian", "ro"), ("Russian", "ru"), ("Spanish", "es"),
+            ("Swedish", "sv"), ("Thai", "th"), ("Turkish", "tr"), ("Ukrainian", "uk"),
+            ("Vietnamese", "vi"), ("Hindi", "hi"),
+        ][..]),
+        (qualifier, script, region) in proptest::sample::select(&[
+            ("", "", ""),
+            (" (- SDH)", "", ""),
+            (" (- Brazil)", "", "-BR"),
+            (" (- Portugal)", "", "-PT"),
+            (" (- Latin America)", "", "-419"),
+            (" (- Latin America | SDH)", "", "-419"),
+            (" (- Spanish[LAT])", "", "-419"),
+            (" (- Spanish[ESP])", "", "-ES"),
+            (" (- Spain)", "", "-ES"),
+            (" (- Simplified)", "-Hans", ""),
+            (" (- Traditional)", "-Hant", ""),
+        ][..]),
+        upper in proptest::bool::ANY,
+        hash in "[0-9a-f]{8,32}",
+    ) {
+        let label = format!("{name}{qualifier}");
+        let label = if upper { label.to_uppercase() } else { label };
+        let file = format!("https://c.example/subs/{hash}.vtt");
+        prop_assert_eq!(lang_of_track(&file, &label), format!("{tag}{script}{region}"));
+    }
+
+    /// Whatever the file name and label, the language is a well-formed
+    /// tag or `und`: never the label, never a fragment of the file
+    /// name, so the player's `srclang` is always a language tag.
+    #[test]
+    fn no_file_or_label_reads_as_anything_but_a_tag(
+        file in ".{0,60}",
+        label in ".{0,40}",
+    ) {
+        let lang = lang_of_track(&file, &label);
+        prop_assert!(lang == "und" || is_tag(&lang), "{:?} from {:?} under {:?}", lang, file, label);
+    }
+
+    /// A tag-shaped `lang` field stands as listed; whatever else a
+    /// provider writes there reads as a well-formed tag or `und`.
+    #[test]
+    fn a_listed_language_field_is_a_tag_or_und(
+        tagged in "[a-z]{2,3}(-[A-Z]{2})?",
+        free in ".{0,24}",
+        label in ".{0,24}",
+    ) {
+        use crate::scraper::subtitle_language::listed_tag;
+        prop_assert_eq!(listed_tag(&tagged, &label), tagged.clone());
+        let read = listed_tag(&free, &label);
+        prop_assert!(read == "und" || is_tag(&read), "{:?} from {:?} under {:?}", read, free, label);
     }
 
     /// The sources list is read row by row: the stream is the first

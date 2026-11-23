@@ -5,7 +5,7 @@
 	"error_config_parse": "The settings file couldn't be read or saved. Restart the app, or fix the file by hand if you edited it.",
 	"error_download_ffmpeg_missing": "This download needs ffmpeg, and it isn't installed.",
 	"error_download_tool_failed": "The downloader stopped with an error before the file was finished. Try again later.",
-	"error_download_tool_spawn_failed": "The downloader couldn't be started. If you installed yt-dlp or ffmpeg yourself, check that it runs; otherwise reinstall ani-gui.",
+	"error_download_tool_spawn_failed": "The downloader couldn't be started. If you installed yt-dlp or ffmpeg yourself, check that it runs. If you didn't, reinstall ani-gui.",
 	"error_io_generic": "A file on this computer couldn't be read or written. Check free space and permissions, then try again.",
 	"error_metadata_source": "The account service couldn't complete this request. Try again, or reconnect the account in Settings.",
 	"error_network_rate_limited": "The service is busy right now. Wait a few seconds and try again.",

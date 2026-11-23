@@ -1,0 +1,416 @@
+{
+ "data": [
+  {
+   "id": "12",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece",
+    "titles": {
+     "en": "One Piece",
+     "en_jp": "One Piece",
+     "ja_jp": "ONE PIECE"
+    },
+    "abbreviatedTitles": [
+     "ワンピース"
+    ],
+    "slug": "one-piece",
+    "startDate": "1999-10-20",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "current"
+   }
+  },
+  {
+   "id": "13623",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece: Episode of East Blue - Luffy to 4-nin no Nakama no Daibouken",
+    "titles": {
+     "en": "One Piece: Episode of East Blue",
+     "en_jp": "One Piece: Episode of East Blue - Luffy to 4-nin no Nakama no Daibouken",
+     "ja_jp": "ワンピース エピソードオブ東の海[イーストブルー] ~ルフィと4人の仲間の大冒険~"
+    },
+    "abbreviatedTitles": [],
+    "slug": "one-piece-episode-of-east-blue-luffy-to-4-nin-no-nakama-no-daibouken",
+    "startDate": "2017-08-26",
+    "endDate": "2017-08-26",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6827",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Film: Z",
+    "titles": {
+     "en": "One Piece Film: Z",
+     "en_jp": "One Piece Film: Z",
+     "en_us": "One Piece Film Z",
+     "ja_jp": "ワンピース　フィルム　﻿Ｚ"
+    },
+    "abbreviatedTitles": [
+     "One Piece Movie 12"
+    ],
+    "slug": "one-piece-film-z",
+    "startDate": "2012-12-15",
+    "endDate": "2012-12-15",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "3492",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Film: Strong World",
+    "titles": {
+     "en": "One Piece Film: Strong World",
+     "en_jp": "One Piece Film: Strong World",
+     "en_us": "One Piece Film Strong World",
+     "ja_jp": "ワンピース　フィルム　ストロングワールド"
+    },
+    "abbreviatedTitles": [
+     "One Piece Movie 10"
+    ],
+    "slug": "one-piece-strong-world",
+    "startDate": "2009-12-12",
+    "endDate": "2009-12-12",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7240",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece: Episode of Nami - Koukaishi no Namida to Nakama no Kizuna",
+    "titles": {
+     "en": "One Piece: Episode of Nami - Tears of a Navigator and the Bonds of Friends",
+     "en_jp": "One Piece: Episode of Nami - Koukaishi no Namida to Nakama no Kizuna",
+     "ja_jp": "ワンピースエピソード・オブ・ナミ～航海士の涙と仲間の絆～"
+    },
+    "abbreviatedTitles": [
+     "One Piece Special",
+     "Episode of Nami: Tears of a Navigator and the Bonds of Friends"
+    ],
+    "slug": "one-piece-episode-of-nami-koukaishi-no-namida-to-nakama-no-kizuna",
+    "startDate": "2012-08-25",
+    "endDate": "2012-08-25",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7894",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece: Episode of Merry - Mou Hitori no Nakama no Monogatari",
+    "titles": {
+     "en_jp": "One Piece: Episode of Merry - Mou Hitori no Nakama no Monogatari",
+     "ja_jp": "ワンピース エピソード・オブ・メリー ～もうひとりの仲間の物語～"
+    },
+    "abbreviatedTitles": [
+     "One Piece Special",
+     "One Piece: Episode of Merry - The Tale of One More Friend"
+    ],
+    "slug": "one-piece-episode-of-merry-mou-hitori-no-nakama-no-monogatari",
+    "startDate": "2013-08-24",
+    "endDate": "2013-08-24",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8718",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece 3D2Y: Ace no shi wo Koete! Luffy Nakama Tono Chikai",
+    "titles": {
+     "en": "One Piece 3D2Y: Overcome Ace’s Death! Luffy’s Vow to his Friends",
+     "en_jp": "One Piece 3D2Y: Ace no shi wo Koete! Luffy Nakama Tono Chikai",
+     "ja_jp": "ワンピース〝3D2Y〟 エースの死を越えて！　ルフィ仲間との誓い"
+    },
+    "abbreviatedTitles": [
+     "One Piece Special 15th Anniversary"
+    ],
+    "slug": "one-piece-3d2y-special",
+    "startDate": "2014-08-30",
+    "endDate": "2014-08-30",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11351",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Film: Gold",
+    "titles": {
+     "en_jp": "One Piece Film: Gold",
+     "ja_jp": "ONE PIECE FILM GOLD"
+    },
+    "abbreviatedTitles": [
+     "One Piece Movie 13"
+    ],
+    "slug": "one-piece-film-gold",
+    "startDate": "2016-07-23",
+    "endDate": "2016-07-23",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "421",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Movie 1",
+    "titles": {
+     "en_jp": "One Piece Movie 1",
+     "ja_jp": "ONE PIECE"
+    },
+    "abbreviatedTitles": [
+     "One Piece: The Movie"
+    ],
+    "slug": "one-piece-2000",
+    "startDate": "2000-03-04",
+    "endDate": "2000-03-04",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "5469",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Film: Strong World Episode 0",
+    "titles": {
+     "en_jp": "One Piece Film: Strong World Episode 0",
+     "ja_jp": "ワンピース　フィルム　ストロングワールド　エピソードゼロ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "one-piece-strong-world-episode-0",
+    "startDate": "2010-04-01",
+    "endDate": "2010-04-01",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "426",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Movie 6: Omatsuri Danshaku to Himitsu no Shima",
+    "titles": {
+     "en": "One Piece: Baron Omatsuri and the Secret Island",
+     "en_jp": "One Piece Movie 6: Omatsuri Danshaku to Himitsu no Shima",
+     "ja_jp": "ワンピース オマツリ男爵と秘密の島"
+    },
+    "abbreviatedTitles": [],
+    "slug": "one-piece-omatsuri-danshaku-to-himitsu-no-shima",
+    "startDate": "2005-03-05",
+    "endDate": "2005-03-05",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "424",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Movie 4: Dead End no Bouken",
+    "titles": {
+     "en": "One Piece: Dead End",
+     "en_jp": "One Piece Movie 4: Dead End no Bouken",
+     "ja_jp": "ワンピース デッドエンドの冒険"
+    },
+    "abbreviatedTitles": [],
+    "slug": "one-piece-dead-end-no-bouken",
+    "startDate": "2003-03-01",
+    "endDate": "2003-03-01",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "422",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Movie 2: Nejimaki-jima no Daibouken",
+    "titles": {
+     "en": "One Piece: Clockwork Island Adventure",
+     "en_jp": "One Piece Movie 2: Nejimaki-jima no Daibouken",
+     "ja_jp": "ワンピース ねじまき島の冒険"
+    },
+    "abbreviatedTitles": [
+     "One Piece: Nejimakijima no Bouken",
+     "One Piece: Nejimaki Shima no Bouken"
+    ],
+    "slug": "one-piece-nejimaki-jima-no-daibouken",
+    "startDate": "2001-03-03",
+    "endDate": "2001-03-03",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "423",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Movie 3: Chinjuu-jima no Chopper Oukoku",
+    "titles": {
+     "en": "One Piece: Chopper Kingdom of Strange Animal Island",
+     "en_jp": "One Piece Movie 3: Chinjuu-jima no Chopper Oukoku",
+     "ja_jp": "ワンピース 珍獣島のチョッパー王国"
+    },
+    "abbreviatedTitles": [
+     "One Piece: Chinjou Shima no Chopper Oukoku"
+    ],
+    "slug": "one-piece-chinjuujima-no-chopper-oukoku",
+    "startDate": "2002-03-02",
+    "endDate": "2002-03-02",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "425",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Movie 5: Norowareta Seiken",
+    "titles": {
+     "en": "One Piece: The Curse of the Sacred Sword",
+     "en_jp": "One Piece Movie 5: Norowareta Seiken",
+     "ja_jp": "ワンピース呪われた聖剣"
+    },
+    "abbreviatedTitles": [],
+    "slug": "one-piece-norowareta-seiken",
+    "startDate": "2004-03-06",
+    "endDate": "2004-03-06",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "427",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Movie 7: Karakuri-jou no Mecha Kyohei",
+    "titles": {
+     "en_jp": "One Piece Movie 7: Karakuri-jou no Mecha Kyohei",
+     "ja_jp": "ワンピース THE MOVIE カラクリ城のメカ巨兵"
+    },
+    "abbreviatedTitles": [
+     "One Piece The Movie: Karakurijou no Mecha Kyohei",
+     "One Piece: Karakuri Shiro no Mecha Kyohei",
+     "One Piece: The Giant Mechanical Soldier of Karakuri Castle",
+     "Karakuri Castle's Mecha Giant Soldier"
+    ],
+    "slug": "one-piece-karakurijou-no-mecha-kyohei",
+    "startDate": "2006-03-04",
+    "endDate": "2006-03-04",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "1906",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Movie 8: Episode of Alabasta - Sabaku no Oujo to Kaizoku-tachi",
+    "titles": {
+     "en": "One Piece The Movie: Episode of Alabasta - The Desert Princess and the Pirates",
+     "en_jp": "One Piece Movie 8: Episode of Alabasta - Sabaku no Oujo to Kaizoku-tachi",
+     "en_us": "One Piece The Movie: Episode of Alabasta - The Desert Princess and the Pirates",
+     "ja_jp": "劇場版ワンピース エピソードオブアラバスタ 砂漠の王女と海賊たち"
+    },
+    "abbreviatedTitles": [],
+    "slug": "one-piece-episode-of-alabaster-sabaku-no-ojou-to-kaizoku-tachi",
+    "startDate": "2007-03-03",
+    "endDate": "2007-03-03",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "3300",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece Movie 9: Episode of Chopper Plus - Fuyu ni Saku, Kiseki no Sakura",
+    "titles": {
+     "en_jp": "One Piece Movie 9: Episode of Chopper Plus - Fuyu ni Saku, Kiseki no Sakura",
+     "ja_jp": "ＯＮＥ ＰＩＥＣＥ（ワンピース） エピソードオブチョッパー＋冬に咲く、奇跡の桜"
+    },
+    "abbreviatedTitles": [
+     "One Piece: Episode of Chopper Plus - Bloom in the Winter",
+     "Miracle Sakura"
+    ],
+    "slug": "one-piece-episode-of-chopper-plus-fuyu-ni-saku-kiseki-no-sakura",
+    "startDate": "2008-03-01",
+    "endDate": "2008-03-01",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4014",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece: Romance Dawn Story",
+    "titles": {
+     "en": "One Piece: Romance Dawn Story",
+     "en_jp": "One Piece: Romance Dawn Story",
+     "en_us": "One Piece: Romance Dawn Story",
+     "ja_jp": "ワンピース ロマンスドーンストーリー"
+    },
+    "abbreviatedTitles": [
+     "One Piece Prototype"
+    ],
+    "slug": "one-piece-romance-dawn-story",
+    "startDate": "2008-11-24",
+    "endDate": "2008-11-24",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "7390",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "One Piece: Episode of Luffy - Hand Island no Bouken",
+    "titles": {
+     "en_jp": "One Piece: Episode of Luffy - Hand Island no Bouken",
+     "ja_jp": "ワンピース エピソードオブルフィ 〜ハンドアイランドの冒険〜"
+    },
+    "abbreviatedTitles": [
+     "One Piece: Episode of Luffy - Hand Island Adventure"
+    ],
+    "slug": "one-piece-episode-of-luffy-hand-island-no-bouken",
+    "startDate": "2012-12-15",
+    "endDate": "2012-12-15",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

@@ -20,9 +20,11 @@ use bridge::bridge_answered;
 /// Pipeline:
 ///   1. Fetch AniList trending (top N).
 ///   2. For each entry, bridge MAL id → Kitsu anime via Kitsu's
-///      /mappings endpoint, concurrent with bounded parallelism.
+///      /mappings endpoint, every lookup at once.
 ///   3. Drop entries that don't bridge (rare — AniList show without
-///      a Kitsu mapping). Preserve the AniList ranking for the rest.
+///      a Kitsu mapping), and entries Kitsu marks nsfw, which it hides
+///      from search, browse and its own anime pages. Preserve the
+///      AniList ranking for the rest.
 ///   4. Cache the resulting `Vec<KitsuAnimeRef>` for [`TRENDING_TTL`]
 ///      (1h). AniList trending updates faster than that, but home
 ///      doesn't need sub-hour freshness.
@@ -56,11 +58,11 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     //     null covers for those entries; bumping forces a refresh.
     // v6: each ref keeps AniList's bannerImage as `anilist_banner`
     //     beside Kitsu's cover; v5 rows were built without it.
-    const KEY: &str = "kitsu:v6:trending_anilist";
+    const KEY: &str = crate::cache::families::ANILIST_TRENDING;
     if let Some(body) = meta_cache_get(&state.cache_pool, KEY)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
-            return Ok(drop_music(hits));
+            return Ok(drop_music(crate::meta::kitsu::drop_nsfw(hits)));
         }
     }
 
@@ -104,8 +106,9 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
         bridged
     };
 
-    // Bridged refs come from lookup_by_mal_id (single-resource parse), not
-    // the list parser, so sanitize music here too.
+    // Bridged refs come from lookup_by_mal_id or its lookup_by_anilist_id
+    // fallback (single-resource parse), not the list parser, so sanitize
+    // music here too.
     let hits = drop_music(hits);
     if let Ok(body) = serde_json::to_string(&hits) {
         if keep {
@@ -118,13 +121,15 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
 
 /// The list under `key` as AniList last gave it, expired or not — an
 /// expired row is kept until a new answer replaces it — less any banner
-/// since found gone. `None` when no
+/// since found gone, and less any show Kitsu marks nsfw, which a row
+/// kept before the bridge left them out can hold. `None` when no
 /// AniList list was ever kept, or the row cannot be read.
 fn last_anilist_list(state: &AppState, key: &str) -> Option<Vec<KitsuAnimeRef>> {
     let row = crate::cache::meta_cache_row(&state.cache_pool, key).ok()??;
     let hits = serde_json::from_str::<Vec<KitsuAnimeRef>>(&row.body).ok()?;
     Some(
-        hits.into_iter()
+        crate::meta::kitsu::drop_nsfw(hits)
+            .into_iter()
             .map(|r| without_gone_banner(&state.cache_pool, r))
             .collect(),
     )
@@ -148,7 +153,7 @@ fn without_gone_banner(pool: &crate::cache::SqlitePool, mut r: KitsuAnimeRef) ->
 }
 
 /// AniList trending page size — N entries fetched, then bridged to
-/// Kitsu. We render the hero from items 0..5 and the Trending strip
-/// from the rest, so 25 leaves comfortable headroom for shows that
-/// fail to bridge (rare; a couple per page at most).
+/// Kitsu. The home hero takes the first three with art and the
+/// Trending strip the rest, so 25 leaves comfortable headroom for
+/// shows that fail to bridge (rare; a couple per page at most).
 const ANILIST_TRENDING_LIMIT: u8 = 25;

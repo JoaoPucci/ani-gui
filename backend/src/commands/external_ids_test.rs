@@ -1,7 +1,6 @@
 //! Tests for `crate::commands::external_ids`. Extracted via `#[path]`
 //! so the wiremock fixtures stay off the command file's CRAP budget.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use wiremock::matchers::{method, path};
@@ -15,8 +14,9 @@ use crate::meta::kitsu::ExternalIds;
 
 /// `AppState` whose Kitsu client points at `kitsu_uri`; everything
 /// else is throwaway.
-fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
-    Arc::new(AppState {
+fn state_with_kitsu(kitsu_uri: &str) -> crate::scratch::Scratch<Arc<AppState>> {
+    let dirs = crate::scratch::dir();
+    let state = Arc::new(AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -25,18 +25,20 @@ fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    })
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    });
+    dirs.hold(state)
 }
 
 /// Kitsu `/anime/:id?include=mappings` body carrying the given
@@ -112,7 +114,7 @@ async fn a_complete_mapping_is_kept_for_thirty_days() {
 
     external_ids_for(&state, "12").await.expect("read");
 
-    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v2:k12")
+    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v3:k12")
         .expect("cache read")
         .expect("row written");
     assert_eq!(row.ttl_seconds, 30 * DAY);
@@ -136,7 +138,7 @@ async fn a_mapping_missing_a_tracker_is_kept_for_a_day() {
         }
     );
 
-    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v2:k50497")
+    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v3:k50497")
         .expect("cache read")
         .expect("row written");
     assert_eq!(row.ttl_seconds, DAY);
@@ -153,7 +155,7 @@ async fn a_show_with_no_mapping_at_all_is_kept_for_a_day_too() {
     assert_eq!(first, ExternalIds::default());
     assert_eq!(second, ExternalIds::default());
 
-    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v2:k999")
+    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v3:k999")
         .expect("cache read")
         .expect("row written");
     assert_eq!(row.ttl_seconds, DAY);
@@ -169,7 +171,7 @@ async fn a_row_this_build_cannot_read_is_fetched_again_and_overwritten() {
     let state = state_with_kitsu(&kitsu.uri());
     crate::cache::meta_cache_put(
         &state.cache_pool,
-        "kitsu:external-ids:v2:k12",
+        "kitsu:external-ids:v3:k12",
         "not the shape",
         DAY,
     )
@@ -183,11 +185,13 @@ async fn a_row_this_build_cannot_read_is_fetched_again_and_overwritten() {
             anilist: Some(21),
         }
     );
-    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v2:k12")
+    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v3:k12")
         .expect("cache read")
         .expect("row");
+    let kept: serde_json::Value =
+        serde_json::from_str(&row.body).expect("overwritten with the shape");
     assert_eq!(
-        serde_json::from_str::<ExternalIds>(&row.body).expect("overwritten with the shape"),
+        serde_json::from_value::<ExternalIds>(kept).expect("the ids"),
         ids
     );
 }
@@ -241,4 +245,58 @@ async fn an_empty_row_an_earlier_build_kept_is_not_read() {
     .expect("seed");
     let ids = external_ids_for(&state, "12").await.expect("read");
     assert_eq!(ids.mal, Some(21), "asked again rather than read from v1");
+}
+
+/// [`mappings_body`] with Kitsu's `coverImage` for the anime.
+fn mappings_body_with_cover(kitsu_id: &str, sites: &[(&str, u32)]) -> String {
+    let mut body: serde_json::Value =
+        serde_json::from_str(&mappings_body(kitsu_id, sites)).expect("a body");
+    body["data"]["attributes"]["coverImage"] =
+        serde_json::json!({ "original": "https://media.kitsu.app/c.jpg" });
+    body.to_string()
+}
+
+#[tokio::test]
+async fn the_row_keeps_whether_kitsu_has_a_cover_for_the_show() {
+    let covered = mappings_body_with_cover("12", &[("myanimelist/anime", 21)]);
+    let bare = mappings_body("13", &[("myanimelist/anime", 22)]);
+    let kitsu = MockServer::start().await;
+    for (id, body) in [("12", covered), ("13", bare)] {
+        Mock::given(method("GET"))
+            .and(path(format!("/anime/{id}")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .expect(1)
+            .mount(&kitsu)
+            .await;
+    }
+    let state = state_with_kitsu(&kitsu.uri());
+    assert_eq!(
+        super::kitsu_has_cover(&state.cache_pool, "12"),
+        None,
+        "nothing read yet"
+    );
+
+    external_ids_for(&state, "12").await.expect("read");
+    external_ids_for(&state, "13").await.expect("read");
+    assert_eq!(super::kitsu_has_cover(&state.cache_pool, "12"), Some(true));
+    assert_eq!(super::kitsu_has_cover(&state.cache_pool, "13"), Some(false));
+}
+
+#[tokio::test]
+async fn a_row_from_before_the_cover_was_kept_is_asked_again() {
+    // A v2 row says nothing about the cover: the show is asked again,
+    // not read as one Kitsu has no cover for.
+    let body = mappings_body_with_cover("12", &[("myanimelist/anime", 21)]);
+    let kitsu = kitsu_answering("12", ResponseTemplate::new(200).set_body_string(body), 1).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "kitsu:external-ids:v2:k12",
+        r#"{"mal":21,"anilist":null}"#,
+        30 * DAY,
+    )
+    .expect("seed");
+
+    external_ids_for(&state, "12").await.expect("read");
+    assert_eq!(super::kitsu_has_cover(&state.cache_pool, "12"), Some(true));
 }

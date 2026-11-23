@@ -7,6 +7,7 @@ import {
 	allmangaKitsuMapPlayed,
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
+	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
 	kitsuTitleMatchGet,
@@ -15,21 +16,25 @@ import {
 	type KitsuAnimeRef
 } from '$lib/api';
 
+import type * as Api from '$lib/api';
+import { errorEnvelope } from '$lib/testing/wire-answers';
+import type { AniErrorPayload } from '$lib/api';
 // Mock the api module wholesale — `match.ts` is decoupled from the
 // transport (HTTP fetch to the backend), and the assertions
 // here are about which api functions get called with what args.
 // Mocking the module itself lets these tests survive any future
 // transport switch without churn.
 vi.mock('$lib/api', () => ({
-	allmangaKitsuMapDelete: vi.fn(),
-	allmangaKitsuMapGet: vi.fn(),
-	allmangaKitsuMapPlayed: vi.fn(),
-	kitsuAnimeBySlug: vi.fn(),
-	kitsuAnimeDetail: vi.fn(),
-	kitsuResolveAllmangaShowId: vi.fn(),
-	kitsuSearch: vi.fn(),
-	kitsuTitleMatchGet: vi.fn(),
-	kitsuTitleMatchPut: vi.fn()
+	allmangaKitsuMapDelete: vi.fn<typeof Api.allmangaKitsuMapDelete>(),
+	allmangaKitsuMapGet: vi.fn<typeof Api.allmangaKitsuMapGet>(),
+	allmangaKitsuMapPlayed: vi.fn<typeof Api.allmangaKitsuMapPlayed>(),
+	kitsuAnimeBySlug: vi.fn<typeof Api.kitsuAnimeBySlug>(),
+	kitsuAnimeDetail: vi.fn<typeof Api.kitsuAnimeDetail>(),
+	kitsuGuessRuledOut: vi.fn<typeof Api.kitsuGuessRuledOut>(),
+	kitsuResolveAllmangaShowId: vi.fn<typeof Api.kitsuResolveAllmangaShowId>(),
+	kitsuSearch: vi.fn<typeof Api.kitsuSearch>(),
+	kitsuTitleMatchGet: vi.fn<typeof Api.kitsuTitleMatchGet>(),
+	kitsuTitleMatchPut: vi.fn<typeof Api.kitsuTitleMatchPut>()
 }));
 
 const mockedAllmangaDelete = vi.mocked(allmangaKitsuMapDelete);
@@ -38,6 +43,7 @@ const mockedPlayed = vi.mocked(allmangaKitsuMapPlayed);
 const mockedSlug = vi.mocked(kitsuAnimeBySlug);
 const mockedDetail = vi.mocked(kitsuAnimeDetail);
 const mockedResolveAllmanga = vi.mocked(kitsuResolveAllmangaShowId);
+const mockedRuledOut = vi.mocked(kitsuGuessRuledOut);
 const mockedSearch = vi.mocked(kitsuSearch);
 const mockedGetMatch = vi.mocked(kitsuTitleMatchGet);
 const mockedPutMatch = vi.mocked(kitsuTitleMatchPut);
@@ -49,6 +55,8 @@ const stubKitsu = (
 ): KitsuAnimeRef => ({
 	id,
 	canonical_title,
+	titles: {},
+	abbreviated_titles: [],
 	slug: null,
 	synopsis: null,
 	start_date: null,
@@ -81,6 +89,8 @@ beforeEach(() => {
 	mockedResolveAllmanga.mockReset();
 	mockedResolveAllmanga.mockResolvedValue(null);
 	mockedSearch.mockReset();
+	mockedRuledOut.mockReset();
+	mockedRuledOut.mockResolvedValue([]);
 	mockedGetMatch.mockReset();
 	mockedPutMatch.mockReset();
 	mockedPutMatch.mockResolvedValue(undefined);
@@ -206,6 +216,15 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
 	});
 
+	it('says its trust could not be read when the played read of a standing mapping fails', async () => {
+		mockedAllmangaMap.mockResolvedValue('49877');
+		mockedDetail.mockResolvedValue(seitokai());
+		mockedPlayed.mockRejectedValue(new Error('backend down'));
+		mockedSearch.mockResolvedValue([greenwood()]);
+		const got = await resolveKitsuMatchWithTrust(seitokaiRow());
+		expect(got.trustUnread).toBe(true);
+	});
+
 	it('does not keep a title-doubted mapping no play stored', async () => {
 		// A guess an earlier resolve stored: Greenwood for the same row.
 		mockedAllmangaMap.mockResolvedValue('1623');
@@ -285,6 +304,7 @@ describe('resolveKitsuMatch', () => {
 			preliminary.searchTitle,
 			preliminary.cour,
 			'fresh-id',
+			null,
 			null
 		);
 	});
@@ -302,13 +322,43 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedGetMatch).toHaveBeenCalledWith(
 			preliminary.searchTitle,
 			preliminary.cour,
-			'hianime'
+			'hianime',
+			null
 		);
 		expect(mockedPutMatch).toHaveBeenCalledWith(
 			preliminary.searchTitle,
 			preliminary.cour,
 			'fresh-id',
-			'hianime'
+			'hianime',
+			null
+		);
+	});
+
+	it('asks and writes the title match under the year the row names', async () => {
+		// Two rows titled alike name different years, and guess
+		// different shows: each keeps its own.
+		const preliminary = resolveHistoryEntry(
+			{
+				id: 'hianime:jojos-bizarre-adventure-2000-5182',
+				ep_no: '1',
+				title: "JoJo's Bizarre Adventure",
+				key_year: 2000
+			},
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([
+			{ ...stubKitsu('7730', 'JoJo no Kimyou na Bouken: Adventure'), start_date: '2000-05-25' }
+		]);
+
+		await resolveKitsuMatch(preliminary);
+		expect(mockedGetMatch).toHaveBeenCalledWith("JoJo's Bizarre Adventure", 1, 'hianime', 2000);
+		expect(mockedPutMatch).toHaveBeenCalledWith(
+			"JoJo's Bizarre Adventure",
+			1,
+			'7730',
+			'hianime',
+			2000
 		);
 	});
 
@@ -387,7 +437,7 @@ describe('resolveKitsuMatch', () => {
 		mockedSearch.mockResolvedValue([]);
 
 		await resolveKitsuMatch(preliminary);
-		expect(mockedGetMatch).toHaveBeenCalledWith(preliminary.searchTitle, 2, null);
+		expect(mockedGetMatch).toHaveBeenCalledWith(preliminary.searchTitle, 2, null, null);
 	});
 
 	it('multi-cour entry: tries slug-fetch first and skips search when slug hits', async () => {
@@ -437,6 +487,20 @@ describe('resolveKitsuMatch', () => {
 	// has a deterministic id-keyed mapping that beats fuzzy text
 	// search. Resolver checks this first; on hit, no kitsuSearch /
 	// title-match round-trip is necessary.
+
+	it('says its trust could not be read when a mapping whose show checks out cannot read its played mark', async () => {
+		mockedAllmangaMap.mockResolvedValue('11061');
+		mockedDetail.mockResolvedValue(stubKitsu('11061', 'Naruto: Shippuuden', 500));
+		mockedPlayed.mockRejectedValue(new Error('backend down'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(
+				{ id: 'vDTSJHSpYnrkZnAvG', ep_no: '150', title: 'Nato: Shippuuden (500 episodes)' },
+				null
+			)
+		);
+		expect(got).toMatchObject({ trusted: false, trustUnread: true });
+		expect(got.match?.id).toBe('11061');
+	});
 
 	it('uses the provider→kitsu reverse mapping when present', async () => {
 		// Naruto's provider title is typo'd ("Nato: Shippuuden") so
@@ -702,8 +766,9 @@ describe('resolveKitsuMatch', () => {
 
 	it('evicts a music-subtype reverse-map binding and re-resolves (the Idol bug)', async () => {
 		// The Love Live movie's provider show_id was poisoned to point at the
-		// YOASOBI "Idol" music video (Kitsu subtype `music`, 1 ep). Music never
-		// exists on the provider, so step 0 must drop the row and re-resolve — the
+		// YOASOBI "Idol" music video (Kitsu subtype `music`, 1 ep). No play
+		// starts from a music entry (search never offers one), so the mapping
+		// is a poisoned guess: step 0 must drop the row and re-resolve — the
 		// card stops showing "Idol" for a Love Live entry.
 		const preliminary = resolveHistoryEntry(
 			{
@@ -844,7 +909,8 @@ describe('a recorded id Kitsu cannot read', () => {
 
 	it.each([404, 410])('matches the row anew when Kitsu answers %i for it', async (status) => {
 		mockedDetail.mockImplementation(async (id) => {
-			if (id === '999') throw { kind: 'upstream', status, key: 'error.network.upstream' };
+			if (id === '999')
+				throw errorEnvelope({ kind: 'upstream', status, key: 'error.network.upstream' });
 			return stubKitsu(id, 'Cowboy Bebop', 26);
 		});
 		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
@@ -855,7 +921,8 @@ describe('a recorded id Kitsu cannot read', () => {
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
-	it.each([
+	// `http` is the envelope `$lib/api` builds for an error with no body.
+	it.each<[string, AniErrorPayload]>([
 		['a provider 503', { kind: 'upstream', status: 503, key: 'error.network.upstream' }],
 		['a rate limit', { kind: 'upstream', status: 429, key: 'error.network.upstream' }],
 		['an unreachable network', { kind: 'network', key: 'error.network.unreachable' }],
@@ -961,7 +1028,8 @@ describe('which Continue matches a play may record', () => {
 
 	it('does not record the match a row whose recorded id is gone falls back to', async () => {
 		mockedDetail.mockImplementation(async (id) => {
-			if (id === '999') throw { kind: 'upstream', status: 404, key: 'error.network.upstream' };
+			if (id === '999')
+				throw errorEnvelope({ kind: 'upstream', status: 404, key: 'error.network.upstream' });
 			return stubKitsu(id, 'Cowboy Bebop', 26);
 		});
 		mockedGetMatch.mockResolvedValue(null);
@@ -976,5 +1044,423 @@ describe('which Continue matches a play may record', () => {
 
 		expect(got.match?.id).toBe('1');
 		expect(got.trusted).toBe(false);
+	});
+});
+
+describe('the hits a row rules out', () => {
+	const jjk = () =>
+		resolveHistoryEntry(
+			{ id: 'hianime:jujutsu-kaisen-237', ep_no: '24', title: 'Jujutsu Kaisen (TV)' },
+			null
+		);
+	const special = () => ({
+		...stubKitsu('43886', "Jujutsu Kaisen New Year's Special", 1),
+		slug: 'jujutsu-kaisen-new-year-s-special',
+		subtype: 'special'
+	});
+
+	it("asks with the row's search title, episode and show key, and the search's hits", async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([special()]);
+
+		await resolveKitsuMatch(jjk());
+
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[special()],
+			'hianime:jujutsu-kaisen-237',
+			true
+		);
+	});
+
+	it("sends a slug lookup's entry alone, not as a search's answer", async () => {
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-1', ep_no: '1', title: 'Show Season 2' },
+			null
+		);
+		const entry = { ...stubKitsu('7', 'Show Season 2', 12), slug: 'show-season-2' };
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSlug.mockResolvedValue(entry);
+
+		await resolveKitsuMatch(row);
+
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Show Season 2',
+			1,
+			[entry],
+			'hianime:show-season-2-1',
+			false
+		);
+	});
+
+	it('sends a stored title match alone, not as a search answer', async () => {
+		const movie = { ...stubKitsu('44212', 'Jujutsu Kaisen 0', 1), subtype: 'movie' };
+		mockedGetMatch.mockResolvedValue('44212');
+		mockedDetail.mockResolvedValue(movie);
+
+		await resolveKitsuMatch(
+			resolveHistoryEntry(
+				{ id: 'hianime:jujutsu-kaisen-0-413', ep_no: '1', title: 'Jujutsu Kaisen 0 Movie' },
+				null
+			)
+		);
+
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Jujutsu Kaisen 0 Movie',
+			1,
+			[movie],
+			'hianime:jujutsu-kaisen-0-413',
+			false
+		);
+	});
+
+	it('never offers a hit the row rules out, and goes on to the show key', async () => {
+		// hianime's "Jujutsu Kaisen (TV)" brings back the New Year's
+		// Special alone. The row names a series and is 24 episodes in,
+		// so the special is out, and the show key's words answer.
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockResolvedValue(['43886']);
+		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('42765');
+		expect(mockedResolveAllmanga).toHaveBeenCalledWith('hianime:jujutsu-kaisen-237', true);
+		expect(mockedPutMatch).toHaveBeenCalledWith('Jujutsu Kaisen (TV)', 1, '42765', 'hianime', null);
+	});
+
+	it('picks among the hits the row leaves', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([special(), stubKitsu('42765', 'Jujutsu Kaisen', 24)]);
+		mockedRuledOut.mockResolvedValue(['43886']);
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('42765');
+		expect(mockedResolveAllmanga).not.toHaveBeenCalled();
+	});
+
+	it("passes over a slug lookup's entry the row rules out", async () => {
+		// A later season's row looks its slug up first; an entry the row
+		// rules out there goes the way of a search hit it rules out.
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-1', ep_no: '1', title: 'Show Season 2' },
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSlug.mockResolvedValue({
+			...stubKitsu('7', 'Show Season 2 Part 2', 12),
+			slug: 'show-season-2'
+		});
+		mockedRuledOut.mockImplementation(async (_t, _e, hits) =>
+			hits.filter((h) => h.id === '7').map((h) => h.id)
+		);
+		mockedSearch.mockResolvedValue([{ ...stubKitsu('8', 'Show Season 2', 12), slug: 'show-2' }]);
+
+		const got = await resolveKitsuMatch(row);
+
+		expect(got?.id).toBe('8');
+		expect(mockedSearch).toHaveBeenCalledWith('Show Season 2');
+	});
+
+	it('rules none out when the backend cannot answer', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockRejectedValue(new Error('down'));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('43886');
+	});
+
+	it('stores no pick the rules could not check, so the next load asks again', async () => {
+		// With the rules unanswered, this load still shows a card, but
+		// the pick is one the rules may refuse: stored as the title
+		// match, it would stand for the match's whole lifetime without
+		// the rules ever being asked again.
+		// The title-match store as the backend keeps it: what a load
+		// puts, the next load gets.
+		let stored: string | null = null;
+		mockedGetMatch.mockImplementation(async () => stored);
+		mockedPutMatch.mockImplementation(async (_t, _c, id) => {
+			stored = id;
+		});
+		mockedDetail.mockImplementation(async (id) =>
+			id === '43886' ? special() : stubKitsu(id, 'Jujutsu Kaisen', 24)
+		);
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockRejectedValueOnce(new Error('down'));
+
+		await resolveKitsuMatch(jjk());
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+		expect(stored).toBeNull();
+
+		mockedRuledOut.mockResolvedValue(['43886']);
+		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
+		const again = await resolveKitsuMatch(jjk());
+		expect(again?.id).toBe('42765');
+	});
+
+	it('passes over a stored match the row now rules out, and picks again', async () => {
+		// A match stored while the row was at its first episode can be a
+		// hit the row rules out further on: the special stands at episode
+		// 1 of "Jujutsu Kaisen (TV)" but not at 24. The stored entry goes
+		// through the rules like a search hit before it is trusted.
+		mockedGetMatch.mockResolvedValue('43886');
+		mockedDetail.mockResolvedValue(special());
+		mockedSearch.mockResolvedValue([special()]);
+		mockedRuledOut.mockResolvedValue(['43886']);
+		mockedResolveAllmanga.mockResolvedValue(stubKitsu('42765', 'Jujutsu Kaisen', 24));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('42765');
+		expect(mockedRuledOut).toHaveBeenCalledWith(
+			'Jujutsu Kaisen (TV)',
+			24,
+			[special()],
+			'hianime:jujutsu-kaisen-237',
+			true
+		);
+	});
+
+	it('trusts a stored match as before when the rules cannot answer', async () => {
+		mockedGetMatch.mockResolvedValue('43886');
+		mockedDetail.mockResolvedValue(special());
+		mockedRuledOut.mockRejectedValue(new Error('down'));
+
+		const got = await resolveKitsuMatch(jjk());
+
+		expect(got?.id).toBe('43886');
+		expect(mockedSearch).not.toHaveBeenCalled();
+	});
+
+	it("stores no pick when the slug lookup's check failed", async () => {
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-1', ep_no: '1', title: 'Show Season 2' },
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSlug.mockResolvedValue({ ...stubKitsu('7', 'Show Season 2', 12), slug: 'show-season-2' });
+		mockedRuledOut.mockRejectedValueOnce(new Error('down'));
+
+		const got = await resolveKitsuMatch(row);
+
+		expect(got?.id).toBe('7');
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+});
+
+describe('a resolution the page that asked can cancel', () => {
+	const abortError = () => new DOMException('The operation was aborted.', 'AbortError');
+
+	it('hands its signal to every read it makes', async () => {
+		const page = new AbortController();
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:some-show-1', ep_no: '3', title: 'Some Show Season 2' },
+			null
+		);
+		mockedAllmangaMap.mockResolvedValue('77');
+		mockedDetail.mockResolvedValue(stubKitsu('77', 'Unrelated Music', 1));
+		mockedGetMatch.mockResolvedValue('88');
+		mockedSlug.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('99', 'Some Show Season 2', 12)]);
+		mockedRuledOut.mockResolvedValue(['99']);
+
+		await resolveKitsuMatchWithTrust(row, { signal: page.signal });
+
+		const withSignal = { signal: page.signal };
+		for (const read of [
+			mockedAllmangaMap,
+			mockedDetail,
+			mockedGetMatch,
+			mockedSlug,
+			mockedSearch,
+			mockedRuledOut,
+			mockedResolveAllmanga
+		]) {
+			expect(read).toHaveBeenCalled();
+			for (const call of read.mock.calls) expect(call.at(-1)).toEqual(withSignal);
+		}
+	});
+
+	it('rejects with the abort once its signal aborted, never as a row with no match', async () => {
+		const page = new AbortController();
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:some-show-1', ep_no: '3', title: 'Some Show' },
+			null
+		);
+		mockedGetMatch.mockImplementation(async () => {
+			page.abort();
+			throw abortError();
+		});
+		mockedSearch.mockRejectedValue(abortError());
+		mockedResolveAllmanga.mockRejectedValue(abortError());
+
+		await expect(resolveKitsuMatchWithTrust(row, { signal: page.signal })).rejects.toMatchObject({
+			name: 'AbortError'
+		});
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+
+	it('stores no title match for a pick made as its signal aborted', async () => {
+		const page = new AbortController();
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:some-show-1', ep_no: '3', title: 'Some Show' },
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockImplementation(async () => {
+			page.abort();
+			return [stubKitsu('99', 'Some Show', 12)];
+		});
+
+		await expect(resolveKitsuMatchWithTrust(row, { signal: page.signal })).rejects.toMatchObject({
+			name: 'AbortError'
+		});
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+});
+
+// A match that could not be read is told apart from a row with none: a
+// card check that could not read it must not take the card for one no
+// longer guessed ($lib/history/link-deps.ts).
+describe('a match that could not be read', () => {
+	it('says so when the recorded show cannot be read', async () => {
+		mockedDetail.mockRejectedValue(new Error('offline'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:x-1', ep_no: '1', title: 'X', kitsu_id: '49877' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it('says so when the live search itself fails', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockRejectedValue(new Error('network down'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(entry('Obscure (12 episodes)', '1'), null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it('says so when the search found nothing and the show-id enrichment failed', async () => {
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockRejectedValue(new Error('backend busy'));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(
+				{ id: 'ReooPAxPMsHM4KPMY', ep_no: '1', title: '1P (1161 episodes)' },
+				null
+			)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it("says so when the stored mapping's show could not be read and no guess was found", async () => {
+		mockedAllmangaMap.mockResolvedValue('4013');
+		mockedDetail.mockRejectedValue({
+			kind: 'upstream',
+			status: 503,
+			key: 'error.network.upstream'
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true, trustUnread: true });
+	});
+
+	it('reads a stored mapping Kitsu answered gone as no mapping, not as unread', async () => {
+		mockedAllmangaMap.mockResolvedValue('4013');
+		mockedDetail.mockRejectedValue({
+			kind: 'upstream',
+			status: 404,
+			key: 'error.network.upstream'
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false });
+	});
+
+	it('says nothing of the kind for a row the search read and matched to nothing', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([]);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(entry('Obscure (12 episodes)', '1'), null)
+		);
+		expect(got.match).toBeNull();
+		expect(got.unread).toBeUndefined();
+	});
+});
+
+// A stored mapping a play may have stored makes the row's match one a
+// play may record. When it cannot be read, whether the row is a guess
+// at all is not known, whatever the guess steps found after it.
+describe('a match whose trust could not be read', () => {
+	it("says so when the stored mapping's show cannot be read, though a guess is found", async () => {
+		mockedAllmangaMap.mockResolvedValue('stale-kitsu');
+		mockedDetail.mockRejectedValueOnce({
+			kind: 'upstream',
+			status: 503,
+			key: 'error.network.upstream'
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('fresh-id', 'Demon Slayer')]);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(
+				{ id: 'show-stale', ep_no: '5', title: 'Demon Slayer (26 episodes)' },
+				null
+			)
+		);
+		expect(got.match?.id).toBe('fresh-id');
+		expect(got.trustUnread).toBe(true);
+	});
+
+	it('says nothing of it for a row with no stored mapping', async () => {
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('fresh-id', 'Demon Slayer')]);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'show-new', ep_no: '5', title: 'Demon Slayer (26 episodes)' }, null)
+		);
+		expect(got.trustUnread).toBeUndefined();
+	});
+});
+
+describe('a guess the title-match cache could not answer', () => {
+	it('says the match could not be read when nothing was found after it', async () => {
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockRejectedValue(new Error('cache down'));
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
+	});
+
+	it("says so when the cached match's show failed to read, and nothing was found after it", async () => {
+		mockedAllmangaMap.mockResolvedValue(null);
+		mockedGetMatch.mockResolvedValue('4013');
+		mockedDetail.mockRejectedValue({
+			kind: 'upstream',
+			status: 503,
+			key: 'error.network.upstream'
+		});
+		mockedSearch.mockResolvedValue([]);
+		mockedResolveAllmanga.mockResolvedValue(null);
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:show-1', ep_no: '1', title: 'Show (12 episodes)' }, null)
+		);
+		expect(got).toEqual({ match: null, trusted: false, unread: true });
 	});
 });

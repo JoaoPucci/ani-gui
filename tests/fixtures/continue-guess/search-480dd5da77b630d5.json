@@ -1,0 +1,112 @@
+{
+ "data": [
+  {
+   "id": "13569",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan Season 3",
+    "titles": {
+     "en": "Attack on Titan Season 3",
+     "en_jp": "Shingeki no Kyojin Season 3",
+     "ja_jp": "進撃の巨人 Season 3"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-3",
+    "startDate": "2018-07-23",
+    "endDate": "2018-10-15",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41982",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan Season 3 Part 2",
+    "titles": {
+     "en": "Attack on Titan Season 3 Part 2",
+     "en_jp": "Shingeki no Kyojin Season 3 Part 2",
+     "ja_jp": "進撃の巨人 Season 3 Part 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shingeki-no-kyojin-3-part-2",
+    "startDate": "2019-04-29",
+    "endDate": "2019-07-01",
+    "episodeCount": 10,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42247",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan Season 3 Specials",
+    "titles": {
+     "en": "Attack on Titan Season 3 Specials",
+     "en_jp": "Shingeki no Kyojin Season 3 Specials",
+     "ja_jp": "｢進撃の巨人｣ちみキャラ劇場”とんでけ！新生リヴァイ班”"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin: Chimi Chara Gekijou \"Tondeke! Shinsei Levi Han\""
+    ],
+    "slug": "shingeki-no-kyojin-season-3-specials",
+    "startDate": "2018-10-17",
+    "endDate": "2019-09-18",
+    "episodeCount": 7,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46038",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: The Final Season - Final Chapters Part 1",
+    "titles": {
+     "en": "Attack on Titan: The Final Season - Final Chapters Part 1",
+     "en_jp": "Shingeki no Kyojin: The Final Season Kanketsu-Hen (Zenpen)",
+     "ja_jp": "進撃の巨人 The Final Season 完結編 (前編)"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin: The Final Season Final Edition",
+     "Shingeki no Kyojin: The Final Season Part 3",
+     "Attack on Titan: The Final Season Part 3",
+     "Attack on Titan The Final Season Final Arc",
+     "Attack on Titan Season 4 Part 3",
+     "Attack on Titan Season 4 - Final Edition (Part 1)",
+     "Attack on Titan: The Final Season - Final Edition (Part 1)",
+     "Attack on Titan Final Season THE FINAL CHAPTERS Special 1"
+    ],
+    "slug": "shingeki-no-kyojin-the-final-season-part-3",
+    "startDate": "2023-03-03",
+    "endDate": "2023-03-03",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47130",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "15-pun de Oitsukeru: Shingeki no Kyojin",
+    "titles": {
+     "en": "Attack on Titan in 15 Minutes",
+     "en_jp": "15-pun de Oitsukeru: Shingeki no Kyojin",
+     "ja_jp": "15分で追いつける！アニメ『進撃の巨人』"
+    },
+    "abbreviatedTitles": [
+     "Catch up in 15 minutes! Anime \"Attack on Titan\" Digest"
+    ],
+    "slug": "15-pun-de-oitsukeru-shingeki-no-kyojin",
+    "startDate": "2020-12-02",
+    "endDate": "2020-12-02",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

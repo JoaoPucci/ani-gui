@@ -1,0 +1,27 @@
+{
+ "data": [
+  {
+   "id": "44294",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "JoJo's Bizarre Adventure: Stone Ocean",
+    "titles": {
+     "en": "JoJo's Bizarre Adventure: Stone Ocean",
+     "en_jp": "JoJo no Kimyou na Bouken: Stone Ocean",
+     "en_us": "JoJo's Bizarre Adventure STONE OCEAN",
+     "ja_jp": "ジョジョの奇妙な冒険 ストーンオーシャン"
+    },
+    "abbreviatedTitles": [
+     "JoJo no Kimyou na Bouken: Sutōn Ōshan",
+     "Jojo part 6"
+    ],
+    "slug": "jojo-s-bizarre-adventure-part-6-stone-ocean",
+    "startDate": "2021-12-01",
+    "endDate": "2021-12-01",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

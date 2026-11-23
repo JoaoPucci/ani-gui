@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "46873",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "SPY×FAMILY Season 2",
+    "titles": {
+     "en": "SPY x FAMILY Season 2",
+     "en_jp": "SPY×FAMILY Season 2",
+     "ja_jp": "SPY×FAMILY Season 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "spy-x-family-season-2",
+    "startDate": "2023-10-07",
+    "endDate": "2023-12-23",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

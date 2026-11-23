@@ -539,6 +539,7 @@ fn shipped_state(td: &tempfile::TempDir) -> AppState {
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
     }
 }
 
@@ -561,6 +562,7 @@ async fn resolve_unreachable(state: &AppState) -> NativeError {
             episode: "1",
             mode: "sub",
             quality: "best",
+            wanted: crate::scraper::track_preference::Wanted::locale("en"),
             expected_count: None,
             year: None,
             subtype: None,
@@ -617,6 +619,7 @@ async fn a_shipped_clients_requests_are_admitted_through_its_providers_gate() {
                     episode: "1",
                     mode: "sub",
                     quality: "best",
+                    wanted: crate::scraper::track_preference::Wanted::locale("en"),
                     expected_count: None,
                     year: None,
                     subtype: None,

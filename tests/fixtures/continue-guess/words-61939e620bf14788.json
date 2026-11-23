@@ -1,0 +1,41 @@
+{
+ "data": [
+  {
+   "id": "49264",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "[Oshi no Ko] 3rd Season",
+    "titles": {
+     "en": "Oshi no Ko Season 3",
+     "en_jp": "[Oshi no Ko] 3rd Season",
+     "ja_jp": "【推しの子】第3期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "oshi-no-ko-season-3",
+    "startDate": "2026-01-14",
+    "endDate": "2026-03-25",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "51130",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Serenade (2026)",
+    "titles": {
+     "en_jp": "Serenade (2026)",
+     "ja_jp": "セレナーデ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "serenade-2026",
+    "startDate": "2026-01-21",
+    "endDate": "2026-01-21",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

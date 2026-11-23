@@ -12,7 +12,7 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "preload.js"), "utf-8");
 
-function exposedWith(argv) {
+function exposedWith(argv, { sendSync = () => undefined } = {}) {
   const exposed = {};
   const electron = {
     contextBridge: {
@@ -20,7 +20,7 @@ function exposedWith(argv) {
         exposed[name] = value;
       },
     },
-    ipcRenderer: { invoke() {}, send() {}, sendSync() {}, on() {}, removeListener() {} },
+    ipcRenderer: { invoke() {}, send() {}, sendSync, on() {}, removeListener() {} },
   };
   vm.runInNewContext(source, {
     require: (id) => {
@@ -33,14 +33,46 @@ function exposedWith(argv) {
   return exposed.aniGui;
 }
 
-test("the API's origin and the secret come off their flags", () => {
+test("the API's origin comes off its flag", () => {
+  const bridge = exposedWith(["electron", "--ani-gui-api-base=http://127.0.0.1:1"]);
+  assert.equal(bridge.apiBase, "http://127.0.0.1:1");
+});
+
+// The secret is not on the renderer's command line, where other local
+// programs can read it: the preload asks the main process for it, which
+// answers only the app's own page (lib/secret-handoff.cjs).
+test("the secret comes from the main process, asked once, synchronously, before the page runs", () => {
+  const asked = [];
+  const bridge = exposedWith(["electron", "--ani-gui-api-base=http://127.0.0.1:1"], {
+    sendSync: (channel) => {
+      asked.push(channel);
+      return "c0ffee";
+    },
+  });
+  assert.deepEqual(asked, ["ani-gui:internal-secret"]);
+  assert.equal(bridge.internalSecret, "c0ffee");
+});
+
+test("a secret flag on the command line is not read", () => {
   const bridge = exposedWith([
     "electron",
     "--ani-gui-api-base=http://127.0.0.1:1",
     "--ani-gui-internal-secret=s",
   ]);
-  assert.equal(bridge.apiBase, "http://127.0.0.1:1");
-  assert.equal(bridge.internalSecret, "s");
+  assert.equal(bridge.internalSecret, null);
+});
+
+test("a page the main process refuses, or an answer that is not a secret, leaves none", () => {
+  for (const answer of [null, undefined, "", 42, { secret: "s" }]) {
+    const bridge = exposedWith(["electron"], { sendSync: () => answer });
+    assert.equal(bridge.internalSecret, null, JSON.stringify(answer));
+  }
+  const bridge = exposedWith(["electron"], {
+    sendSync: () => {
+      throw new Error("no handler");
+    },
+  });
+  assert.equal(bridge.internalSecret, null);
 });
 
 test("every lane flag becomes a lane by name", () => {
@@ -57,4 +89,119 @@ test("a window opened with no lanes has none, and the renderer falls back to the
   const bridge = exposedWith(["electron", "--ani-gui-api-base=http://127.0.0.1:1"]);
   assert.equal(typeof bridge.lanes, "object");
   assert.deepEqual(Object.keys(bridge.lanes), []);
+});
+
+const flagsArg = (flags) => `--ani-gui-flags=${encodeURIComponent(JSON.stringify(flags))}`;
+
+test("the launch's flags come off their flag, frozen, with their origin", () => {
+  const bridge = exposedWith([
+    "electron",
+    "--ani-gui-api-base=http://127.0.0.1:1",
+    flagsArg({ a: false, b: true }),
+    "--ani-gui-flags-origin=cache",
+  ]);
+  assert.deepEqual({ ...bridge.flags }, { a: false, b: true });
+  assert.ok(Object.isFrozen(bridge.flags));
+  assert.equal(bridge.flagsOrigin, "cache");
+});
+
+test("a window opened without flags has none, and every flag takes its default", () => {
+  const bridge = exposedWith(["electron", "--ani-gui-api-base=http://127.0.0.1:1"]);
+  assert.deepEqual({ ...bridge.flags }, {});
+  assert.ok(Object.isFrozen(bridge.flags));
+  assert.equal(bridge.flagsOrigin, null);
+});
+
+test("a flags flag that is not a flat object of booleans and strings counts as none", () => {
+  for (const arg of [
+    "--ani-gui-flags=%7B",
+    "--ani-gui-flags=not-json",
+    flagsArg([true]),
+    flagsArg({ a: 1 }),
+    flagsArg({ a: { b: true } }),
+    flagsArg(null),
+  ]) {
+    const bridge = exposedWith(["electron", "--ani-gui-api-base=http://127.0.0.1:1", arg]);
+    assert.deepEqual({ ...bridge.flags }, {}, arg);
+  }
+});
+
+test("the renderer can say its first page has rendered, once, on the app-ready channel", () => {
+  const sent = [];
+  const exposed = {};
+  const electron = {
+    contextBridge: { exposeInMainWorld: (name, value) => (exposed[name] = value) },
+    ipcRenderer: {
+      invoke() {},
+      send: (channel) => sent.push(channel),
+      sendSync() {},
+      on() {},
+      removeListener() {},
+    },
+  };
+  vm.runInNewContext(source, {
+    require: () => electron,
+    process: { argv: ["electron", "--ani-gui-api-base=http://127.0.0.1:1"], platform: "linux" },
+    console: { error() {} },
+  });
+  exposed.aniGui.appReady();
+  exposed.aniGui.appReady();
+  assert.deepEqual(sent, ["ani-gui:app-ready"]);
+});
+
+test("reading a saved sign-in is asynchronous: a keyring that waits holds no renderer thread", () => {
+  const calls = [];
+  const exposed = {};
+  const electron = {
+    contextBridge: { exposeInMainWorld: (name, value) => (exposed[name] = value) },
+    ipcRenderer: {
+      invoke: (channel, ...args) => {
+        calls.push(["invoke", channel, ...args]);
+        return new Promise(() => {});
+      },
+      send() {},
+      sendSync: (channel) => {
+        calls.push(["sendSync", channel]);
+        return { ok: false, kind: "not_found" };
+      },
+      on() {},
+      removeListener() {},
+    },
+  };
+  vm.runInNewContext(source, {
+    require: () => electron,
+    process: { argv: ["electron"], platform: "linux" },
+    console: { error() {} },
+  });
+  // What loading the preload asked (the launch's secret) is not the
+  // sign-in read.
+  calls.length = 0;
+  const result = exposed.aniGui.account.getToken("anilist");
+  assert.equal(typeof result.then, "function");
+  assert.deepEqual(calls, [["invoke", "ani-gui:account:get-token", "anilist"]]);
+});
+
+test("the renderer can say its first page has mounted, once, on the app-mounted channel", () => {
+  // Sent before any frame: the main process wakes a window whose frames
+  // do not come (lib/app-window.cjs frameWake).
+  const sent = [];
+  const exposed = {};
+  const electron = {
+    contextBridge: { exposeInMainWorld: (name, value) => (exposed[name] = value) },
+    ipcRenderer: {
+      invoke() {},
+      send: (channel) => sent.push(channel),
+      sendSync() {},
+      on() {},
+      removeListener() {},
+    },
+  };
+  vm.runInNewContext(source, {
+    require: () => electron,
+    process: { argv: ["electron", "--ani-gui-api-base=http://127.0.0.1:1"], platform: "linux" },
+    console: { error() {} },
+  });
+  exposed.aniGui.appMounted();
+  exposed.aniGui.appMounted();
+  assert.deepEqual(sent, ["ani-gui:app-mounted"]);
 });

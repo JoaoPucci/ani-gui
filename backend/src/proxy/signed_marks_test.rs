@@ -243,7 +243,7 @@ proptest::proptest! {
         vars in proptest::collection::hash_map("[A-Za-z0-9_-]{1,8}", "[ -~]{0,16}", 1..5),
     ) {
         let table = SessionTable::new();
-        let session = StreamSession::new(url::Url::parse("https://cdn.example/m.m3u8").expect("url"), String::new());
+        let session = StreamSession::new_with_kind(url::Url::parse("https://cdn.example/m.m3u8").expect("url"), crate::proxy::MediaKind::Hls, String::new());
         let id = table.insert(session);
         let key = table.keep_master_variables(id, vars.clone()).expect("a key");
         proptest::prop_assert_eq!(table.master_variables(&id, &key), Some(vars));
@@ -350,8 +350,9 @@ async fn a_masters_variables_keep_its_playlist_uris_short() {
 #[test]
 fn a_sessions_master_variables_leave_with_it() {
     let table = SessionTable::new();
-    let session = StreamSession::new(
+    let session = StreamSession::new_with_kind(
         url::Url::parse("https://cdn.example/m.m3u8").expect("url"),
+        crate::proxy::MediaKind::Hls,
         String::new(),
     );
     let id = table.insert(session);
@@ -420,8 +421,9 @@ proptest::proptest! {
 #[test]
 fn a_masters_variables_named_again_are_kept_as_the_latest() {
     let table = SessionTable::new();
-    let session = StreamSession::new(
+    let session = StreamSession::new_with_kind(
         url::Url::parse("https://cdn.example/m.m3u8").expect("url"),
+        crate::proxy::MediaKind::Hls,
         String::new(),
     );
     let id = table.insert(session);
@@ -448,7 +450,7 @@ proptest::proptest! {
     ) {
         proptest::prop_assume!(a != b);
         let table = SessionTable::new();
-        let session = StreamSession::new(url::Url::parse("https://cdn.example/m.m3u8").expect("url"), String::new());
+        let session = StreamSession::new_with_kind(url::Url::parse("https://cdn.example/m.m3u8").expect("url"), crate::proxy::MediaKind::Hls, String::new());
         let id = table.insert(session);
         let ka = table.keep_master_variables(id, a.clone()).expect("a key");
         let kb = table.keep_master_variables(id, b.clone()).expect("a key");

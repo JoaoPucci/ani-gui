@@ -199,7 +199,8 @@ export interface RefreshExpiredDeps extends RefreshFlowDeps {
 }
 
 /**
- * Refresh every expired-but-refreshable provider concurrently, marking
+ * Refresh every expired-but-refreshable provider — or `only` that one —
+ * concurrently, marking
  * the successful ones connected via `onRefreshed`. Failures and
  * unrefreshable providers are left as-is (still expired). A provider
  * whose account change is in progress is skipped: a disconnect could
@@ -207,10 +208,14 @@ export interface RefreshExpiredDeps extends RefreshFlowDeps {
  * starting a refresh risks the queued persist landing after the clear
  * and resurrecting the removed token.
  */
-export async function refreshExpiredAccounts(deps: RefreshExpiredDeps): Promise<void> {
+export async function refreshExpiredAccounts(
+	deps: RefreshExpiredDeps,
+	only?: Provider
+): Promise<void> {
 	const snapshot = deps.byProvider();
+	const providers = expiredRefreshable(snapshot).filter((p) => only === undefined || p === only);
 	await Promise.all(
-		expiredRefreshable(snapshot).map(async (provider) => {
+		providers.map(async (provider) => {
 			if (deps.changing(provider)) return;
 			// expiredRefreshable already guaranteed the `expired` kind (and a
 			// refresh token) on this same snapshot, so the narrow is safe.

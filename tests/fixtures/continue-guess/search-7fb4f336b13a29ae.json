@@ -1,0 +1,102 @@
+{
+ "data": [
+  {
+   "id": "13593",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tate no Yuusha no Nariagari",
+    "titles": {
+     "en": "The Rising of the Shield Hero",
+     "en_jp": "Tate no Yuusha no Nariagari",
+     "ja_jp": "盾の勇者の成り上がり"
+    },
+    "abbreviatedTitles": [],
+    "slug": "tate-no-yuusha-no-nariagari",
+    "startDate": "2019-01-09",
+    "endDate": "2019-06-26",
+    "episodeCount": 25,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42530",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tate no Yuusha no Nariagari Season 2",
+    "titles": {
+     "en": "The Rising of the Shield Hero Season 2",
+     "en_jp": "Tate no Yuusha no Nariagari Season 2",
+     "ja_jp": "盾の勇者の成り上がり Season2"
+    },
+    "abbreviatedTitles": [
+     "ผู้กล้าโล่ผงาด ภาค 2",
+     "Восхождение героя щита 2"
+    ],
+    "slug": "tate-no-yuusha-no-nariagari-2",
+    "startDate": "2022-04-06",
+    "endDate": "2022-06-29",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42531",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tate no Yuusha no Nariagari Season 3",
+    "titles": {
+     "en": "The Rising of the Shield Hero Season 3",
+     "en_jp": "Tate no Yuusha no Nariagari Season 3",
+     "ja_jp": "盾の勇者の成り上がり Season3"
+    },
+    "abbreviatedTitles": [],
+    "slug": "tate-no-yuusha-no-nariagari-3",
+    "startDate": "2023-10-06",
+    "endDate": "2023-12-22",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48444",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tate no Yuusha no Nariagari Season 4",
+    "titles": {
+     "en": "The Rising of the Shield Hero Season 4",
+     "en_jp": "Tate no Yuusha no Nariagari Season 4",
+     "ja_jp": "盾の勇者の成り上がり Season 4"
+    },
+    "abbreviatedTitles": [],
+    "slug": "tate-no-yuusha-no-nariagari-season-4",
+    "startDate": "2025-07-09",
+    "endDate": "2025-09-24",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50188",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tate no Yuusha no Nariagari Season 5",
+    "titles": {
+     "en": "The Rising of the Shield Hero Season 5",
+     "en_jp": "Tate no Yuusha no Nariagari Season 5",
+     "ja_jp": "盾の勇者の成り上がり Season 5"
+    },
+    "abbreviatedTitles": [],
+    "slug": "tate-no-yuusha-no-nariagari-season-5",
+    "startDate": null,
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "TV",
+    "status": "tba"
+   }
+  }
+ ]
+}

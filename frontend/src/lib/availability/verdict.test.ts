@@ -9,8 +9,6 @@ describe('what an availability answer establishes', () => {
 	});
 
 	it('an unsettled answer establishes nothing, whatever it says of availability', () => {
-		expect(establishesNothing({ unsettled: true })).toBe(true);
-		expect(availabilityVerdict({ available: false, unsettled: true })).toBeNull();
 		for (const reason of ['unanswered', 'past_affinity', 'superseded'] as const) {
 			expect(establishesNothing({ unsettled: reason }), reason).toBe(true);
 			expect(availabilityVerdict({ available: false, unsettled: reason }), reason).toBeNull();

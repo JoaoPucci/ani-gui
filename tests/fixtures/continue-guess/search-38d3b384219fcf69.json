@@ -1,0 +1,74 @@
+{
+ "data": [
+  {
+   "id": "46038",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Attack on Titan: The Final Season - Final Chapters Part 1",
+    "titles": {
+     "en": "Attack on Titan: The Final Season - Final Chapters Part 1",
+     "en_jp": "Shingeki no Kyojin: The Final Season Kanketsu-Hen (Zenpen)",
+     "ja_jp": "進撃の巨人 The Final Season 完結編 (前編)"
+    },
+    "abbreviatedTitles": [
+     "Shingeki no Kyojin: The Final Season Final Edition",
+     "Shingeki no Kyojin: The Final Season Part 3",
+     "Attack on Titan: The Final Season Part 3",
+     "Attack on Titan The Final Season Final Arc",
+     "Attack on Titan Season 4 Part 3",
+     "Attack on Titan Season 4 - Final Edition (Part 1)",
+     "Attack on Titan: The Final Season - Final Edition (Part 1)",
+     "Attack on Titan Final Season THE FINAL CHAPTERS Special 1"
+    ],
+    "slug": "shingeki-no-kyojin-the-final-season-part-3",
+    "startDate": "2023-03-03",
+    "endDate": "2023-03-03",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47131",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "20-pun de Oitsukeru: Shingeki no Kyojin",
+    "titles": {
+     "en": "Attack on Titan in 20 Minutes",
+     "en_jp": "20-pun de Oitsukeru: Shingeki no Kyojin",
+     "ja_jp": "20分で追いつける！アニメ『進撃の巨人』"
+    },
+    "abbreviatedTitles": [
+     "Catch up in 20 minutes! Anime \"Attack on Titan\" Digest"
+    ],
+    "slug": "20-pun-de-oitsukeru-shingeki-no-kyojin",
+    "startDate": "2021-12-27",
+    "endDate": "2021-12-27",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47259",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "25-pun de Oitsukeru: Shingeki no Kyojin",
+    "titles": {
+     "en": "Attack on Titan in 25 Minutes",
+     "en_jp": "25-pun de Oitsukeru: Shingeki no Kyojin",
+     "ja_jp": "25分で追いつける！アニメ『進撃の巨人』"
+    },
+    "abbreviatedTitles": [
+     "Catch up in 25 minutes! Anime \"Attack on Titan\" Digest"
+    ],
+    "slug": "25-pun-de-oitsukeru-shingeki-no-kyojin",
+    "startDate": "2023-02-18",
+    "endDate": "2023-02-18",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

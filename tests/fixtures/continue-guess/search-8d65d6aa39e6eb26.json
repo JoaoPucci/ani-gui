@@ -1,0 +1,420 @@
+{
+ "data": [
+  {
+   "id": "42068",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Enen no Shouboutai",
+    "titles": {
+     "en": "Fire Force",
+     "en_jp": "Enen no Shouboutai",
+     "ja_jp": "炎炎ノ消防隊"
+    },
+    "abbreviatedTitles": [
+     "Fire Brigade of Flames"
+    ],
+    "slug": "enen-no-shouboutai",
+    "startDate": "2019-07-06",
+    "endDate": "2019-12-28",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42909",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Enen no Shouboutai: Ni no Shou",
+    "titles": {
+     "en": "Fire Force Season 2",
+     "en_jp": "Enen no Shouboutai: Ni no Shou",
+     "ja_jp": "炎炎ノ消防隊 弐ノ章"
+    },
+    "abbreviatedTitles": [
+     "Enen no Shouboutai 2nd Season"
+    ],
+    "slug": "enen-no-shouboutai-ni-no-shou",
+    "startDate": "2020-07-03",
+    "endDate": "2020-12-12",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46119",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Enen no Shouboutai: San no Shou",
+    "titles": {
+     "en": "Fire Force Season 3",
+     "en_jp": "Enen no Shouboutai: San no Shou",
+     "ja_jp": "炎炎ノ消防隊 参ノ章"
+    },
+    "abbreviatedTitles": [],
+    "slug": "enen-no-shouboutai-san-no-shou",
+    "startDate": "2025-04-04",
+    "endDate": "2025-06-20",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49016",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Enen no Shouboutai: San no Shou Part 2",
+    "titles": {
+     "en": "Fire Force Season 3 Part 2",
+     "en_jp": "Enen no Shouboutai: San no Shou Part 2",
+     "ja_jp": "炎炎ノ消防隊 参ノ章 第2クール"
+    },
+    "abbreviatedTitles": [
+     "Enen no Shouboutai 3rd Season Part 2",
+     "หน่วยผจญคนไฟลุก ภาค 3"
+    ],
+    "slug": "enen-no-shouboutai-san-no-shou-part-2",
+    "startDate": "2026-01-09",
+    "endDate": "2026-04-03",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "43921",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Enen no Shouboutai Mini Anime",
+    "titles": {
+     "en": "Fire Force Mini Anime",
+     "en_jp": "Enen no Shouboutai Mini Anime",
+     "ja_jp": "炎炎ノ消防隊 ミニアニメ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "enen-no-shouboutai-mini-anime",
+    "startDate": "2021-01-08",
+    "endDate": "2021-07-30",
+    "episodeCount": 30,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "1818",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "DNA Sights 999.9",
+    "titles": {
+     "en_jp": "DNA Sights 999.9",
+     "ja_jp": "火聖旅団[ファイアーフォース]ダナサイト９９９．９[フォーナイン]"
+    },
+    "abbreviatedTitles": [
+     "Kasei Ryodan Danasaito 999.9",
+     "Fire Force DNA Sights 999.9",
+     "Danasite 999.9",
+     "Kasei Ryodan Dnasights Four-Nine"
+    ],
+    "slug": "dna-sights-999-9",
+    "startDate": "1998-12-18",
+    "endDate": "1998-12-18",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41028",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Psycho-Pass SS Case 2: First Guardian",
+    "titles": {
+     "en_jp": "Psycho-Pass SS Case 2: First Guardian",
+     "ja_jp": "サイコパス SS Case.2「 First Guardian」"
+    },
+    "abbreviatedTitles": [
+     "Psycho-Pass: Sinners of the System - First Guardian"
+    ],
+    "slug": "psycho-pass-ss-case-2-first-guardian",
+    "startDate": "2019-02-15",
+    "endDate": "2019-02-15",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "555",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Legend of Duo",
+    "titles": {
+     "en_jp": "Legend of Duo",
+     "ja_jp": "LEGEND OF DUO"
+    },
+    "abbreviatedTitles": [],
+    "slug": "legend-of-duo",
+    "startDate": "2005-04-21",
+    "endDate": "2005-06-27",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2159",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Firestorm",
+    "titles": {
+     "en_jp": "Firestorm",
+     "ja_jp": "FIRESTORM　ファイアーストーム"
+    },
+    "abbreviatedTitles": [],
+    "slug": "firestorm",
+    "startDate": "2003-04-06",
+    "endDate": "2003-09-28",
+    "episodeCount": 26,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "327",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Himiko-den",
+    "titles": {
+     "en": "Legend of Himiko",
+     "en_jp": "Himiko-den",
+     "en_us": "Legend of Himiko",
+     "ja_jp": "火魅子伝"
+    },
+    "abbreviatedTitles": [
+     "Himikoden"
+    ],
+    "slug": "himiko-den",
+    "startDate": "1999-01-07",
+    "endDate": "1999-04-01",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "3925",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Techno Police 21C",
+    "titles": {
+     "en": "Techno Police",
+     "en_jp": "Techno Police 21C",
+     "en_us": "Techno Police",
+     "ja_jp": "テクノポリス21C"
+    },
+    "abbreviatedTitles": [
+     "The Robots are The... Technopolice"
+    ],
+    "slug": "techno-police-21c",
+    "startDate": "1982-08-07",
+    "endDate": "1982-08-07",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48962",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ultraman: Rising",
+    "titles": {
+     "en": "Ultraman: Rising",
+     "en_jp": "Ultraman: Rising",
+     "ja_jp": "ウルトラマン: ライジング"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ultraman-rising",
+    "startDate": "2024-06-14",
+    "endDate": "2024-06-14",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44176",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Megami-ryou no Ryoubo-kun.",
+    "titles": {
+     "en": "Mother of the Goddess' Dormitory",
+     "en_jp": "Megami-ryou no Ryoubo-kun.",
+     "ja_jp": "女神寮の寮母くん。"
+    },
+    "abbreviatedTitles": [],
+    "slug": "megami-ryou-no-ryoubo-kun",
+    "startDate": "2021-07-14",
+    "endDate": "2021-09-15",
+    "episodeCount": 10,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "5131",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Yami wo Mitsumeru Hane",
+    "titles": {
+     "en": "A Feather Stare at the Dark",
+     "en_jp": "Yami wo Mitsumeru Hane",
+     "en_us": "A Feather Stare at the Dark",
+     "ja_jp": "闇を見つめる羽根"
+    },
+    "abbreviatedTitles": [
+     "Feathers Gazing into the Darkness",
+     "Feathers Staring into the Darkness",
+     "Thinking and Drawing: Nihon no Shinseiki Art Animation",
+     "Thinking and Drawing: Japanese Art Animation of the New Millennium"
+    ],
+    "slug": "yami-wo-mitsumeru-hane",
+    "startDate": "2003-01-01",
+    "endDate": "2003-01-01",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "12913",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tomica Hyper Rescue Drive Head: Kidou Kyuukyuu Keisatsu (TV)",
+    "titles": {
+     "en_jp": "Tomica Hyper Rescue Drive Head: Kidou Kyuukyuu Keisatsu (TV)",
+     "ja_jp": "トミカハイパーレスキュー ドライブヘッド 機動救急警察"
+    },
+    "abbreviatedTitles": [
+     "Mobile Emergency Police"
+    ],
+    "slug": "tomica-hyper-rescue-drive-head-kidou-kyuukyuu-keisatsu",
+    "startDate": "2017-04-15",
+    "endDate": "2017-12-23",
+    "episodeCount": 37,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2069",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Transformers: Robots in Disguise",
+    "titles": {
+     "en": "Transformers: Robots in Disguise",
+     "en_jp": "Transformers: Car Robots",
+     "en_us": "Transformers: Robots in Disguise",
+     "ja_jp": "トランスフォーマー・カーロボット"
+    },
+    "abbreviatedTitles": [],
+    "slug": "transformers-robots-in-disguise",
+    "startDate": "2000-04-05",
+    "endDate": "2000-12-27",
+    "episodeCount": 39,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "6086",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Uchuu Majin Daikengou",
+    "titles": {
+     "en_jp": "Uchuu Majin Daikengou",
+     "ja_jp": "宇宙魔神ダイケンゴー"
+    },
+    "abbreviatedTitles": [
+     "Uchuu Majin Daikengo",
+     "Uchuu Mazin Daikengo",
+     "Daikengo",
+     "The Guardian of Space"
+    ],
+    "slug": "uchuu-mazin-daikengo",
+    "startDate": "1978-07-27",
+    "endDate": "1979-02-15",
+    "episodeCount": 26,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "40995",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Shaonian Jinyiwei",
+    "titles": {
+     "en": "The Young Imperial Guards",
+     "en_cn": "Shaonian Jinyiwei",
+     "en_jp": "Shaonian Jinyiwei",
+     "en_us": "The Young Imperial Guards",
+     "ja_jp": "少年锦衣卫",
+     "zh_cn": "少年锦衣卫"
+    },
+    "abbreviatedTitles": [],
+    "slug": "shaonian-jinyiwei",
+    "startDate": "2017-02-09",
+    "endDate": "2017-05-04",
+    "episodeCount": 13,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "529",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Nausicaä of the Valley of the Wind",
+    "titles": {
+     "en": "Nausicaä of the Valley of the Wind",
+     "en_jp": "Kaze no Tani no Nausicaä",
+     "ja_jp": "風の谷のナウシカ"
+    },
+    "abbreviatedTitles": [
+     "Nausicaa of the Valley of the Wind",
+     "Kaze no Tani no Nausicaa",
+     "Warriors of the Wind"
+    ],
+    "slug": "nausicaa-of-the-valley-of-the-wind",
+    "startDate": "1984-03-11",
+    "endDate": "1984-03-11",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2308",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Robin Hood no Daibouken",
+    "titles": {
+     "en": "The Great Adventures of Robin Hood",
+     "en_jp": "Robin Hood no Daibouken",
+     "en_us": "The Great Adventures of Robin Hood",
+     "ja_jp": "ロビンフッドの大冒険"
+    },
+    "abbreviatedTitles": [],
+    "slug": "robin-hood-no-daibouken",
+    "startDate": "1990-07-29",
+    "endDate": "1992-10-28",
+    "episodeCount": 52,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

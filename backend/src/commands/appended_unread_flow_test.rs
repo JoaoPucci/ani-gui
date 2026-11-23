@@ -193,7 +193,7 @@ async fn a_replay_of_an_unverified_row_says_it_is_unverified() {
             crate::proxy::token::MediaKind::Mp4,
         )
     };
-    let resp = crate::commands::play_cache::try_serve_cached(&state, &cached)
+    let resp = crate::commands::play_cache::try_serve_cached(&state, &cached, Default::default())
         .await
         .expect("hit");
     assert!(resp.episode_unverified);
@@ -227,6 +227,7 @@ async fn a_watch_recorded_while_unread_reads_back_as_the_extra_once_proved() {
         &watch,
         Some(KITSU),
         begun,
+        None,
     )
     .await;
     let read = |state: &crate::app::AppState| {

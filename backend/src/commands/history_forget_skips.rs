@@ -57,7 +57,10 @@ pub(crate) fn mapping_ids(state: &AppState, id: &str) -> Result<Vec<String>> {
 /// Cache write failures propagate.
 pub(crate) fn forget_skip_times(state: &AppState, kitsu_ids: &[String]) -> Result<()> {
     for id in kitsu_ids.iter().filter(|id| !id.is_empty()) {
-        meta_cache_delete_prefix(&state.cache_pool, &format!("aniskip:v2:{id}:"))?;
+        meta_cache_delete_prefix(
+            &state.cache_pool,
+            &format!("{}{id}:", crate::cache::families::ANISKIP),
+        )?;
     }
     meta_cache_delete_prefix(&state.cache_pool, "aniskip:v1:")
 }

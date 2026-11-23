@@ -1,0 +1,243 @@
+{
+ "data": [
+  {
+   "id": "13689",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy",
+    "titles": {
+     "en_jp": "Golden Kamuy",
+     "ja_jp": "ゴールデンカムイ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "golden-kamuy",
+    "startDate": "2018-04-09",
+    "endDate": "2018-06-25",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41442",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy 2nd Season",
+    "titles": {
+     "en": "Golden Kamuy Season 2",
+     "en_jp": "Golden Kamuy 2nd Season",
+     "ja_jp": "ゴールデンカムイ 第二期"
+    },
+    "abbreviatedTitles": [
+     "Golden Kamui 2"
+    ],
+    "slug": "golden-kamuy-2",
+    "startDate": "2018-10-08",
+    "endDate": "2018-12-24",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42435",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy 3rd Season",
+    "titles": {
+     "en": "Golden Kamuy Season 3",
+     "en_jp": "Golden Kamuy 3rd Season",
+     "ja_jp": "ゴールデンカムイ 第三期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "golden-kamuy-3",
+    "startDate": "2020-10-05",
+    "endDate": "2020-12-21",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45556",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy 4th Season",
+    "titles": {
+     "en": "Golden Kamuy Season 4",
+     "en_jp": "Golden Kamuy 4th Season",
+     "ja_jp": "ゴールデンカムイ 第四期"
+    },
+    "abbreviatedTitles": [],
+    "slug": "golden-kamuy-4",
+    "startDate": "2022-10-03",
+    "endDate": "2023-06-26",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41305",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy OVA",
+    "titles": {
+     "en_jp": "Golden Kamuy OVA",
+     "ja_jp": "ゴールデンカムイ OAD"
+    },
+    "abbreviatedTitles": [
+     "The Barato Bodyguards",
+     "Barato no Yōjinbō",
+     "茨戸の用心棒",
+     "Barato no Ugou",
+     "Showdown in Barato"
+    ],
+    "slug": "golden-kamuy-ova",
+    "startDate": "2018-09-19",
+    "endDate": "2018-09-19",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42052",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy 2 OVA",
+    "titles": {
+     "en_jp": "Golden Kamuy 2 OVA",
+     "ja_jp": "ゴールデンカムイ OAD"
+    },
+    "abbreviatedTitles": [
+     "Golden Kamuy OVA: Seton Animal Chronicles"
+    ],
+    "slug": "golden-kamuy-2-ova",
+    "startDate": "2019-03-19",
+    "endDate": "2020-09-18",
+    "episodeCount": 3,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47655",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy 5th Season",
+    "titles": {
+     "en": "Golden Kamuy Season 5",
+     "en_jp": "Golden Kamuy 5th Season",
+     "ja_jp": "ゴールデンカムイ"
+    },
+    "abbreviatedTitles": [
+     "Golden Kamuy: The Final Chapter",
+     "Golden Kamuy: Saishuu Shou",
+     "ゴールデンカムイ 最終章"
+    ],
+    "slug": "golden-kamuy-5",
+    "startDate": "2026-01-05",
+    "endDate": "2026-03-30",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41320",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy: Golden Douga Gekijou",
+    "titles": {
+     "en": "Golden Kamuy Short Anime: Golden Douga Gekijou",
+     "en_jp": "Golden Kamuy: Golden Douga Gekijou",
+     "ja_jp": "ゴールデンカムイ ショートアニメ「ゴールデン道画劇場」"
+    },
+    "abbreviatedTitles": [],
+    "slug": "golden-kamuy-golden-douga-gekijou",
+    "startDate": "2018-04-16",
+    "endDate": "2023-06-27",
+    "episodeCount": 46,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48442",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Douga Gekijou Specials",
+    "titles": {
+     "en_jp": "Golden Douga Gekijou Specials",
+     "ja_jp": "ゴールデンカムイ 「ゴールデン道画劇場」 Specials"
+    },
+    "abbreviatedTitles": [
+     "Golden Kamuy Short Anime: Golden Douga Gekijou Specials"
+    ],
+    "slug": "golden-douga-gekijou-specials",
+    "startDate": "2018-07-27",
+    "endDate": "2023-09-27",
+    "episodeCount": 7,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50639",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy: Saishuushou - Bousou Ressha-hen",
+    "titles": {
+     "en": "Golden Kamuy Final Season - Runaway Train Arc",
+     "en_jp": "Golden Kamuy: Saishuushou - Bousou Ressha-hen",
+     "ja_jp": "ゴールデンカムイ 最終章 暴走列車編"
+    },
+    "abbreviatedTitles": [],
+    "slug": "golden-kamuy-saishuushou-bousou-ressha-hen",
+    "startDate": "2027-12-31",
+    "endDate": null,
+    "episodeCount": null,
+    "subtype": "special",
+    "status": "unreleased"
+   }
+  },
+  {
+   "id": "50036",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy: Sapporo Beer Koujou-hen",
+    "titles": {
+     "en_jp": "Golden Kamuy: Sapporo Beer Koujou-hen",
+     "ja_jp": "ゴールデンカムイ 札幌ビール工場編"
+    },
+    "abbreviatedTitles": [],
+    "slug": "golden-kamuy-sapporo-beer-koujou-hen",
+    "startDate": "2025-10-10",
+    "endDate": "2025-10-31",
+    "episodeCount": 2,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49982",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Golden Kamuy: Inazuma Goutou to Mamushi no Ogin/Shimaenaga",
+    "titles": {
+     "en": "Golden Kamuy: The Lightning Bandit and Ogin the Viper/Long-Tailed Tit",
+     "en_jp": "Golden Kamuy: Inazuma Goutou to Mamushi no Ogin/Shimaenaga",
+     "ja_jp": "ゴールデンカムイ 稲妻強盗と蝮のお銀 / シマエナガ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "golden-kamuy-inazuma-goutou-to-mamushi-no-ogin-shimaenaga",
+    "startDate": "2025-10-17",
+    "endDate": "2025-10-17",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  }
+ ]
+}

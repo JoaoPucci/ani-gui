@@ -1,9 +1,11 @@
 /**
  * Smoke test: launches the packaged Electron app from
- * `dist/linux-unpacked/ani-gui` (electron-builder's pre-AppImage
- * output), stubs the Rust backend's HTTP API so the renderer doesn't
- * depend on Kitsu being reachable, and asserts the home page reaches
- * a recognizable rendered state.
+ * `dist-e2e/linux-unpacked/ani-gui` (electron-builder's unpacked tree
+ * of the e2e package, lib/e2e-package.cjs), stubs every request its pages make of the Rust backend's
+ * HTTP API, and asserts the home page reaches a recognizable rendered
+ * state. An API request no stub answers fails the test, and the launch
+ * helper keeps the backend itself off the network, so nothing here
+ * depends on Kitsu, AniList, GitHub or the provider being reachable.
  *
  * Targeting the packaged artifact rather than running unpacked
  * Electron directly tests the production code path: the `app://`
@@ -11,41 +13,52 @@
  * sidecar backend at `process.resourcesPath/ani-gui-backend`. None
  * of those wire correctly when `electron .` is run from source.
  *
- * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
- * produced `dist/linux-unpacked/`.
+ * Pre-condition: `pnpm run package:e2e` (or the chained `pnpm e2e`)
+ * has produced `dist-e2e/linux-unpacked/`.
  */
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-} from "@playwright/test";
-import { killTree, withColdLaunchRetry } from "../lib/cold-launch.cjs";
+import { type ElectronApplication } from "@playwright/test";
+import { expect, test } from "./policy-guard";
+import { withColdLaunchRetry } from "../lib/cold-launch.cjs";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { appInfo, emptyHistory, topRated, trending } from "./fixtures/kitsu";
-
-const electronDir = path.resolve(__dirname, "..");
-const packagedBinary = path.join(electronDir, "dist/linux-unpacked/ani-gui");
+import {
+  appInfo,
+  defaultSettings,
+  emptyHistory,
+  topRated,
+  trending,
+} from "./fixtures/kitsu";
+import {
+  appWindow,
+  cardLinesAnswer,
+  launchPackagedApp,
+  outboundAttempts,
+  packagedBinary,
+  refuseUnstubbed,
+  remountFirstPage,
+  routeContext,
+  splashState,
+  stopDeadApp,
+} from "./launch";
+import { expectedPlatform } from "../lib/e2e-display.cjs";
+import { answer } from "./stubs";
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
     throw new Error(
-      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`,
+      `prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`,
     );
   }
 });
 
 /**
- * Wire all the API stubs the home page consumes onto a freshly-
- * launched Electron app, BEFORE its first window starts loading —
- * critical because the renderer fires its initial `fetch()` calls
- * (history, trending, top-rated) immediately on mount. Routes set
- * via `page.route()` after `firstWindow()` resolves race those
- * requests and miss the first batch, leaving real-network responses
- * visible to the page. Setting them on `context.route()` (visible to
- * any page in the context) avoids the race.
+ * Launch the app with every API request its pages make here answered
+ * by a stub. Routes can only be set once the app is up, and by then
+ * its first page has already asked for history, trending and top
+ * rated; the launch helper keeps the backend off the network, so those
+ * first answers are errors. The page is mounted again once the stubs
+ * are in place, and everything the new mount asks goes through them.
  */
 async function launchAppWithStubsOnce(
   onLaunch: (app: ElectronApplication) => void,
@@ -74,52 +87,94 @@ async function launchAppWithStubsOnce(
     ANI_GUI_UNATTENDED: "1",
   };
 
-  const app = await electron.launch({
-    executablePath: packagedBinary,
-    // `--no-sandbox` because chrome-sandbox in the unpackaged
-    // linux-unpacked dir isn't SUID. The .deb's postinst fixes
-    // that for installed copies; this test runs against the
-    // pre-install artifact.
-    args: ["--no-sandbox"],
-    env: cleanEnv,
-  });
+  const app = await launchPackagedApp(cleanEnv, { profile: tmp });
   onLaunch(app);
 
   const context = app.context();
-  await context.route("**/api/app-info", (r) =>
-    r.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(appInfo),
-    }),
+  // The app's window before any route: a route reaches only the windows
+  // Playwright has finished attaching when it is set (refuseUnstubbed).
+  const page = await appWindow(app);
+  // First, so it answers only what the stubs below leave: anything the
+  // pages here ask that no stub answers is refused and recorded, and
+  // every test ends by checking nothing was (afterEach below). What
+  // the first mount asked is forgotten at the remount (it may have
+  // asked before its stub was set); everything after it counts.
+  const unstubbed = await refuseUnstubbed(page);
+  lastUnstubbed = unstubbed;
+  let topRatedAsked: (() => void) | null = null;
+  const json = (body: unknown) => ({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+  const stub = (url: string, answer: Parameters<typeof routeContext>[2]) =>
+    routeContext(context, url, answer);
+  // Home.
+  await stub("**/api/app-info", (r) => answer(r, json(appInfo)));
+  await stub("**/api/history", (r) => answer(r, json(emptyHistory)));
+  await stub("**/api/history/card-lines", (r) =>
+    answer(r, json(cardLinesAnswer(r.request().postDataJSON()))),
   );
-  await context.route("**/api/history", (r) =>
-    r.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(emptyHistory),
-    }),
-  );
-  await context.route("**/api/kitsu/trending", (r) =>
-    r.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(trending),
-    }),
-  );
-  await context.route("**/api/kitsu/top-rated", (r) =>
-    r.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(topRated),
-    }),
+  await stub("**/api/kitsu/trending-anilist", (r) => answer(r, json(trending)));
+  await stub("**/api/kitsu/top-rated", (r) => {
+    topRatedAsked?.();
+    return answer(r, json(topRated));
+  });
+  // Every card known playable, so nothing is handed to the warm queue.
+  await stub("**/api/availability/batch", (r) => {
+    const { kitsu_ids } = r.request().postDataJSON() as { kitsu_ids: string[] };
+    return answer(r,
+      json({
+        cached: Object.fromEntries(kitsu_ids.map((id) => [id, true])),
+        playable_episode_counts: {},
+      }),
+    );
+  });
+  await stub("**/api/availability/warm", (r) => answer(r, { status: 202 }));
+  await stub("**/api/watched-at", (r) => answer(r, json({})));
+  // No newer release: the backend's answer when there is none.
+  await stub("**/api/update-check*", (r) => answer(r, { status: 204 }));
+  await stub("**/api/settings", (r) =>
+    r.request().method() === "PUT"
+      ? answer(r, { status: 204 })
+      : answer(r, json(defaultSettings)),
   );
   // Block image fetches; the renderer's placeholder takes over.
-  await context.route("**/api/image*", (r) => r.fulfill({ status: 503 }));
+  await stub("**/api/image*", (r) => answer(r, { status: 503 }));
+  // A show's page, which a card click opens: the top-rated fixture's
+  // show, with no episodes, no history and no skip times.
+  await stub("**/api/kitsu/anime/*", (r) => answer(r, json(topRated[0])));
+  await stub("**/api/kitsu/episodes/*", (r) => answer(r, json([])));
+  await stub("**/api/kitsu/airing/*", (r) => answer(r, json(null)));
+  await stub("**/api/history/by-kitsu/*", (r) => answer(r, json(null)));
+  await stub("**/api/download/default-dir", (r) => answer(r, json(null)));
+  await stub("**/api/availability", (r) =>
+    answer(r, json({ available: true, episode_count: 12, extra_episodes: [] })),
+  );
+  // The page looks the show up by title and starts resolving its first
+  // episode ahead of a click; neither is what the click test checks.
+  await stub("**/api/kitsu/search", (r) => answer(r, json([])));
+  await stub("**/api/play/stream*", (r) => answer(r, { status: 503 }));
 
-  const page = await app.firstWindow();
-  return { app, page, context };
+  // The first mount asked before the stubs were in place, and the
+  // backend, kept off the network, could not answer it: mount it
+  // again, and go on once the new mount has asked a stub.
+  await remountFirstPage(
+    page,
+    () => new Promise<void>((resolve) => (topRatedAsked = resolve)),
+    { forget: unstubbed },
+  );
+  return { app, page, context, profile: tmp };
 }
+
+/** What the last launch's pages asked that no stub answered. */
+let lastUnstubbed: string[] = [];
+
+test.afterEach(() => {
+  const asked = lastUnstubbed;
+  lastUnstubbed = [];
+  expect(asked, "requests no stub answered").toEqual([]);
+});
 
 async function launchAppWithStubs() {
   // A cold launch can lose its first window before any assertion
@@ -139,11 +194,10 @@ async function launchAppWithStubs() {
       cleanup: async () => {
         const dead = pending;
         pending = null;
-        // A dead app's close() hangs while its backend lives; kill
-        // the whole tree first (lib/cold-launch.cjs).
+        // Stop what is left of the dead app: its own process group,
+        // nothing else (lib/own-group.cjs).
         if (dead) {
-          killTree(dead.process().pid);
-          await dead.close();
+          await stopDeadApp(dead);
         }
       },
     },
@@ -161,13 +215,10 @@ test("app launches, hero renders, no unexpected console errors", async () => {
     });
     page.on("pageerror", (err) => errors.push(String(err)));
 
-    // "Trending now" eyebrow is the first DOM signal the stubs
-    // were consumed and the page is past the loading state.
-    // "Top rated" eyebrow is the load signal we use across e2e —
-    // it renders for every trending-result count, including 1 (a
-    // single-entry fixture leaves "Trending now" without a Strip
-    // because that single entry becomes the hero, which uses a
-    // different eyebrow).
+    // The "Top rated" eyebrow is the load signal used across e2e: Home
+    // shows it while the row loads and once it has, whatever trending
+    // returns (a single entry becomes the hero and leaves no "Trending
+    // now" row), so it marks Home as mounted, not its data as landed.
     await expect(page.getByText(/top rated/i).first()).toBeVisible({
       timeout: 15_000,
     });
@@ -194,17 +245,611 @@ test("app launches, hero renders, no unexpected console errors", async () => {
   }
 });
 
+test("a test launch is muted", async () => {
+  // A headless launch still opens the host's audio device, and test
+  // runs have played sound on the desktop of whoever ran them. Every
+  // spec launches through the shared helper (tests/arch/e2e_launch.sh
+  // keeps it that way); this asks the running app whether the helper
+  // put the switch on its command line.
+  const { app } = await launchAppWithStubs();
+  try {
+    const muted = await app.evaluate(({ app: electronApp }) =>
+      electronApp.commandLine.hasSwitch("mute-audio"),
+    );
+    expect(muted).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a test launch takes its flags from the test, not from GitHub", async () => {
+  // The launch helper makes every launch a test run, and a test run's
+  // backend never fetches the live flags file (backend/src/flags/
+  // launch.rs, and backend/tests/flags_launch.rs, which watches the
+  // network to prove it). The window was opened with the flags the
+  // backend decided, before its first page rendered: with no file, the
+  // defaults of what the package declares. The package under test is a
+  // test-run build (`pnpm run package:e2e`), which declares the probe
+  // the flags specs turn on and off (e2e/flags/), off.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const seen = await page.evaluate(() => ({
+      origin: window.aniGui?.flagsOrigin,
+      flags: window.aniGui?.flags,
+    }));
+    expect(seen).toEqual({
+      origin: "test",
+      flags: { test_run_probe: false },
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("a test launch's backend reaches nothing beyond this machine", async () => {
+  // A spec's stubs answer what the renderer asks after they are set,
+  // but the first page asks before then, and anything a spec leaves
+  // unstubbed reaches the real backend. The launch helper gives the
+  // backend a proxy that refuses every connection and records it, so
+  // what the backend tries never reaches Kitsu, AniList, GitHub or the
+  // provider. Asked here, from outside the renderer's stubs, for the
+  // newest release, the backend tries GitHub, and the attempt lands
+  // at the helper's proxy instead.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const apiBase = await page.evaluate(() => window.aniGui?.apiBase);
+    expect(apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    // The API answers only a request carrying the launch's secret,
+    // which the preload bridge hands the renderer.
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    const res = await fetch(`${apiBase}/api/update-check`, {
+      headers: { "x-ani-gui-internal-secret": secret ?? "" },
+    });
+    // The backend answers a check that could not reach GitHub with no
+    // release, as it does offline.
+    expect(res.status).toBe(204);
+    expect(outboundAttempts(app)).toContain("CONNECT api.github.com:443");
+  } finally {
+    await app.close();
+  }
+});
+
+test("the launch's secret is on no process's command line, and only the app's page is handed it", async () => {
+  // Any local program can read a process's command line
+  // (/proc/<pid>/cmdline here). The preload asks the main process for
+  // the secret instead, which answers only the app's own page in the
+  // app's window (lib/secret-handoff.cjs).
+  const { app, page, profile } = await launchAppWithStubs();
+  try {
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    const pids = await app.evaluate(({ app: electronApp }) =>
+      electronApp.getAppMetrics().map((m) => m.pid),
+    );
+    expect(pids.length).toBeGreaterThan(1);
+    let read = 0;
+    for (const pid of pids) {
+      let cmdline = "";
+      try {
+        cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, "utf-8");
+      } catch {
+        continue; // a helper that exited in between
+      }
+      read += 1;
+      expect(cmdline, `pid ${pid}`).not.toContain(secret as string);
+      expect(cmdline, `pid ${pid}`).not.toContain("--ani-gui-internal-secret");
+    }
+    // The renderer and the main process at least: a run that read no
+    // command line checked nothing.
+    expect(read).toBeGreaterThan(1);
+
+    // Another page in the app's window runs the same preload, and gets
+    // no secret; the app's own page, loaded again, gets it again.
+    const other = path.join(profile, "other.html");
+    fs.writeFileSync(other, "<!doctype html><title>other</title><p>other</p>");
+    // The page's own window, not the splash, which may still be up.
+    const win = await app.browserWindow(page);
+    const load = (url: string) => win.evaluate((w, target) => w.loadURL(target), url);
+    await load(`file://${other}`);
+    expect(await page.evaluate(() => document.title)).toBe("other");
+    expect(await page.evaluate(() => window.aniGui?.internalSecret ?? null)).toBeNull();
+    await load("app://localhost/");
+    expect(await page.evaluate(() => window.aniGui?.internalSecret)).toBe(secret);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a refused page's URL is logged without a secret it carries", async () => {
+  // The main process names a refused caller by its URL, and a URL can
+  // carry a secret in a `secret=` parameter. Whichever check refuses it
+  // (the IPC guard ahead of the secret handoff), the line it logs is
+  // redacted like every other line the main process writes.
+  const { app, page, profile } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const stderr = collectStderr(app);
+    const other = path.join(profile, "refused.html");
+    fs.writeFileSync(other, "<!doctype html><title>refused</title><p>refused</p>");
+    const planted = "0123456789abcdef".repeat(4);
+    const win = await app.browserWindow(page);
+    await win.evaluate((w, target) => w.loadURL(target), `file://${other}?secret=${planted}`);
+    expect(await page.evaluate(() => document.title)).toBe("refused");
+    // Witness: the preload asked for the secret and was refused.
+    await expect
+      .poll(() => stderr.some((l) => l.includes("refused ani-gui:internal-secret")))
+      .toBe(true);
+    // Joined, so a value split across two of the pipe's chunks is
+    // still found.
+    expect(stderr.join("")).not.toContain(planted);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a renderer line naming the launch's secret is logged without it", async () => {
+  // The main process relays the renderer's console to its own stdout
+  // (the journal, a terminal), redacted: by the secret's value and by
+  // the shapes a secret travels in. Chromium's own "Failed to load
+  // resource" lines are not part of that relay (Electron's
+  // console-message event never receives network messages), so the
+  // lines here are ones the page itself logs.
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    let out = "";
+    app.process().stdout?.on("data", (chunk: Buffer) => {
+      out += chunk.toString("utf-8");
+    });
+    await page.evaluate(() => {
+      const secret = window.aniGui!.internalSecret;
+      console.error(`handed: ${secret}`);
+      console.warn(`x-ani-gui-internal-secret: ${secret}`);
+      console.log(`relayed: ${encodeURIComponent(`http://h/api/image?secret=${secret}`)}`);
+    });
+    for (const line of ["handed:", "x-ani-gui-internal-secret:", "relayed:"]) {
+      await expect.poll(() => out, { timeout: 15_000 }).toContain(line);
+    }
+    expect(out).toContain("<redacted>");
+    expect(out).not.toContain(secret as string);
+  } finally {
+    await app.close();
+  }
+});
+
+test("an image the app's page loads reaches the backend with no secret in its URL, and a frame's does not get in", async () => {
+  // An <img> cannot set a header, and a URL is kept where a header is
+  // not (Chromium's disk cache, a log line). The main process adds the
+  // secret header to the app's own page's image and progress-stream
+  // requests (lib/secret-header.cjs); a subframe's get nothing. These
+  // two go to the real backend rather than the stubs: the app's is let
+  // in, and the backend tries the upstream (at the helper's refusing
+  // proxy); the frame's is refused at the gate (403) and the backend
+  // never tries. The app's answer is the backend's 503 error body,
+  // which Chromium withholds from an <img> (ORB) and reports as a
+  // failed request rather than a response.
+  const { app, page, context } = await launchAppWithStubs();
+  try {
+    await routeContext(context, /gate-(app|frame)\.example/, (r) => r.continue());
+    const statuses = new Map<string, number | string>();
+    const urls: string[] = [];
+    const which = (url: string) => /gate-(app|frame)\.example/.exec(decodeURIComponent(url))?.[1];
+    context.on("response", (res) => {
+      const m = which(res.url());
+      if (m) {
+        statuses.set(m, res.status());
+        urls.push(res.url());
+      }
+    });
+    context.on("requestfailed", (req) => {
+      const m = which(req.url());
+      if (m) {
+        statuses.set(m, "failed");
+        urls.push(req.url());
+      }
+    });
+    await page.evaluate(() => {
+      const bridge = window.aniGui!;
+      const base = bridge.lanes?.image ?? bridge.apiBase;
+      const src = (host: string) =>
+        `${base}/api/image?url=${encodeURIComponent(`https://${host}/a.jpg`)}`;
+      const img = new Image();
+      img.src = src("gate-app.example");
+      document.body.append(img);
+      const frame = document.createElement("iframe");
+      frame.srcdoc = `<img src="${src("gate-frame.example")}">`;
+      document.body.append(frame);
+    });
+    await expect.poll(() => statuses.size, { timeout: 15_000 }).toBe(2);
+    expect(statuses.get("frame")).toBe(403);
+    expect(outboundAttempts(app)).toContain("CONNECT gate-app.example:443");
+    expect(outboundAttempts(app)).not.toContain("CONNECT gate-frame.example:443");
+    const secret = await page.evaluate(() => window.aniGui?.internalSecret);
+    for (const url of urls) expect(url).not.toContain(secret as string);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a test launch's scratch profile is gone once the app has quit", async () => {
+  // Each launch gets a profile of its own under the system's temporary
+  // directory. The launch helper removes it, and only it, once the app
+  // has exited, so test runs leave nothing behind there.
+  const { app, profile } = await launchAppWithStubs();
+  try {
+    expect(existsSync(profile)).toBe(true);
+  } finally {
+    await app.close();
+  }
+  await expect.poll(() => existsSync(profile), { timeout: 5_000 }).toBe(false);
+});
+
+test("the splash shows while the app starts, and is gone once the app's window has shown", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await expect(page.getByText(/top rated/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect.poll(() => app.windows().length, { timeout: 5_000 }).toBe(1);
+    // It was on screen — opened and shown, not merely created — and
+    // closed once the app's window had shown, not suppressed by a
+    // failure.
+    // It was opened with the app's own version for the line above the
+    // title.
+    const version = await app.evaluate(({ app: a }) => a.getVersion());
+    expect(await splashState(app)).toEqual({
+      opened: true,
+      shown: true,
+      closed: true,
+      suppressed: false,
+      version,
+      // Every boot step reached the splash, and its page lit a stretch
+      // of the rail for each.
+      steps: 3,
+      railLit: 3,
+      // Its page rendered well inside the stuck threshold, so it never
+      // offered Restart or Quit (splash-stuck.spec.ts).
+      stuck: false,
+      choice: null,
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("the packaged app's windows name an icon the packaged app can load", async () => {
+  // A non-integrated AppImage has no .desktop file a Linux desktop can
+  // match its windows to, so the icon each window sets is the one the
+  // task bar shows. Electron loads it when the window is made, from
+  // inside app.asar here, and a path the package does not carry loads
+  // as an empty image with nothing but a warning: no icon at all.
+  const { app } = await launchAppWithStubs();
+  try {
+    const seen = await app.evaluate(({ nativeImage }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { appWindowOptions } = main.require("./lib/app-window.cjs");
+      const { splashWindowOptions } = main.require("./lib/splash.cjs");
+      const icons = [
+        appWindowOptions({ width: 1, height: 1, preload: "p", additionalArguments: [] }).icon,
+        splashWindowOptions().icon,
+      ] as (string | undefined)[];
+      return icons.map((icon) => {
+        const image = icon ? nativeImage.createFromPath(icon) : null;
+        return { icon, inAsar: !!icon && icon.includes("app.asar"), size: image && !image.isEmpty() ? image.getSize() : null };
+      });
+    });
+    for (const s of seen) {
+      expect(s.icon, "the window names an icon").toBeTruthy();
+      expect(s.inAsar, `${s.icon} is inside the package`).toBe(true);
+      expect(s.size, `${s.icon} loads`).toEqual({ width: 512, height: 512 });
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test("the splash and the app's window each set their icon once on screen, where Wayland can take it", async () => {
+  // Chromium 130 drops an icon set on a Wayland window before it is
+  // shown, and both windows are made hidden: KDE Plasma got no icon
+  // from either. The main process records, per window, the icon it
+  // last set after a show and how often (lib/app-window.cjs
+  // holdWindowIcon).
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await expect(page.getByText(/top rated/i).first()).toBeVisible({ timeout: 15_000 });
+    const set = await app.evaluate(() => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      return main.require("./lib/app-window.cjs").lastWindowIcons() as { name: string; icon: string; sets: number }[];
+    });
+    const names = new Set(set.map((s) => s.name));
+    expect([...names].sort(), JSON.stringify(set)).toEqual(["app", "splash"]);
+    for (const s of set) expect(s.icon, s.name).toContain("app.asar");
+  } finally {
+    await app.close();
+  }
+});
+
+test("the splash page, opened as the launch opens it, shows the app's version above its title", async () => {
+  // The launch's own splash comes and goes before a spec can look at
+  // it, so the page is opened again here as the main process opens it
+  // (lib/splash.cjs): same window options, same query. This checks what
+  // Chromium renders — the page's CSP, the file:// query, the line the
+  // script writes into — rather than the main process's record.
+  const { app } = await launchAppWithStubs();
+  try {
+    const [version, shown, colours] = await app.evaluate(async ({ app: a, BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const w = new BrowserWindow(splashWindowOptions());
+      try {
+        await w.loadFile(SPLASH_PAGE, { query: { v: a.getVersion() } });
+        const text = await w.webContents.executeJavaScript(
+          "document.querySelector('.title').innerText",
+        );
+        // The leading "v" in the app's accent, the rest as the line is.
+        const c = await w.webContents.executeJavaScript(
+          "(() => { const line = document.querySelector('.version');" +
+            " const v = line.querySelector('.v');" +
+            " return { v: v && v.textContent, mark: v && getComputedStyle(v).color," +
+            " line: getComputedStyle(line).color," +
+            " brand: getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() }; })()",
+        );
+        return [a.getVersion(), text as string, c as Record<string, string | null>];
+      } finally {
+        w.destroy();
+      }
+    });
+    expect(shown.split(/\s+/).filter(Boolean)).toEqual([`v${version}`, "ani-gui"]);
+    expect(colours.v).toBe("v");
+    expect(colours.brand).toBe("#d77a3b");
+    expect(colours.mark).toBe("rgb(215, 122, 59)");
+    expect(colours.line).not.toBe(colours.mark);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the splash's rail fills as steps land, and its stall line comes after 700 ms without moving the title", async () => {
+  // Opened as the launch opens it (lib/splash.cjs), with the stall line
+  // the main process would give it, then driven by hand: a test
+  // launch's own boot is over before a spec can watch it.
+  const { app } = await launchAppWithStubs();
+  try {
+    const seen = await app.evaluate(async ({ BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashPageQuery, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const { stallTexts } = main.require("./lib/splash-progress.cjs");
+      const { messagesFor } = main.require("./lib/main-messages.cjs");
+      // Never shown, so its timers are kept from being throttled the
+      // way a hidden page's are; the real splash is on screen.
+      const options = splashWindowOptions();
+      const w = new BrowserWindow({
+        ...options,
+        webPreferences: { ...options.webPreferences, backgroundThrottling: false },
+      });
+      const run = (code: string) => w.webContents.executeJavaScript(code);
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      try {
+        const en = messagesFor("en");
+        const texts = stallTexts(en);
+        await w.loadFile(SPLASH_PAGE, {
+          query: splashPageQuery({ version: "0.0.0", stallTexts: texts, generic: en.splashStartingUp }),
+        });
+        const look = () =>
+          run(
+            "({ lit: document.querySelectorAll('.rail i.lit').length," +
+              " status: document.querySelector('.status').classList.contains('on') ?" +
+              " document.querySelector('.status').textContent : null," +
+              " title: document.querySelector('.wordmark').getBoundingClientRect().top })",
+          );
+        const start = await look();
+        const lit1 = await run("window.splashProgress.set(1)");
+        const early = await look();
+        await wait(1000);
+        const stalled = await look();
+        const lit3 = await run("window.splashProgress.set(3)");
+        const done = await look();
+        return { expected: texts[1], generic: en.splashStartingUp, start, lit1, early, stalled, lit3, done };
+      } finally {
+        w.destroy();
+      }
+    });
+    expect(seen.start.lit).toBe(0);
+    expect(seen.lit1).toBe(1);
+    expect(seen.early).toMatchObject({ lit: 1, status: null });
+    expect(seen.stalled).toMatchObject({ lit: 1, status: seen.expected });
+    expect(seen.stalled.title).toBe(seen.early.title);
+    expect(seen.lit3).toBe(3);
+    // Up until the splash closes, back to the generic words once the
+    // network is no longer the reason.
+    expect(seen.done).toMatchObject({ lit: 3, status: seen.generic });
+  } finally {
+    await app.close();
+  }
+});
+
+test("every language's stall lines fit the splash, whole, without moving its title", async () => {
+  const { app } = await launchAppWithStubs();
+  try {
+    const seen = await app.evaluate(async ({ BrowserWindow }) => {
+      const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+      const { SPLASH_PAGE, splashPageQuery, splashWindowOptions } = main.require("./lib/splash.cjs");
+      const { stallTexts } = main.require("./lib/splash-progress.cjs");
+      const { LOCALES, messagesFor } = main.require("./lib/main-messages.cjs");
+      const options = splashWindowOptions();
+      const w = new BrowserWindow({
+        ...options,
+        webPreferences: { ...options.webPreferences, backgroundThrottling: false },
+      });
+      const out: Record<string, unknown>[] = [];
+      try {
+        for (const locale of LOCALES as string[]) {
+          for (const text of new Set(stallTexts(messagesFor(locale)) as string[])) {
+            await w.loadFile(SPLASH_PAGE, { query: splashPageQuery({ version: "0.18.0", stallTexts: [] }) });
+            out.push(
+              await w.webContents.executeJavaScript(
+                `(() => {
+                  const title = () => document.querySelector('.wordmark').getBoundingClientRect().top;
+                  const before = title();
+                  const s = document.querySelector('.status');
+                  s.textContent = ${JSON.stringify(text)};
+                  s.classList.add('on');
+                  const r = s.getBoundingClientRect();
+                  const lineHeight = parseFloat(getComputedStyle(s).lineHeight);
+                  return { locale: ${JSON.stringify(locale)}, text: s.textContent,
+                    fits: r.right <= innerWidth && r.bottom <= innerHeight && s.scrollWidth <= s.clientWidth,
+                    lines: Math.round(r.height / lineHeight),
+                    still: title() === before };
+                })()`,
+              ),
+            );
+          }
+        }
+      } finally {
+        w.destroy();
+      }
+      return out;
+    });
+    // Two lines per language, each a real line of text.
+    expect(seen.length).toBe(8);
+    for (const line of seen) {
+      expect(line).toMatchObject({ fits: true, still: true });
+      expect(String(line.text).length).toBeGreaterThan(0);
+      expect(line.lines).toBeLessThanOrEqual(3);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test("the app's window paints the app's dark background and is revealed once its page has rendered", async () => {
+  // A slow first render (a cold Vite compile, a cold disk) used to show
+  // a white frame between the splash and Home.
+  const { app } = await launchAppWithStubs();
+  try {
+    const readyRecord = () =>
+      app.evaluate(() => {
+        const main = (process as unknown as { mainModule: NodeJS.Module }).mainModule;
+        return main.require("./lib/app-window.cjs").lastAppReady();
+      });
+    // Wait out the reveal: the splash gone, and the wait for the
+    // renderer settled. While the splash stands in that wait has no
+    // bound (a page that never says it rendered leaves the splash
+    // stuck, splash-stuck.spec.ts), so a renderer that never says it
+    // rendered fails the poll below.
+    await expect.poll(() => app.windows().length, { timeout: 20_000 }).toBe(1);
+    await expect
+      .poll(async () => {
+        const r = await readyRecord();
+        return r.rendered || r.gaveUp;
+      }, { timeout: 20_000 })
+      .toBe(true);
+    const backgrounds = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .filter((w) => !w.isDestroyed() && (w as unknown as Record<string, unknown>).aniGuiSplash !== true)
+        .map((w) => w.getBackgroundColor().toLowerCase()),
+    );
+    expect(backgrounds).toEqual(["#0c0a09"]);
+    // The renderer said its first page had rendered while the window
+    // was still hidden. That the reveal waits for this word is the
+    // reveal gate's own unit test (lib/app-window.test.cjs).
+    expect(await readyRecord()).toEqual({ rendered: true, gaveUp: false, beforeReveal: true });
+  } finally {
+    await app.close();
+  }
+});
+
+test("the renderer cannot change the launch's flags", async () => {
+  // The flags are the session's. The bridge hands the page frozen
+  // copies of what the preload exposes, so neither the flags nor
+  // window.aniGui can be written from the page (the preload freezes its
+  // own copy too; preload.test.cjs checks that half).
+  const { app, page } = await launchAppWithStubs();
+  try {
+    const seen = await page.evaluate(() => {
+      const bridge = window.aniGui as unknown as Record<string, unknown>;
+      const flags = bridge.flags as Record<string, unknown>;
+      try {
+        flags.injected = true;
+      } catch {
+        // Strict code throws; sloppy code is ignored. Either way it fails.
+      }
+      try {
+        // The probe the package under test declares, off: turning it
+        // on from the page fails the same way.
+        flags.test_run_probe = true;
+      } catch {
+        // As above.
+      }
+      try {
+        bridge.flags = { injected: true };
+      } catch {
+        // As above.
+      }
+      return {
+        flagsFrozen: Object.isFrozen(flags),
+        bridgeFrozen: Object.isFrozen(bridge),
+        flags: window.aniGui?.flags,
+      };
+    });
+    expect(seen).toEqual({
+      flagsFrozen: true,
+      bridgeFrozen: true,
+      flags: { test_run_probe: false },
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+/** The `--ozone-platform` value on each of the app's processes'
+ *  command lines, read from /proc. Chromium resolves the platform once,
+ *  in the browser process, and hands the answer to every child it
+ *  starts — the GPU process and each renderer carry it. A child
+ *  rewrites its process title, which joins its arguments with spaces
+ *  rather than NULs, so the switch is matched in either form. */
+async function ozonePlatforms(app: ElectronApplication): Promise<string[]> {
+  const pids = await app.evaluate(({ app: electronApp }) =>
+    electronApp.getAppMetrics().map((metric) => metric.pid),
+  );
+  const platforms: string[] = [];
+  for (const pid of pids) {
+    let cmdline: string;
+    try {
+      cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8");
+    } catch {
+      continue; // the process ended between the two reads
+    }
+    for (const match of cmdline.matchAll(/--ozone-platform=([^\s\0]+)/g)) {
+      platforms.push(match[1]);
+    }
+  }
+  return platforms;
+}
+
+test("a test launch lands on the display the run is meant for", async () => {
+  // Test windows opened on the desktop of whoever ran the suite. Outside
+  // CI the suite runs inside tools/headless-wayland.sh's private GNOME
+  // Shell session, and the app must be on Wayland there — on the
+  // headless compositor, which the launch helper insists on; in CI, on
+  // the runner's Xvfb, through X11.
+  const { app } = await launchAppWithStubs();
+  try {
+    await expect.poll(() => ozonePlatforms(app)).not.toEqual([]);
+    const platforms = await ozonePlatforms(app);
+    expect(new Set(platforms)).toEqual(new Set([expectedPlatform(process.env)]));
+  } finally {
+    await app.close();
+  }
+});
+
 test("clicking a poster card navigates to a detail route", async () => {
   const { app, page } = await launchAppWithStubs();
   try {
-    // The first window starts loading before `context.route()`
-    // can fully register, so the trending/top-rated stubs may
-    // race the renderer's initial fetches. We stub them anyway
-    // (in case the timing wins on faster machines), but the
-    // assertion only checks that *some* /anime/<id> URL lands —
-    // not the specific id from our fixture. The point of this
-    // test is to exercise the route+navigation path, not the
-    // network stubbing.
+    // The remounted Home runs on the stubs, so the first card of the
+    // Top rated row is the top-rated fixture's first show.
     await expect(page.getByText(/top rated/i).first()).toBeVisible({
       timeout: 15_000,
     });
@@ -218,7 +863,7 @@ test("clicking a poster card navigates to a detail route", async () => {
     // becomes `app://localhost/anime/<id>`.
     await expect
       .poll(() => page.url(), { timeout: 10_000 })
-      .toMatch(/\/anime\/\w+/);
+      .toMatch(new RegExp(`/anime/${topRated[0].id}(\\?|$)`));
   } finally {
     await app.close();
   }
@@ -229,7 +874,7 @@ test("settings locale picker is wired to a reloading change handler", async () =
   // exposes every shipped locale, and selecting a non-default one
   // fires a full page reload (paraglideSetLocale's default). The
   // *post-reload locale resolution* depends on Electron's storage
-  // semantics under `_electron.launch()` and is flaky in CI's
+  // semantics under Playwright's Electron launch and is flaky in CI's
   // headless xvfb runner; assert only the integration wiring.
   const { app, page } = await launchAppWithStubs();
   try {
@@ -273,22 +918,469 @@ test("settings locale picker is wired to a reloading change handler", async () =
 test("home page hides the Continue Watching strip when history is empty", async () => {
   const { app, page } = await launchAppWithStubs();
   try {
-    // With XDG_STATE_HOME pinned to a fresh tmp dir (see
-    // `launchAppWithStubs`), the backend's history file doesn't
-    // exist, the renderer gets an empty list, and the Continue
-    // Watching strip's `{#if history && history.length > 0}`
+    // History is stubbed empty (see `launchAppWithStubs`), and the
+    // Continue Watching strip's `{#if history && history.length > 0}`
     // guard keeps the heading out of the DOM.
-    // "Top rated" eyebrow is the load signal we use across e2e —
-    // it renders for every trending-result count, including 1 (a
-    // single-entry fixture leaves "Trending now" without a Strip
-    // because that single entry becomes the hero, which uses a
-    // different eyebrow).
+    // The "Top rated" eyebrow is the load signal used across e2e: Home
+    // shows it while the row loads and once it has, whatever trending
+    // returns (a single entry becomes the hero and leaves no "Trending
+    // now" row), so it marks Home as mounted, not its data as landed.
     await expect(page.getByText(/top rated/i).first()).toBeVisible({
       timeout: 15_000,
     });
     await expect(
       page.getByRole("heading", { name: /continue watching/i }),
     ).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+// ─── The window stays on the app's own document ───────────────────
+//
+// The main process refuses every navigation that would leave the app's
+// document (lib/window-guard.cjs). Any document the window loads gets
+// the preload bridge, so a web page or about:blank the window was sent
+// to ran with it. These cases drive renderer-initiated navigations,
+// and a drop delivered through Chromium's own drag handling (CDP
+// Input.dispatchDragEvent) rather than a synthetic DOM event. Electron
+// keeps a drop from navigating by default (`navigateOnDragDrop`); the
+// drop case holds that in place.
+
+async function waitForHome(page: import("@playwright/test").Page) {
+  await expect(page.getByText(/top rated/i).first()).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/**
+ * A harmless page on disk, the kind of file a user might drop. Written
+ * under the launch's scratch profile, which goes when the app quits.
+ */
+function droppedPage(profile: string): string {
+  const dir = fs.mkdtempSync(path.join(profile, "drop-"));
+  const file = path.join(dir, "dropped.html");
+  fs.writeFileSync(file, "<!doctype html><title>dropped</title><h1>dropped page</h1>");
+  return file;
+}
+
+/** Record shell.openExternal in the main process instead of launching a browser. */
+async function stubOpenExternal(app: ElectronApplication) {
+  await app.evaluate(({ shell }) => {
+    const g = globalThis as unknown as { __opened: string[] };
+    g.__opened = [];
+    shell.openExternal = async (url: string) => {
+      g.__opened.push(url);
+    };
+  });
+}
+
+async function openedExternally(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(() => (globalThis as unknown as { __opened: string[] }).__opened);
+}
+
+/**
+ * Record, in the main process, every navigation the window is asked to
+ * make. The listener is added after the app's own guard, so by the time
+ * a URL is recorded the guard has already ruled on it: the record is
+ * the positive witness a refusal can be asserted after (docs/testing.md,
+ * "Asserting that something did not happen").
+ */
+async function recordNavigations(app: ElectronApplication) {
+  await app.evaluate(({ BrowserWindow }) => {
+    const g = globalThis as unknown as { __navigations: string[] };
+    g.__navigations = [];
+    const win = BrowserWindow.getAllWindows()[0];
+    win.webContents.on("will-navigate", (event: { url?: string }, url: string) => {
+      g.__navigations.push(event.url ?? url);
+    });
+  });
+}
+
+async function navigationsAsked(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(() => (globalThis as unknown as { __navigations: string[] }).__navigations);
+}
+
+let navigationWitnesses = 0;
+
+/** Ask the page to navigate itself. Swallows the error a committed navigation causes. */
+async function pageNavigatesTo(page: import("@playwright/test").Page, url: string) {
+  await page
+    .evaluate((u) => {
+      window.location.href = u;
+    }, url)
+    .catch(() => {});
+}
+
+test("a navigation off the app's document is refused and the app stays", async () => {
+  const { app, page, profile } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await recordNavigations(app);
+    const consoleLines: string[] = [];
+    page.on("console", (msg) => consoleLines.push(msg.text()));
+    const home = page.url();
+
+    // Chromium itself refuses a page's navigation to a local file or a
+    // top-level data: document, before any main-process hook is asked;
+    // the line it logs is the witness that it ruled.
+    const file = `file://${droppedPage(profile)}`;
+    await pageNavigatesTo(page, file);
+    await expect.poll(() => consoleLines.some((l) => l.includes("Not allowed to load local resource"))).toBe(true);
+    expect(page.url(), `navigated to ${file}`).toBe(home);
+
+    await pageNavigatesTo(page, "data:text/html,<h1>data page</h1>");
+    await expect.poll(() => consoleLines.some((l) => /Not allowed to navigate top frame to data URL/.test(l))).toBe(true);
+    expect(page.url(), "navigated to a data: page").toBe(home);
+
+    // Another host on the app's scheme reaches the guard: the protocol
+    // handler serves the bundle whatever the host, so this would load
+    // the app under a document the bridge was never meant for.
+    //
+    // about:blank is not here. Chromium commits it without the
+    // navigation hooks Electron's will-navigate hangs off, so no
+    // main-process guard sees it; it takes the origin of the document
+    // that asked for it, which is the app's own, and calls from it
+    // across the bridge are refused by the IPC sender check.
+    await pageNavigatesTo(page, "app://elsewhere/");
+    await expect.poll(() => navigationsAsked(app)).toContain("app://elsewhere/");
+    expect(page.url(), "navigated to app://elsewhere/").toBe(home);
+
+    // Read the live document rather than through a locator: Playwright
+    // counts a refused navigation as one still in flight, and a locator
+    // would wait on it until it timed out.
+    await expect
+      .poll(() => page.evaluate(() => /top rated/i.test(document.body.innerText)))
+      .toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a file or link dropped on the window does not replace the app", async () => {
+  const { app, page, profile } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await recordNavigations(app);
+    const home = page.url();
+    const file = droppedPage(profile);
+    // Witness that each drag reached the page at all.
+    await page.evaluate(() => {
+      const g = window as unknown as { __dragovers: number };
+      g.__dragovers = 0;
+      window.addEventListener("dragover", () => {
+        g.__dragovers += 1;
+      });
+    });
+    const cdp = await page.context().newCDPSession(page);
+    for (const data of [
+      {
+        items: [{ mimeType: "text/uri-list", data: `file://${file}` }],
+        files: [file],
+        dragOperationsMask: 1 | 2 | 16,
+      },
+      {
+        items: [{ mimeType: "text/uri-list", data: "https://example.com/dropped" }],
+        dragOperationsMask: 1 | 2 | 16,
+      },
+    ]) {
+      const before = await page.evaluate(() => (window as unknown as { __dragovers: number }).__dragovers);
+      for (const type of ["dragEnter", "dragOver", "drop"] as const) {
+        await cdp.send("Input.dispatchDragEvent", { type, x: 400, y: 300, data });
+      }
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { __dragovers: number }).__dragovers))
+        .toBeGreaterThan(before);
+      // A drop that became a navigation would be one the page asks its
+      // browser for, like any other. Ask for one more after it — to a
+      // place the guard refuses — and wait for that one to arrive: a
+      // navigation from the same frame asked for earlier arrives
+      // first, so by then the drop's would have been recorded too.
+      const witness = `app://elsewhere/after-drop-${navigationWitnesses++}`;
+      await pageNavigatesTo(page, witness);
+      await expect.poll(() => navigationsAsked(app)).toContain(witness);
+      expect((await navigationsAsked(app)).filter((u) => !u.startsWith("app://elsewhere/after-drop-"))).toEqual([]);
+      expect(page.url()).toBe(home);
+    }
+    expect(await page.evaluate(() => document.body.innerText.includes("dropped page"))).toBe(false);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the app's own routes still load in full, and reload", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    // A full-document navigation inside the app — SvelteKit falls back
+    // to one on an unknown route or a failed chunk load.
+    const loaded = page.waitForEvent("load");
+    await pageNavigatesTo(page, "/settings");
+    await loaded;
+    await expect(page).toHaveURL(/^app:\/\/localhost\/settings\/?$/);
+    await expect(page.getByRole("combobox", { name: /locale/i })).toBeVisible();
+    await page.reload();
+    await expect(page).toHaveURL(/^app:\/\/localhost\/settings\/?$/);
+    await expect(page.getByRole("combobox", { name: /locale/i })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test("a web link opens in the system browser and the window stays", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await stubOpenExternal(app);
+    const home = page.url();
+    // A link that asks for a new window, like the app's own external links.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.href = "https://example.com/new-window";
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      a.textContent = "external";
+      a.id = "e2e-external";
+      document.body.append(a);
+    });
+    await page.locator("#e2e-external").click();
+    // And a navigation of the window itself to a web page.
+    await pageNavigatesTo(page, "https://example.com/same-window");
+    // The open is the witness: the guard hands the URL out in the same
+    // step that refuses the navigation.
+    await expect
+      .poll(() => openedExternally(app))
+      .toEqual(["https://example.com/new-window", "https://example.com/same-window"]);
+    expect(page.url()).toBe(home);
+  } finally {
+    await app.close();
+  }
+});
+
+// ─── The bridge answers the app's document only ───────────────────
+//
+// Every IPC handler in main checks that the call came from the main
+// frame holding the app's document (lib/ipc-guard.cjs). A page that
+// does get into the window — the guard above is meant to make that
+// impossible — still gets nothing from the bridge.
+
+/** Main-process stderr, line by line, from this point on. */
+function collectStderr(app: ElectronApplication): string[] {
+  const lines: string[] = [];
+  app.process().stderr?.on("data", (chunk: Buffer) => {
+    lines.push(...chunk.toString().split("\n"));
+  });
+  return lines;
+}
+
+test("every IPC channel refuses a sender that is not the app's document", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const stderr = collectStderr(app);
+    // Call every handler the running app registered, the way Electron
+    // would for a call from a frame holding about:blank. The channels
+    // come from ipcMain itself, so a handler added later is covered
+    // without editing this list.
+    const outcome = await app.evaluate(async ({ ipcMain }) => {
+      const forged = () => {
+        const event: Record<string, unknown> = {
+          senderFrame: { url: "about:blank", parent: null },
+          touched: [] as string[],
+        };
+        // A refused call reads senderFrame and nothing else; a handler
+        // that ran would reach for the sender's window.
+        Object.defineProperty(event, "sender", {
+          get() {
+            (event.touched as string[]).push("sender");
+            throw new Error("handler reached for the sender");
+          },
+        });
+        return event;
+      };
+      const settle = <T,>(p: Promise<T>) =>
+        Promise.race([p, new Promise((r) => setTimeout(() => r("no answer"), 2_000))]);
+
+      // ipcMain keeps each invoke handler as registered, keyed by
+      // channel; Electron calls it with the event and turns a return
+      // into the reply and a throw into the rejection.
+      const invoke = (ipcMain as unknown as {
+        _invokeHandlers: Map<string, (e: unknown, ...a: unknown[]) => unknown>;
+      })._invokeHandlers;
+      const handled: Record<string, string> = {};
+      for (const [channel, fn] of invoke) {
+        const event = forged();
+        const answer = await settle(
+          Promise.resolve()
+            .then(() => fn(event))
+            .then(
+              (v) => `replied ${JSON.stringify(v)}`,
+              (err) => `threw ${String((err as Error)?.message ?? err)}`,
+            ),
+        );
+        handled[channel] = String(answer);
+      }
+      const listened: Record<string, { returnValue: unknown; touched: string[] }> = {};
+      for (const channel of ipcMain.eventNames()) {
+        if (typeof channel !== "string" || !channel.startsWith("ani-gui:")) continue;
+        const event = forged();
+        for (const fn of ipcMain.listeners(channel)) {
+          try {
+            // No arguments: a count reaching the active-downloads
+            // handler would make the app prompt before it quits.
+            (fn as (e: unknown) => void)(event);
+          } catch {
+            // A handler that ran and failed is recorded by `touched`.
+          }
+        }
+        listened[channel] = { returnValue: event.returnValue, touched: event.touched as string[] };
+      }
+      return { handled, listened };
+    });
+
+    const handledChannels = Object.keys(outcome.handled);
+    const listenedChannels = Object.keys(outcome.listened);
+    // Not vacuous: the bridge's channels are all there.
+    expect(handledChannels).toEqual(
+      expect.arrayContaining([
+        "ani-gui:pick-directory",
+        "ani-gui:pick-file",
+        "ani-gui:reveal-in-folder",
+        "ani-gui:account:open-oauth",
+        "ani-gui:account:cancel-oauth",
+        "ani-gui:account:set-token",
+        "ani-gui:account:get-token",
+        "ani-gui:account:clear-token",
+        "ani-gui:open-external",
+      ]),
+    );
+    expect(listenedChannels).toEqual(
+      expect.arrayContaining([
+        "ani-gui:window:minimize",
+        "ani-gui:window:toggle-maximize",
+        "ani-gui:window:close",
+        "ani-gui:window:is-maximized",
+        "ani-gui:active-downloads",
+        "ani-gui:read-config-locale",
+        "ani-gui:internal-secret",
+      ]),
+    );
+    for (const channel of handledChannels) {
+      expect(outcome.handled[channel], channel).toMatch(/^threw .*refused/);
+    }
+    for (const channel of listenedChannels) {
+      expect(outcome.listened[channel].touched, channel).toEqual([]);
+    }
+    // The sync channels answer with a refusal, never a locale.
+    expect(outcome.listened["ani-gui:read-config-locale"].returnValue).toBeNull();
+    expect(outcome.listened["ani-gui:internal-secret"].returnValue).toBeNull();
+    expect(outcome.listened["ani-gui:window:is-maximized"].returnValue).toBe(false);
+    // Every refusal is logged, the async messages included.
+    await expect
+      .poll(() => listenedChannels.filter((ch) => !stderr.some((l) => l.includes(`[ipc] refused ${ch} `))))
+      .toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the app's own document still reaches the bridge", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await stubOpenExternal(app);
+    const answers = await page.evaluate(async () => {
+      const bridge = (window as unknown as {
+        aniGui: {
+          windowControls: { isMaximized(): boolean };
+          openExternal(url: string): Promise<boolean>;
+          account: { getToken(p: string): Promise<{ ok: boolean; kind?: string }> };
+        };
+      }).aniGui;
+      return {
+        maximized: typeof bridge.windowControls.isMaximized(),
+        opened: await bridge.openExternal("https://example.com/privacy"),
+        token: await bridge.account.getToken("anilist"),
+      };
+    });
+    expect(answers.maximized).toBe("boolean");
+    expect(answers.opened).toBe(true);
+    // No token was stored in this fresh profile; what matters is that
+    // the handler ran rather than refusing.
+    expect(answers.token.kind).not.toBe("refused");
+    expect(await openedExternally(app)).toEqual(["https://example.com/privacy"]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("revealInFolder opens a directory and never a file", async () => {
+  const { app, page, profile } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    await app.evaluate(({ shell }) => {
+      const g = globalThis as unknown as { __openedPaths: string[] };
+      g.__openedPaths = [];
+      shell.openPath = async (p: string) => {
+        g.__openedPaths.push(p);
+        return "";
+      };
+    });
+    const file = droppedPage(profile);
+    const dir = path.dirname(file);
+    const answers = await page.evaluate(
+      async ([f, d]) => {
+        const bridge = (window as unknown as {
+          aniGui: { revealInFolder(p: string): Promise<boolean> };
+        }).aniGui;
+        return { file: await bridge.revealInFolder(f), dir: await bridge.revealInFolder(d) };
+      },
+      [file, dir],
+    );
+    expect(answers).toEqual({ file: false, dir: true });
+    expect(
+      await app.evaluate(() => (globalThis as unknown as { __openedPaths: string[] }).__openedPaths),
+    ).toEqual([dir]);
+  } finally {
+    await app.close();
+  }
+});
+
+// ─── Permissions: what the app uses, and nothing else ─────────────
+//
+// Electron grants every permission unless told otherwise. The app's
+// document keeps fullscreen (the player) and clipboard writes (the
+// About page's copy button); everything else is denied
+// (lib/permissions.cjs).
+
+test("fullscreen and copying still work, and other permissions are denied", async () => {
+  const { app, page } = await launchAppWithStubs();
+  try {
+    await waitForHome(page);
+    const fullscreen = await page.evaluate(() =>
+      document.documentElement.requestFullscreen().then(
+        () => "granted",
+        (e: Error) => `refused: ${e.message}`,
+      ),
+    );
+    expect(fullscreen).toBe("granted");
+    await page.evaluate(() => document.exitFullscreen());
+
+    const denied = await page.evaluate(async () => ({
+      request: await Notification.requestPermission(),
+      query: (await navigator.permissions.query({ name: "notifications" })).state,
+    }));
+    expect(denied).toEqual({ request: "denied", query: "denied" });
+
+    // The About page's copy button, through the real clipboard.
+    await app.evaluate(({ clipboard }) => clipboard.writeText("before"));
+    await page.getByRole("link", { name: /about/i }).first().click();
+    await expect(page).toHaveURL(/\/about\/?$/);
+    await page.getByRole("button", { name: /copy ethereum address/i }).click();
+    // The toast renders its message twice: once on screen, once for
+    // screen readers.
+    await expect(page.getByText(/address copied/i).first()).toBeVisible();
+    expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toMatch(/^0x[0-9a-fA-F]{40}$/);
   } finally {
     await app.close();
   }

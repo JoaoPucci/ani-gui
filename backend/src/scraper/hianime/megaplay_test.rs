@@ -2,7 +2,7 @@
 //! the sources response, and the language a track file names.
 
 use super::megaplay::{media_id, sources_url};
-use super::megaplay_sources::{lang_of_track, parse_sources};
+use super::megaplay_sources::{lang_of_track, parse_sources, unread_languages};
 use crate::error::AniError;
 use crate::scraper::provider::{SubtitleTrack, SUBTITLE_URL_CAP};
 
@@ -132,13 +132,13 @@ fn the_sources_response_yields_the_master_and_the_captions_tracks() {
         payload.subtitles,
         vec![
             SubtitleTrack {
-                lang: "eng".into(),
+                lang: "en".into(),
                 label: "English".into(),
                 default: true,
                 url: "https://fetch.nexabloom.top/anime/ba3d/c109/subtitles/track_0_eng.vtt".into(),
             },
             SubtitleTrack {
-                lang: "spa".into(),
+                lang: "es-419".into(),
                 label: "Spanish (Latin American)".into(),
                 default: false,
                 url: "https://fetch.nexabloom.top/anime/ba3d/c109/subtitles/track_2_Latin_American_spa.vtt".into(),
@@ -160,7 +160,7 @@ fn an_encrypted_sources_answer_names_the_stream_and_keeps_its_tracks() {
     assert_eq!(
         payload.subtitles,
         vec![SubtitleTrack {
-            lang: "English".into(),
+            lang: "en".into(),
             label: "English".into(),
             default: true,
             url: "https://xdw5v.qeltrix.top/anime/e3b259d82783ba2b947a2045336fd83f/df9fb06b1a40fec2bff6d81935be43ac/subtitles/b70df979097c54ec51cee3d70a2caff8.vtt".into(),
@@ -337,7 +337,7 @@ fn a_track_the_transport_cannot_fetch_is_left_out() {
     let json = r#"{"sources":{"file":"https://cdn.example/master.m3u8"},"tracks":[{"file":"/subs/track_0_eng.vtt","label":"English","kind":"captions"},{"file":"https://cdn.example/subs/track_1_ger.vtt","label":"German","kind":"subtitles"}]}"#;
     let payload = parse_sources(json).expect("sources");
     assert_eq!(payload.subtitles.len(), 1);
-    assert_eq!(payload.subtitles[0].lang, "ger");
+    assert_eq!(payload.subtitles[0].lang, "de");
     assert_eq!(payload.subtitles[0].label, "German");
 }
 
@@ -375,37 +375,202 @@ fn a_track_whose_file_runs_past_the_hand_off_bound_is_left_out() {
     );
 }
 
+/// megaplay lists a track's `file`, `label` and `kind`, and no
+/// language. The language is a BCP 47 tag read from the code the file
+/// name carries, in either naming the site's CDNs have used, or else
+/// from the label; a track neither names is `und` — never the label,
+/// which is no tag and reached the player as `srclang="English"`.
 #[test]
-fn the_language_is_the_files_trailing_code_or_else_the_label() {
+fn the_language_is_a_tag_from_the_files_code_or_else_the_label() {
     assert_eq!(
         lang_of_track("https://c.example/subtitles/track_0_eng.vtt", "English"),
-        "eng"
+        "en"
     );
     assert_eq!(
         lang_of_track(
             "https://c.example/subtitles/track_2_Latin_American_spa.vtt?x=1",
-            "Spanish"
+            "Spanish (Latin American)"
         ),
-        "spa"
+        "es-419"
     );
     assert_eq!(
         lang_of_track(
             "https://c.example/subtitles/track_3_European_fre.VTT",
             "French"
         ),
-        "fre"
+        "fr"
     );
     assert_eq!(
         lang_of_track("https://c.example/subtitles/english.vtt", "English"),
-        "English",
-        "no trailing code: the label stands in"
+        "en",
+        "no code in the file name: the label names the language"
+    );
+    assert_eq!(
+        lang_of_track(
+            "https://c.example/subtitles/b70df979097c54ec51cee3d70a2caff8.vtt",
+            "Portuguese (Portuguese - Brazilian)"
+        ),
+        "pt-BR",
+        "a hashed file name: the label names the language and the region"
     );
     assert_eq!(
         lang_of_track("https://c.example/subtitles/track_0_en.vtt", " Deutsch "),
-        "Deutsch",
-        "a two-letter tail is not the site's code"
+        "und",
+        "neither a code the reader knows nor an English name: unknown, not the label"
     );
     assert_eq!(lang_of_track("https://c.example/x.vtt", "   "), "und");
+}
+
+/// The site's other CDN names a track by its code and its place in
+/// the listing (`eng-2.vtt`, `por-24.vtt`), with no `track_` prefix.
+/// Steel Ball Run's first episode lists 33 tracks named that way; read
+/// by the underscore rule alone, every one took its label as its
+/// language, and the player was handed `srclang="Portuguese (- Brazil)"`.
+#[test]
+fn a_code_followed_by_the_tracks_place_is_the_language() {
+    let at = |name: &str, label: &str| {
+        lang_of_track(
+            &format!("https://de3bv.example/anime/a/b/subtitles/{name}"),
+            label,
+        )
+    };
+    // A label the reader does not know, so the file name alone speaks.
+    assert_eq!(at("eng-2.vtt", "Track"), "en");
+    assert_eq!(at("por-24.vtt", "Track"), "pt");
+    assert_eq!(at("ara-3.vtt?sig=abc", "Track"), "ar");
+    assert_eq!(at("chi-4.VTT", "Track"), "zh");
+    assert_eq!(at("track_0_eng-7.vtt", "Track"), "en");
+    // Only a run of digits is a place in the listing.
+    assert_eq!(at("eng-.vtt", "Track"), "und");
+    assert_eq!(at("eng-2a.vtt", "Track"), "und");
+    assert_eq!(at("eng-2-3.vtt", "Track"), "und");
+    // And only three lowercase letters ahead of it are a code.
+    assert_eq!(at("english-2.vtt", "Track"), "und");
+    assert_eq!(at("ENG-2.vtt", "Track"), "und");
+    assert_eq!(at("en-2.vtt", "Track"), "und");
+    assert_eq!(at("-2.vtt", "   "), "und");
+}
+
+/// Every label the two listings sampled live carry, with its file
+/// name: Steel Ball Run's first episode (33 tracks, `<code>-<n>.vtt`)
+/// and Black Clover's (9). The region and the script come from the
+/// label, which is the only place the listing says which Portuguese
+/// or which Chinese a track is; `SDH` stays in the label the player
+/// shows.
+#[test]
+fn every_label_the_sampled_listings_carry_reads_as_its_tag() {
+    let listings = [
+        ("ara-3.vtt", "Arabic", "ar"),
+        ("chi-4.vtt", "Chinese (- Simplified)", "zh-Hans"),
+        ("chi-5.vtt", "Chinese (- Traditional)", "zh-Hant"),
+        ("hrv-6.vtt", "Croatian", "hr"),
+        ("cze-7.vtt", "Czech", "cs"),
+        ("dan-8.vtt", "Danish", "da"),
+        ("dut-9.vtt", "Dutch", "nl"),
+        ("eng-2.vtt", "English", "en"),
+        ("fin-11.vtt", "Finnish", "fi"),
+        ("fre-12.vtt", "French", "fr"),
+        ("ger-13.vtt", "German", "de"),
+        ("gre-14.vtt", "Greek", "el"),
+        ("heb-15.vtt", "Hebrew", "he"),
+        ("hun-16.vtt", "Hungarian", "hu"),
+        ("ind-17.vtt", "Indonesian", "id"),
+        ("ita-18.vtt", "Italian", "it"),
+        ("jpn-19.vtt", "Japanese", "ja"),
+        ("kor-20.vtt", "Korean", "ko"),
+        ("may-21.vtt", "Malay", "ms"),
+        ("nob-22.vtt", "Norwegian (Bokmål)", "nb"),
+        ("pol-23.vtt", "Polish", "pl"),
+        ("por-24.vtt", "Portuguese (- Brazil)", "pt-BR"),
+        ("por-25.vtt", "Portuguese (- Portugal)", "pt-PT"),
+        ("rum-26.vtt", "Romanian", "ro"),
+        ("rus-27.vtt", "Russian", "ru"),
+        ("spa-28.vtt", "Spanish (- Latin America)", "es-419"),
+        ("spa-29.vtt", "Spanish (- Latin America | SDH)", "es-419"),
+        ("spa-30.vtt", "Spanish (- Spain)", "es-ES"),
+        ("swe-31.vtt", "Swedish", "sv"),
+        ("tha-32.vtt", "Thai", "th"),
+        ("tha-33.vtt", "Thai (- SDH)", "th"),
+        ("tur-34.vtt", "Turkish", "tr"),
+        ("ukr-35.vtt", "Ukrainian", "uk"),
+        ("por-9.vtt", "Portuguese (Portuguese - Brazilian)", "pt-BR"),
+        ("spa-7.vtt", "Spanish (- Spanish[ESP])", "es-ES"),
+        ("spa-8.vtt", "Spanish (- Spanish[LAT])", "es-419"),
+    ];
+    for (file, label, tag) in listings {
+        assert_eq!(
+            lang_of_track(&format!("https://cdn.example/subtitles/{file}"), label),
+            tag,
+            "{file} under {label:?}"
+        );
+        assert_eq!(
+            lang_of_track("https://cdn.example/subtitles/0f3a9c.vtt", label),
+            tag,
+            "{label:?} alone, its file naming no code"
+        );
+    }
+}
+
+/// The file's code names the language; a label naming another one
+/// lends it no region, since it describes some other track.
+#[test]
+fn a_label_for_another_language_lends_no_region() {
+    assert_eq!(
+        lang_of_track(
+            "https://c.example/subtitles/por-24.vtt",
+            "Spanish (- Spain)"
+        ),
+        "pt"
+    );
+}
+
+/// `American` names the United States only for English: a Spanish
+/// label calling itself American is read as Spanish, no region.
+#[test]
+fn american_names_a_region_only_for_english() {
+    let at = |label: &str| lang_of_track("https://c.example/subtitles/0f3a9c.vtt", label);
+    assert_eq!(at("English (American)"), "en-US");
+    assert_eq!(at("Spanish (American)"), "es");
+}
+
+/// A listing's tracks whose language the reader could not read are
+/// reported together — file and label — so a third naming shows in
+/// the log the first time it is played, not as tracks quietly without
+/// a language: one warning per listing, logged from this report
+/// (`warn_unread_languages`). A listing it reads in full reports
+/// nothing. The report is checked rather than the log line: capturing
+/// a log line in a test races every other test thread that reaches the
+/// same call site, and lost the line under a loaded machine.
+#[test]
+fn a_listing_with_unread_languages_reports_them_together() {
+    let listing = r#"{"sources":{"file":"https://cdn.example/master.m3u8"},"tracks":[
+        {"file":"https://cdn.example/subs/eng-2.vtt","label":"English","kind":"captions","default":true},
+        {"file":"https://cdn.example/subs/q7.vtt?sig=s3cr3t&e=99","label":"Klingon","kind":"captions"},
+        {"file":"https://cdn.example/subs/zz-9.vtt","label":"Track 4","kind":"captions"}]}"#;
+    let payload = parse_sources(listing).expect("listing");
+    let langs: Vec<&str> = payload.subtitles.iter().map(|t| t.lang.as_str()).collect();
+    assert_eq!(langs, ["en", "und", "und"]);
+    let labels: Vec<&str> = payload.subtitles.iter().map(|t| t.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        ["English", "Klingon", "Track 4"],
+        "the label is kept for display"
+    );
+    let (count, report) = unread_languages(&payload.subtitles).expect("a report");
+    assert_eq!(count, 2);
+    for named in ["q7.vtt", "Klingon", "zz-9.vtt", "Track 4"] {
+        assert!(report.contains(named), "{named} named in {report:?}");
+    }
+    assert!(!report.contains("eng-2.vtt"), "a read track is not named");
+    assert!(
+        !report.contains("s3cr3t"),
+        "a signed file's query stays out of the log: {report:?}"
+    );
+
+    let read = r#"{"sources":{"file":"https://cdn.example/master.m3u8"},"tracks":[
+        {"file":"https://cdn.example/subs/eng-2.vtt","label":"English","kind":"captions"}]}"#;
+    let payload = parse_sources(read).expect("listing");
+    assert_eq!(unread_languages(&payload.subtitles), None);
 }
 
 /// The tracks are a nicety beside the stream: the field being
@@ -446,13 +611,13 @@ fn a_tracks_field_the_reader_cannot_read_costs_only_those_rows() {
         payload.subtitles,
         vec![
             SubtitleTrack {
-                lang: "eng".into(),
+                lang: "en".into(),
                 label: "English".into(),
                 default: true,
                 url: "https://cdn.example/subs/track_0_eng.vtt".into(),
             },
             SubtitleTrack {
-                lang: "ger".into(),
+                lang: "de".into(),
                 label: "German".into(),
                 default: false,
                 url: "https://cdn.example/subs/track_2_ger.vtt".into(),
@@ -520,4 +685,26 @@ fn a_sources_list_of_rows_the_reader_cannot_use_is_a_parse_failure() {
             "{listed}"
         );
     }
+}
+
+/// A provider that lists its own `lang` field — the embed payload's —
+/// may write a tag, a code, a name or a locale with an underscore. A
+/// tag-shaped field stands as listed; anything else is read as a name,
+/// or else the label is, so the player's `srclang` is always a tag.
+#[test]
+fn a_listed_language_field_reads_as_a_tag() {
+    use crate::scraper::subtitle_language::listed_tag;
+    assert_eq!(listed_tag("en", "English"), "en");
+    assert_eq!(listed_tag("pt-BR", "Português"), "pt-BR");
+    assert_eq!(
+        listed_tag("xx", "Something"),
+        "xx",
+        "a tag-shaped field stands"
+    );
+    assert_eq!(listed_tag("pt_BR", "Portuguese"), "pt-BR");
+    assert_eq!(listed_tag("English", "English"), "en");
+    assert_eq!(listed_tag("Portuguese (Brazil)", "x"), "pt-BR");
+    assert_eq!(listed_tag("", "Spanish (- Latin America)"), "es-419");
+    assert_eq!(listed_tag("Klingon", "Klingon"), "und");
+    assert_eq!(listed_tag("", ""), "und");
 }

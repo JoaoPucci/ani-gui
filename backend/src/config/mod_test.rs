@@ -8,8 +8,59 @@ use super::*;
 fn defaults_match_ani_cli_defaults() {
     let c = Config::default();
     assert_eq!(c.mode, "sub");
-    assert_eq!(c.quality, "best");
     assert_eq!(c.external_player, "mpv");
+}
+
+/// The setting downloads read, as a written config names it.
+fn written(c: &Config) -> String {
+    toml::to_string_pretty(c).expect("serialize")
+}
+
+#[test]
+fn download_quality_defaults_to_best() {
+    // Downloads take the master's best unless the user picks a height.
+    assert!(
+        written(&Config::default()).contains("download_quality = \"best\""),
+        "{}",
+        written(&Config::default())
+    );
+}
+
+#[test]
+fn a_written_config_carries_no_quality_setting() {
+    // The player always starts on Auto and every hand-off gets the
+    // master, so the one quality left is the download's, under its
+    // own name.
+    let body = written(&Config::default());
+    assert!(!body.lines().any(|l| l.starts_with("quality ")), "{body}");
+}
+
+#[test]
+fn an_old_quality_comes_up_as_download_quality_best() {
+    // Everyone starts again at Best: a height picked to save bandwidth
+    // while streaming says nothing about a file, which never buffers.
+    // The old key is dropped on the next write.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "mode = \"dub\"\nquality = \"720\"\n").unwrap();
+    let c = read_config(&path).expect("an old config loads");
+    assert_eq!(c.mode, "dub");
+    write_config(&path, &c).expect("write");
+    let body = std::fs::read_to_string(&path).unwrap();
+    assert!(body.contains("download_quality = \"best\""), "{body}");
+    assert!(!body.contains("720"), "{body}");
+    assert!(!body.lines().any(|l| l.starts_with("quality ")), "{body}");
+}
+
+#[test]
+fn download_quality_round_trips_through_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "download_quality = \"720\"\n").unwrap();
+    let c = read_config(&path).expect("read");
+    write_config(&path, &c).expect("write");
+    let body = std::fs::read_to_string(&path).unwrap();
+    assert!(body.contains("download_quality = \"720\""), "{body}");
 }
 
 #[test]
@@ -244,7 +295,6 @@ fn write_then_read_round_trips_through_disk() {
     let path = dir.path().join("nested").join("config.toml");
     let c = Config {
         mode: "dub".into(),
-        quality: "1080".into(),
         external_player: "vlc".into(),
         ..Config::default()
     };

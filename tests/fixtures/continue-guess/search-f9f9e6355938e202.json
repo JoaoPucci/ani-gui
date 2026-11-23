@@ -1,0 +1,24 @@
+{
+ "data": [
+  {
+   "id": "10789",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tokyo Ghoul: \"Jack\"",
+    "titles": {
+     "en_jp": "Tokyo Ghoul: \"Jack\"",
+     "ja_jp": "東京喰種 トーキョーグール【JACK】"
+    },
+    "abbreviatedTitles": [
+     "Tokyo Ghoul: \"Jack\""
+    ],
+    "slug": "tokyo-ghoul-jack",
+    "startDate": "2015-09-30",
+    "endDate": "2015-09-30",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  }
+ ]
+}

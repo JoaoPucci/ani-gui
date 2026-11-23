@@ -40,7 +40,7 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
 /// # Errors
 /// As [`run_migrations`].
 #[cfg(test)]
-pub(crate) fn run_migrations_to(conn: &mut Connection, version: u32) -> Result<()> {
+pub(crate) fn run_migrations_to(conn: &mut Connection, version: i32) -> Result<()> {
     embedded::migrations::runner()
         .set_target(refinery::Target::Version(version))
         .run(conn)

@@ -27,31 +27,41 @@ import { describeError } from '../../src/lib/play/error-copy';
 import { m } from '../../src/lib/paraglide/messages';
 import { setLocale } from '../../src/lib/paraglide/runtime';
 
-const CONFIG = {
+import type { AniErrorPayload, Config, KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
+const CONFIG: Config = {
 	locale: 'en',
 	mode: 'sub',
-	quality: 'best',
+	download_quality: 'best',
 	external_player: '',
 	external_player_kind: 'mpv',
 	external_player_custom_args: '',
 	syncplay_binary: '',
 	image_cache_cap_mb: 100,
 	auto_play_next: false,
+	cache_resolutions: false,
 	download_bottom_bar_enabled: true,
 	auto_skip_op: false,
 	auto_skip_ed: false,
 	use_custom_player_controls: true,
-	auto_update_anicli: false,
 	update_include_prereleases: false,
 	primary_account: ''
 };
 
 const DETAIL = 'invalid type: null, expected a string at line 1 column 42';
-const FAILURE = { kind: 'parse_failed', key: 'error.scraper.parse_failed', detail: DETAIL };
+const FAILURE: AniErrorPayload = {
+	kind: 'parse_failed',
+	key: 'error.scraper.parse_failed',
+	detail: DETAIL
+};
 
 /** Kitsu refused the search query: the Kitsu client's non-2xx answer,
  *  as the backend's error envelope carries it — kind, key and status. */
-const KITSU_REFUSED = { kind: 'upstream', key: 'error.network.upstream', status: 400 };
+const KITSU_REFUSED = {
+	kind: 'upstream',
+	key: 'error.network.upstream',
+	status: 400
+} satisfies AniErrorPayload;
 
 // The English backend catalogue, read while the file is collected rather
 // than inside a scenario: a scenario's budget is wall time, and a cold
@@ -68,14 +78,14 @@ function englishFor(key: string): string {
 	return ENGLISH[key.replaceAll('.', '_')];
 }
 
-function failingSearch(failure: object = FAILURE) {
+function failingSearch(failure: AniErrorPayload = FAILURE) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
-		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json([])),
-		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search/page`, () =>
-			HttpResponse.json(failure, { status: 502 })
-		)
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(CONFIG)),
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+			HttpResponse.json<KitsuAnimeRef[]>([])
+		),
+		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+		http.post(`${API_BASE}/api/kitsu/search/page`, () => errorAnswer(502, failure))
 	);
 }
 
@@ -108,7 +118,7 @@ async function until<T>(read: () => T | null, what: string, timeoutMs = 8000): P
 
 /** Mount the page on a failing query and return the alert's two lines. */
 async function failureState(
-	failure: object = FAILURE
+	failure: AniErrorPayload = FAILURE
 ): Promise<{ headline: string; reason: string | null }> {
 	failingSearch(failure);
 	setQuery('cowboy');

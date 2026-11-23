@@ -1,0 +1,46 @@
+{
+ "data": [
+  {
+   "id": "10089",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Boruto: Naruto the Movie",
+    "titles": {
+     "en": "Boruto: Naruto the Movie",
+     "en_jp": "Boruto: Naruto the Movie",
+     "en_us": "Boruto: Naruto the Movie",
+     "ja_jp": "BORUTO -NARUTO THE MOVIE-"
+    },
+    "abbreviatedTitles": [
+     "Gekijouban Naruto (2015)"
+    ],
+    "slug": "boruto-naruto-the-movie",
+    "startDate": "2015-08-07",
+    "endDate": "2015-08-07",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11771",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Boruto: Naruto the Movie - Naruto ga Hokage ni Natta Hi",
+    "titles": {
+     "en_jp": "Boruto: Naruto the Movie - Naruto ga Hokage ni Natta Hi",
+     "ja_jp": "BORUTO -NARUTO THE MOVIE- ナルトが火影になった日"
+    },
+    "abbreviatedTitles": [
+     "Boruto: Naruto the Movie - The Day Naruto Became the Hokage"
+    ],
+    "slug": "boruto-naruto-the-movie-naruto-ga-hokage-ni-natta-hi",
+    "startDate": "2016-07-06",
+    "endDate": "2016-07-06",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

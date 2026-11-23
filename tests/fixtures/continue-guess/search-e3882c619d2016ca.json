@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": "49746",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+    "titles": {
+     "en": "Re:ZERO -Starting Life in Another World- Season 4",
+     "en_jp": "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+     "ja_jp": "Re:ゼロから始める異世界生活 4th season"
+    },
+    "abbreviatedTitles": [],
+    "slug": "re-zero-kara-hajimeru-isekai-seikatsu-4",
+    "startDate": "2026-04-08",
+    "endDate": "2026-09-30",
+    "episodeCount": 19,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  }
+ ]
+}

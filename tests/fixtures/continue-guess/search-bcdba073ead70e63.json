@@ -1,0 +1,50 @@
+{
+ "data": [
+  {
+   "id": "45857",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen Season 2",
+    "titles": {
+     "en": "Jujutsu Kaisen Season 2",
+     "en_jp": "Jujutsu Kaisen Season 2",
+     "ja_jp": "呪術廻戦 第2期"
+    },
+    "abbreviatedTitles": [
+     "JJK2",
+     "Jujutsu Kaisen 2nd Season",
+     "Jujutsu Kaisen: Kaigyoku Gyokusetsu / Shibuya Jihen",
+     "Jujutsu Kaisen: Hidden Inventory / Premature Death",
+     "Jujutsu Kaisen: Shibuya Incident"
+    ],
+    "slug": "jujutsu-kaisen-2",
+    "startDate": "2023-07-06",
+    "endDate": "2023-12-28",
+    "episodeCount": 23,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47880",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen 2nd Season Recap",
+    "titles": {
+     "en": "Jujutsu Kaisen Season 2 Recap",
+     "en_jp": "Jujutsu Kaisen 2nd Season Recap",
+     "ja_jp": "呪術廻戦"
+    },
+    "abbreviatedTitles": [
+     "Jujutsu Kaisen Season 2 + Movie Recap"
+    ],
+    "slug": "jujutsu-kaisen-2nd-season-recap",
+    "startDate": "2023-08-11",
+    "endDate": "2023-08-17",
+    "episodeCount": 2,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

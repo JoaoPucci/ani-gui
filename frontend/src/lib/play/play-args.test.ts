@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { altTitlesFromKitsu, yearFromKitsuRef, type KitsuAnimeRef } from '$lib/api';
 import { buildPlayArgs } from './play-args';
 
-const show: KitsuAnimeRef = {
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+const show: KitsuAnimeRef = kitsuRefAnswer({
 	id: '42',
 	canonical_title: 'The Show',
 	titles: { en: 'The Show', en_jp: 'Za Shou' },
@@ -13,7 +14,7 @@ const show: KitsuAnimeRef = {
 	subtype: 'TV',
 	start_date: '2019-04-07',
 	status: 'finished'
-} as unknown as KitsuAnimeRef;
+});
 
 describe('buildPlayArgs', () => {
 	it("describes the episode by the show's Kitsu record and names the Kitsu id", () => {
@@ -22,7 +23,6 @@ describe('buildPlayArgs', () => {
 				title: 'The Show',
 				episode: 3,
 				mode: 'dub',
-				quality: '720',
 				show,
 				kitsuId: '42'
 			})
@@ -30,7 +30,6 @@ describe('buildPlayArgs', () => {
 			title: 'The Show',
 			episode: '3',
 			mode: 'dub',
-			quality: '720',
 			episode_count: 12,
 			year: yearFromKitsuRef(show),
 			subtype: 'TV',
@@ -39,19 +38,54 @@ describe('buildPlayArgs', () => {
 		});
 	});
 
+	it('names no quality: every play gets the master', () => {
+		// The built-in player starts on Auto with every level the master
+		// lists, and the hand-offs adapt to it themselves; the backend
+		// resolves the master for all of them.
+		const args = buildPlayArgs({ title: 'The Show', episode: 1, mode: 'sub', show });
+		expect('quality' in args).toBe(false);
+	});
+
+	it("names the guessed card's row when a guess asks, and only then", () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
+		expect(buildPlayArgs({ ...base, guessRow: 'hianime:show-1' }).guess_row).toBe('hianime:show-1');
+		expect('guess_row' in buildPlayArgs(base)).toBe(false);
+	});
+
+	it("names the card's row of a session no guess opened when given, and only then", () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
+		expect(buildPlayArgs({ ...base, cardRow: 'hianime:show-1' }).card_row).toBe('hianime:show-1');
+		expect('card_row' in buildPlayArgs(base)).toBe(false);
+	});
+
+	it("names a guessed card's guess when a guess asks, and only then", () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
+		const args = buildPlayArgs({ ...base, guessId: '42', guessRow: 'hianime:show-1' });
+		expect(args.guess_id).toBe('42');
+		expect('kitsu_id' in args).toBe(false);
+		expect('guess_id' in buildPlayArgs(base)).toBe(false);
+	});
+
 	it('marks a warm as a prefetch, and only a warm', () => {
-		const base = { title: 'The Show', episode: 1, mode: 'sub', quality: 'best', show } as const;
+		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
 		expect(buildPlayArgs({ ...base, prefetch: true }).prefetch).toBe(true);
 		expect('prefetch' in buildPlayArgs(base)).toBe(false);
 		expect('prefetch' in buildPlayArgs({ ...base, prefetch: false })).toBe(false);
 	});
 
 	it('names the version to play when the show has a remembered one, and only then', () => {
-		const base = { title: 'The Show', episode: 1, mode: 'sub', quality: 'best', show } as const;
+		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
 		expect(buildPlayArgs({ ...base, version: 'standard' }).version).toBe('standard');
 		expect(buildPlayArgs({ ...base, version: 'uncensored' }).version).toBe('uncensored');
 		expect('version' in buildPlayArgs(base)).toBe(false);
 		expect('version' in buildPlayArgs({ ...base, version: undefined })).toBe(false);
+	});
+
+	it("names the show's remembered captions choice, and only then", () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
+		expect(buildPlayArgs({ ...base, caption: 'pt-BR' }).caption).toBe('pt-BR');
+		expect(buildPlayArgs({ ...base, caption: 'off' }).caption).toBe('off');
+		expect('caption' in buildPlayArgs(base)).toBe(false);
 	});
 
 	it('sends no Kitsu id when there is none to record, and nulls without a record', () => {
@@ -59,7 +93,6 @@ describe('buildPlayArgs', () => {
 			title: 'The Show',
 			episode: 1,
 			mode: 'sub',
-			quality: 'best',
 			show: null,
 			kitsuId: ''
 		});

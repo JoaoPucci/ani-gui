@@ -48,9 +48,13 @@ export interface ConnectFlowDeps {
 		username: string;
 		avatar_url: string | null;
 	}>;
+	/** Save `payload`. `stillCurrent`, when given, is asked just before
+	 *  the write is sent (it may wait behind another token write); a
+	 *  save no longer wanted by then is not written. */
 	persistAccount(
 		provider: Provider,
-		payload: PersistedAccount
+		payload: PersistedAccount,
+		stillCurrent?: () => boolean
 	): Promise<{ ok: true } | { ok: false; kind: string; detail?: string }>;
 }
 

@@ -1,0 +1,69 @@
+{
+ "data": [
+  {
+   "id": "43886",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen New Year's Special",
+    "titles": {
+     "en": "Jujutsu Kaisen New Year's Special",
+     "en_jp": "Jujutsu Kaisen New Year's Special",
+     "ja_jp": "呪術廻戦"
+    },
+    "abbreviatedTitles": [
+     "Jujutsu Kaisen (TV) Recap",
+     "Sorcery Fight Recap"
+    ],
+    "slug": "jujutsu-kaisen-new-year-s-special",
+    "startDate": "2021-01-08",
+    "endDate": "2021-01-08",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48363",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen: Shimetsu Kaiyū Zenpen",
+    "titles": {
+     "en": "Jujutsu Kaisen Season 3: The Culling Game Part 1",
+     "en_jp": "Jujutsu Kaisen: Shimetsu Kaiyū Zenpen",
+     "ja_jp": "呪術廻戦 第3期: 死滅回游 前編"
+    },
+    "abbreviatedTitles": [
+     "JJK3",
+     "Jujutsu Kaisen Season 3",
+     "Jujutsu Kaisen 3rd Season",
+     "Jujutsu Kaisen: The Culling Game Part 1"
+    ],
+    "slug": "Jujutsu-Kaisen-3",
+    "startDate": "2026-01-08",
+    "endDate": "2026-03-26",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50373",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen: Shibuya Jihen Tokubetsu Henshu-ban x Shimetsu Kaiyu Senkou Jouei",
+    "titles": {
+     "en": "Jujutsu Kaisen: Execution - Shibuya Incident x The Culling Game Begins",
+     "en_jp": "Jujutsu Kaisen: Shibuya Jihen Tokubetsu Henshu-ban x Shimetsu Kaiyu Senkou Jouei",
+     "ja_jp": "劇場版 呪術廻戦「#渋谷事変 特別編集版」 ×「死滅回游 先行上映」"
+    },
+    "abbreviatedTitles": [],
+    "slug": "jujutsu-kaisen-shibuya-jihen-tokubetsu-henshu-ban-x-shimetsu-kaiyu-senkou-jouei",
+    "startDate": "2025-11-07",
+    "endDate": "2025-11-07",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

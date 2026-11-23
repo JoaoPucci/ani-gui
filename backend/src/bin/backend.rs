@@ -45,7 +45,7 @@
 use std::sync::Arc;
 
 use ani_gui::lanes::{Lane, Lanes};
-use ani_gui::{api, app, lanes, parent_watch, proxy, shutdown, AniError};
+use ani_gui::{api, app, flags, lanes, parent_watch, proxy, shutdown, AniError};
 
 /// Print the handshake and flush it — Electron reads it line by line,
 /// so a line left in a buffer would hang the spawn.
@@ -65,7 +65,7 @@ fn announce(lines: &[String]) -> std::io::Result<()> {
 
 fn main() -> std::process::ExitCode {
     // Logging — RUST_LOG honoured, default keeps the noise down.
-    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "ani_gui=info".into());
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| ani_gui::DEFAULT_LOG_FILTER.into());
     tracing_subscriber::fmt()
         // A log line that cannot be written is a line lost, nothing
         // more. Left on, the logger reports a failed write with
@@ -126,6 +126,17 @@ fn main() -> std::process::ExitCode {
             resource_dir,
         )?);
 
+        // The launch's flags are decided in a task of their own, within
+        // two seconds (see flags::refresh): nothing below waits on
+        // GitHub. The renderer's first page waits for the decision
+        // through /api/flags. A test run (ANI_GUI_UNATTENDED=1) makes
+        // no request and reads the test's own file instead.
+        flags::launch::start(
+            state.flags.clone(),
+            flags::remote::client(),
+            flags::launch::plan_from_env(ani_gui::config::paths::flags_cache()),
+        );
+
         let proxy_router = proxy::build_router(state.proxy_state());
         let api_router = api::build_api_router(state.clone());
         let router = proxy_router.merge(api_router);
@@ -139,12 +150,10 @@ fn main() -> std::process::ExitCode {
         // the Electron main process is waiting for, then serve until
         // stopped.
         //
-        // The renderer-only secret goes out on
-        // the same channel so Electron's main process can parse it and
-        // thread it through preload into `window.aniGui.
-        // internalSecret`. The renderer attaches it as the
-        // `x-ani-gui-internal-secret` header on the few backend paths
-        // that need a cross-origin defense beyond the bearer.
+        // The launch's secret goes out on the same channel so
+        // Electron's main process can parse it and thread it through
+        // preload into `window.aniGui.internalSecret`. The API answers
+        // no request without it (`api::gate`).
         let bases = bound.bases();
         announce(&lanes::handshake_lines(
             &bases,

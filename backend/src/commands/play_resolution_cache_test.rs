@@ -13,29 +13,21 @@ fn pool() -> SqlitePool {
 /// domains: titles may carry colons (Stone Ocean Part 2 does),
 /// every other field is colon-free by construction — the enums,
 /// digit episodes, and Kitsu subtypes the callers pass.
-#[allow(clippy::type_complexity)]
-fn axis() -> impl proptest::strategy::Strategy<
-    Value = (
-        String,
-        String,
-        String,
-        String,
-        Option<u32>,
-        Option<u32>,
-        Option<String>,
-    ),
-> {
+type Axes = (
+    String,
+    String,
+    String,
+    Option<u32>,
+    Option<u32>,
+    Option<String>,
+);
+
+fn axis() -> impl proptest::strategy::Strategy<Value = Axes> {
     (
         "[a-zA-Z0-9 :'-]{0,16}",
         proptest::prop_oneof![
             proptest::strategy::Just("sub".to_string()),
             proptest::strategy::Just("dub".to_string()),
-        ],
-        proptest::prop_oneof![
-            proptest::strategy::Just("best".to_string()),
-            proptest::strategy::Just("worst".to_string()),
-            proptest::strategy::Just("720".to_string()),
-            proptest::strategy::Just("1080".to_string()),
         ],
         "[0-9]{1,4}(\\.[0-9])?",
         proptest::option::of(0u32..3000),
@@ -55,20 +47,11 @@ proptest::proptest! {
     /// when every axis agrees. Colons in the title cannot forge
     /// another tuple's key — every non-title field is colon-free,
     /// so keys with differing colon counts differ as strings and
-    /// keys with equal counts align positionally.
+    /// keys with equal counts align positionally. The quality is no
+    /// axis: every play resolves the master.
     #[test]
     fn keys_are_deterministic_and_separate_every_axis(a in axis(), b in axis()) {
-        let key = |x: &(
-            String,
-            String,
-            String,
-            String,
-            Option<u32>,
-            Option<u32>,
-            Option<String>,
-        )| {
-            cache_key(&x.0, &x.1, &x.2, &x.3, x.4, x.5, x.6.as_deref())
-        };
+        let key = |x: &Axes| cache_key(&x.0, &x.1, &x.2, x.3, x.4, x.5.as_deref());
         proptest::prop_assert_eq!(key(&a), key(&a));
         proptest::prop_assert_eq!(key(&a) == key(&b), a == b);
     }
@@ -96,8 +79,8 @@ fn sample_resolution() -> CachedResolution {
 
 #[test]
 fn cache_key_is_deterministic_for_the_same_inputs() {
-    let a = cache_key("One Piece", "sub", "best", "1", None, None, None);
-    let b = cache_key("One Piece", "sub", "best", "1", None, None, None);
+    let a = cache_key("One Piece", "sub", "1", None, None, None);
+    let b = cache_key("One Piece", "sub", "1", None, None, None);
     assert_eq!(a, b);
 }
 
@@ -109,92 +92,41 @@ fn cache_key_separates_subtypes() {
     // share a row, or the second request serves the first entry's
     // HEAD-valid stream without the disproof ever running.
     assert_ne!(
-        cache_key(
-            "Konoha Gakuen",
-            "sub",
-            "best",
-            "1",
-            None,
-            Some(1),
-            Some("special")
-        ),
-        cache_key(
-            "Konoha Gakuen",
-            "sub",
-            "best",
-            "1",
-            None,
-            Some(1),
-            Some("movie")
-        ),
+        cache_key("Konoha Gakuen", "sub", "1", None, Some(1), Some("special")),
+        cache_key("Konoha Gakuen", "sub", "1", None, Some(1), Some("movie")),
     );
     assert_ne!(
-        cache_key(
-            "Konoha Gakuen",
-            "sub",
-            "best",
-            "1",
-            None,
-            Some(1),
-            Some("special")
-        ),
-        cache_key("Konoha Gakuen", "sub", "best", "1", None, Some(1), None),
+        cache_key("Konoha Gakuen", "sub", "1", None, Some(1), Some("special")),
+        cache_key("Konoha Gakuen", "sub", "1", None, Some(1), None),
     );
 }
 
 #[test]
 fn cache_key_differs_across_each_axis() {
-    let base = cache_key("One Piece", "sub", "best", "1", None, None, None);
-    assert_ne!(
-        cache_key("Naruto", "sub", "best", "1", None, None, None),
-        base
-    );
-    assert_ne!(
-        cache_key("One Piece", "dub", "best", "1", None, None, None),
-        base
-    );
-    assert_ne!(
-        cache_key("One Piece", "sub", "1080", "1", None, None, None),
-        base
-    );
-    assert_ne!(
-        cache_key("One Piece", "sub", "best", "2", None, None, None),
-        base
-    );
+    let base = cache_key("One Piece", "sub", "1", None, None, None);
+    assert_ne!(cache_key("Naruto", "sub", "1", None, None, None), base);
+    assert_ne!(cache_key("One Piece", "dub", "1", None, None, None), base);
+    // Not the quality: every play resolves the master.
+    assert_eq!(cache_key("One Piece", "sub", "1", None, None, None), base);
+    assert_ne!(cache_key("One Piece", "sub", "2", None, None, None), base);
     // Year + ep-count axes — different Kitsu entries sharing a
     // title must map to different keys so the first resolve
     // doesn't poison the row for the other entry.
     assert_ne!(
-        cache_key(
-            "Mobile Suit Gundam",
-            "sub",
-            "best",
-            "1",
-            Some(1979),
-            Some(43),
-            None
-        ),
-        cache_key(
-            "Mobile Suit Gundam",
-            "sub",
-            "best",
-            "1",
-            Some(1995),
-            Some(49),
-            None
-        ),
+        cache_key("Mobile Suit Gundam", "sub", "1", Some(1979), Some(43), None),
+        cache_key("Mobile Suit Gundam", "sub", "1", Some(1995), Some(49), None),
     );
     // Just-year-different is enough — the collision to guard is two
     // Kitsu entries with same title differing by year. Episode
     // count is the secondary discriminator; pin both axes
     // independently so a regression on either drops a test.
     assert_ne!(
-        cache_key("Show", "sub", "best", "1", Some(2020), None, None),
-        cache_key("Show", "sub", "best", "1", Some(2021), None, None),
+        cache_key("Show", "sub", "1", Some(2020), None, None),
+        cache_key("Show", "sub", "1", Some(2021), None, None),
     );
     assert_ne!(
-        cache_key("Show", "sub", "best", "1", None, Some(12), None),
-        cache_key("Show", "sub", "best", "1", None, Some(13), None),
+        cache_key("Show", "sub", "1", None, Some(12), None),
+        cache_key("Show", "sub", "1", None, Some(13), None),
     );
 }
 
@@ -205,8 +137,21 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // become misses on first access. This test pins the prefix
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
-    let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v26:"), "got {k}");
+    let k = cache_key("X", "sub", "1", None, None, None);
+    assert!(k.starts_with("play:v29:"), "got {k}");
+}
+
+#[test]
+fn the_key_names_no_quality() {
+    // Every play — the built-in player, a hand-off, Syncplay — resolves
+    // the master, so a row keyed by the quality it was asked at would
+    // split one answer across keys. v28 keys named it; the rows kept
+    // for `best` are carried to this key at launch
+    // (`crate::cache::play_rekey`).
+    assert_eq!(
+        cache_key("One Piece", "sub", "1", None, Some(12), Some("TV")),
+        format!("{}One Piece:sub:1:-:12:TV", crate::cache::families::play())
+    );
 }
 
 #[test]
@@ -217,7 +162,7 @@ fn a_row_resolved_before_an_undated_pick_read_its_genre_is_not_served() {
     // key, and a HEAD-passing hit would keep serving it; nothing in the
     // row says which listing it was resolved from.
     let pool = pool();
-    let current = cache_key("Tsubu Doll", "sub", "best", "1", None, Some(5), None);
+    let current = cache_key("Tsubu Doll", "sub", "1", None, Some(5), None);
     let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v25:", 1);
     assert_ne!(previous, current, "the schema must have moved past v25");
     let body = serde_json::to_string(&sample_resolution()).expect("serialize");
@@ -232,7 +177,7 @@ fn a_row_resolved_before_it_could_say_its_episode_is_unverified_is_not_served() 
     // replay would hand the renderer an episode to write to the
     // trackers that may be an OAD. Nothing in the row says whether its
     // reading was read, so the key moves past v24.
-    let k = cache_key("Noragami", "sub", "best", "13", None, Some(12), None);
+    let k = cache_key("Noragami", "sub", "13", None, Some(12), None);
     assert!(!k.starts_with("play:v24:"), "got {k}");
 }
 
@@ -249,15 +194,7 @@ fn a_row_resolved_before_every_related_tv_entry_was_read_is_not_served() {
     // the extra. Master keys its rows `play:v23:`; this schema sits
     // above it.
     let pool = pool();
-    let current = cache_key(
-        "Noragami Aragoto",
-        "sub",
-        "best",
-        "13.1",
-        None,
-        Some(13),
-        None,
-    );
+    let current = cache_key("Noragami Aragoto", "sub", "13.1", None, Some(13), None);
     let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v23:", 1);
     assert_ne!(
         previous, current,
@@ -277,7 +214,7 @@ fn a_row_resolved_before_offset_recaps_were_renumbered_is_not_served() {
     // episode for the session. Master moved to v21 for the appended
     // extras; this schema sits above it.
     let pool = pool();
-    let current = cache_key("Stitched Show", "sub", "best", "12.5", None, Some(24), None);
+    let current = cache_key("Stitched Show", "sub", "12.5", None, Some(24), None);
     let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v21:", 1);
     assert_ne!(
         previous, current,
@@ -295,7 +232,7 @@ fn a_row_resolved_before_appended_extras_were_extras_is_not_served() {
     // a HEAD-passing hit would keep playing it — and recording it — as
     // episode 13 after the OAD became `12.1`.
     let pool = pool();
-    let current = cache_key("Noragami", "sub", "best", "13", None, Some(12), None);
+    let current = cache_key("Noragami", "sub", "13", None, Some(12), None);
     let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v20:", 1);
     assert_ne!(previous, current, "the schema must have moved past v20");
     let body = serde_json::to_string(&sample_resolution()).expect("serialize");
@@ -310,15 +247,7 @@ fn a_row_resolved_before_a_dated_counted_entry_needed_a_name_is_not_served() {
     // the year filter tolerated, and a HEAD-passing hit on such a v19
     // row would keep serving it under HenSemi (TV)'s key.
     let pool = pool();
-    let current = cache_key(
-        "HenSemi (TV)",
-        "sub",
-        "best",
-        "1",
-        Some(2011),
-        Some(13),
-        Some("TV"),
-    );
+    let current = cache_key("HenSemi (TV)", "sub", "1", Some(2011), Some(13), Some("TV"));
     let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v19:", 1);
     assert_ne!(previous, current, "the schema must have moved past v19");
     let body = serde_json::to_string(&sample_resolution()).expect("serialize");
@@ -334,7 +263,7 @@ fn a_row_resolved_before_a_counted_undated_entry_needed_a_name_is_not_served() {
     // would keep serving it — Girlfriend, Girlfriend's episode under
     // Mo Du Zhe's key — for the row's whole lifetime.
     let pool = pool();
-    let current = cache_key("Mo Du Zhe", "sub", "best", "1", None, Some(12), Some("ONA"));
+    let current = cache_key("Mo Du Zhe", "sub", "1", None, Some(12), Some("ONA"));
     let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v18:", 1);
     assert_ne!(previous, current, "the schema must have moved past v18");
     let body = serde_json::to_string(&sample_resolution()).expect("serialize");
@@ -357,15 +286,7 @@ fn a_row_under_the_schema_before_this_one_is_not_served() {
     // rows do not sit under, so the walk runs again and writes
     // the qualified identity.
     let pool = pool();
-    let current = cache_key(
-        "Cowboy Bebop",
-        "sub",
-        "best",
-        "1",
-        Some(1998),
-        Some(26),
-        Some("TV"),
-    );
+    let current = cache_key("Cowboy Bebop", "sub", "1", Some(1998), Some(26), Some("TV"));
     let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v13:", 1);
     assert_ne!(
         previous, current,
@@ -392,7 +313,6 @@ fn a_row_resolved_before_the_titles_ruled_the_pick_is_not_served() {
     let current = cache_key(
         "Attack on Titan Season 3",
         "sub",
-        "best",
         "1",
         Some(2018),
         Some(12),
@@ -413,15 +333,7 @@ fn a_row_resolved_before_split_entries_were_stitched_is_not_served() {
     // episode 1 cached as the 2nd Stage's first. Nothing in a row
     // says which picks were split, so the whole schema retires.
     let pool = pool();
-    let current = cache_key(
-        "Show",
-        "sub",
-        "best",
-        "1",
-        Some(2026),
-        Some(12),
-        Some("ONA"),
-    );
+    let current = cache_key("Show", "sub", "1", Some(2026), Some(12), Some("ONA"));
     let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v14:", 1);
     assert_ne!(previous, current, "the schema must have moved past v14");
     let body = serde_json::to_string(&sample_resolution()).expect("serialize");
@@ -435,14 +347,14 @@ fn cache_key_emits_dash_placeholder_for_missing_year_and_eps() {
     // episode_count=None. The key must stay well-formed (no
     // adjacent colons) so the SQLite text doesn't drift across
     // None/Some shapes — `-` is the chosen placeholder.
-    let k = cache_key("Show", "sub", "best", "1", None, None, None);
+    let k = cache_key("Show", "sub", "1", None, None, None);
     assert!(k.ends_with(":-:-"), "got {k}");
 }
 
 #[test]
 fn put_then_get_round_trips_the_resolution() {
     let pool = pool();
-    let key = cache_key("Stone Ocean", "sub", "best", "1", None, None, None);
+    let key = cache_key("Stone Ocean", "sub", "1", None, None, None);
     put(&pool, &key, &sample_resolution());
     let got = get(&pool, &key).expect("ok").expect("hit");
     assert_eq!(got, sample_resolution());
@@ -458,7 +370,7 @@ fn get_returns_none_on_miss() {
 #[test]
 fn evict_removes_a_row_so_subsequent_get_misses() {
     let pool = pool();
-    let key = cache_key("Stone Ocean", "sub", "best", "1", None, None, None);
+    let key = cache_key("Stone Ocean", "sub", "1", None, None, None);
     put(&pool, &key, &sample_resolution());
     assert!(get(&pool, &key).expect("ok").is_some());
     evict(&pool, &key);
@@ -519,7 +431,6 @@ fn a_row_resolved_before_names_vouched_for_countless_and_single_video_picks_is_n
     let current = cache_key(
         "Dragon Ball Super: Ginga Patrol",
         "sub",
-        "best",
         "1",
         None,
         None,
@@ -540,15 +451,7 @@ fn a_row_resolved_before_the_countless_year_vouched_or_the_evidence_reached_the_
     // fifth position went unprobed: a v17 row can hold the series'
     // stream under a sequel's key, or an uncut pool's pick.
     let pool = pool();
-    let current = cache_key(
-        "Show: Arc",
-        "sub",
-        "best",
-        "1",
-        Some(2016),
-        None,
-        Some("TV"),
-    );
+    let current = cache_key("Show: Arc", "sub", "1", Some(2016), None, Some("TV"));
     let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v17:", 1);
     assert_ne!(previous, current, "the schema must have moved past v17");
     let body = serde_json::to_string(&sample_resolution()).expect("serialize");

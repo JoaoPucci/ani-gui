@@ -1,0 +1,91 @@
+{
+ "data": [
+  {
+   "id": "43361",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tensei shitara Slime Datta Ken 2nd Season Part 2",
+    "titles": {
+     "en": "That Time I Got Reincarnated as a Slime Season 2 Part 2",
+     "en_jp": "Tensei shitara Slime Datta Ken 2nd Season Part 2",
+     "ja_jp": "転生したらスライムだった件"
+    },
+    "abbreviatedTitles": [
+     "Tensura 2"
+    ],
+    "slug": "tensei-shitara-slime-datta-ken-2nd-season-part-2",
+    "startDate": "2021-07-06",
+    "endDate": "2021-09-21",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44852",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tensei Shitara Slime Datta Ken 2nd Season Recap",
+    "titles": {
+     "en": "That Time I Got Reincarnated as a Slime Season 2 Episode 36.5 – Tales: Veldora's Journal 2",
+     "en_jp": "Tensei Shitara Slime Datta Ken 2nd Season Recap",
+     "ja_jp": "転生したらスライムだった件 閑話: ヴェルドラ日記2"
+    },
+    "abbreviatedTitles": [
+     "Tensei Shitara Slime Datta Ken Episode 36.5",
+     "Tensei shitara Slime Datta Ken 2nd Season Part 2 episode 0"
+    ],
+    "slug": "tensei-shitara-slime-datta-ken-2nd-season-recap",
+    "startDate": "2021-06-29",
+    "endDate": "2021-06-29",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42196",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tensei shitara Slime Datta Ken 2",
+    "titles": {
+     "en": "That Time I Got Reincarnated as a Slime 2",
+     "en_jp": "Tensei shitara Slime Datta Ken 2",
+     "ja_jp": "転生したらスライムだった件2"
+    },
+    "abbreviatedTitles": [
+     "TenSura 2",
+     "Tensei Shitara Slime Datta Ken 2nd Season Part 1"
+    ],
+    "slug": "tensei-shitara-slime-datta-ken-2",
+    "startDate": "2021-01-12",
+    "endDate": "2021-03-30",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48689",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tensei shitara Slime Datta Ken 3rd Season: Kanwa - Diablo Nikki",
+    "titles": {
+     "en": "That Time I Got Reincarnated as a Slime Season 3: Digression - Diablo's Journal",
+     "en_jp": "Tensei shitara Slime Datta Ken 3rd Season: Kanwa - Diablo Nikki",
+     "ja_jp": "転生したらスライムだった件 閑話: ディアブロ日記"
+    },
+    "abbreviatedTitles": [
+     "Tensei shitara Slime Datta Ken 2nd Season Part 2 Recap",
+     "Tensei shitara Slime Datta Ken Episode 48.5"
+    ],
+    "slug": "tensei-shitara-slime-datta-ken-3rd-season-kanwa-diablo-nikki",
+    "startDate": "2024-03-31",
+    "endDate": "2024-03-31",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

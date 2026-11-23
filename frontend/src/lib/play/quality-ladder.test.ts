@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-	ladderOrder,
-	parseQualitySetting,
-	pinnedLevel,
-	targetLevel,
-	type LadderLevel
-} from './quality-ladder';
+import { ladderOrder, pinnedLevel, targetLevel, type LadderLevel } from './quality-ladder';
 
 // The master the defect was measured on: three levels, listed by
 // hls.js lowest first.
@@ -14,22 +8,6 @@ const MASTER: LadderLevel[] = [
 	{ height: 720, bitrate: 2_500_000 },
 	{ height: 1080, bitrate: 5_000_000 }
 ];
-
-describe('parseQualitySetting', () => {
-	it('reads every value the settings page offers', () => {
-		expect(parseQualitySetting('best')).toEqual({ kind: 'best' });
-		expect(parseQualitySetting('worst')).toEqual({ kind: 'worst' });
-		expect(parseQualitySetting('1080')).toEqual({ kind: 'height', height: 1080 });
-		expect(parseQualitySetting('720')).toEqual({ kind: 'height', height: 720 });
-		expect(parseQualitySetting('480')).toEqual({ kind: 'height', height: 480 });
-	});
-
-	it('reads anything else as best, the default the backend applies', () => {
-		for (const s of [undefined, null, '', 'high', '0', '-720', '720p', '07']) {
-			expect(parseQualitySetting(s)).toEqual({ kind: 'best' });
-		}
-	});
-});
 
 describe('ladderOrder', () => {
 	it('orders by height, then by bitrate, whatever order the playlist used', () => {

@@ -2,8 +2,16 @@
 //!
 //! When the embedded `<video>` + hls.js player asks for a master playlist,
 //! the streaming proxy fetches it from the upstream CDN, parses it, and
-//! rewrites every variant + segment URI to flow back through itself with
-//! HMAC-signed tokens. That way:
+//! rewrites every network URI the parsed tags carry — variants,
+//! renditions, segments, keys, init segments, session keys and data —
+//! to flow back through itself with HMAC-signed tokens. A tag the
+//! parser does not know that names a URI is dropped, and so is a
+//! playlist entry that is not a network URI (see below). The player
+//! reads the result with hls.js rather than m3u8-rs, so the rewrite
+//! then reads its own output the way hls.js does — lines ended at
+//! `\r`, `\n`, U+2028 and U+2029, attribute names trimmed — and drops
+//! any line through which hls.js would still fetch something off the
+//! proxy ([`super::m3u8_guard`]). That way:
 //!
 //! - Browser fetches see only `127.0.0.1:<port>` URLs (no CORS pain).
 //! - The upstream `Referer:` requirement is enforced server-side per
@@ -14,15 +22,22 @@
 //!
 //! - [`rewrite_master`] — parse a master playlist, rewrite each
 //!   `EXT-X-STREAM-INF`, `EXT-X-I-FRAME-STREAM-INF`, `EXT-X-MEDIA`,
-//!   `EXT-X-SESSION-KEY` and `EXT-X-SESSION-DATA` URI, return the new
-//!   manifest.
+//!   `EXT-X-SESSION-KEY` and `EXT-X-SESSION-DATA` URI — dropping a
+//!   variant or rendition that is not a network URI — and return the
+//!   new manifest.
+//! - [`rewrite_served`] — what the master route serves: a master
+//!   rewritten as one, or the media playlist a single-quality source
+//!   serves in its place rewritten as media, told apart by hls.js's
+//!   own test for a media playlist.
 //! - [`rewrite_media`] — parse a media playlist, rewrite each segment
 //!   URI, key URI, and init-segment URI.
-//! - `build_proxy_uri` (private) — leave a URI that is not a network one
-//!   (an inline `data:` key or init segment, a key a player resolves by
-//!   its own scheme) as written, and otherwise resolve a relative URI
-//!   against a base,
-//!   then build a proxy URL with HMAC token, marked `k=pl` when a master
+//! - `build_proxy_uri` (private) — leave media that is not a network
+//!   URI (an inline `data:` key or init segment, a key a player
+//!   resolves by its own scheme) as written, and otherwise build a
+//!   proxy URL for the resolved URI with HMAC token; `playlist_uri`
+//!   (private) does the same for a playlist a master names, except
+//!   that one which is not a network URI — an inline `data:` playlist —
+//!   drops its entry ([`super::m3u8_reach`]). The URL is marked `k=pl` when a master
 //!   names it as a playlist — with its kind of stream and the key the
 //!   session keeps the master's variables under — and `k=md` when it
 //!   names media — a master's session key or session data, anything a
@@ -32,21 +47,32 @@
 //!   playlist: by that mark, or for an unmarked URL by a lowercase
 //!   `.m3u8` path.
 //!
-//! A tag the parser does not know that carries a `URI=` attribute,
-//! and a date range whose client attributes name an asset (`…URI`,
-//! `…-LIST`), are dropped rather than left pointing upstream. A URI
+//! A tag the parser does not know whose text contains `URI=` — a
+//! low-latency part (`EXT-X-PART`), a preload hint, a rendition report,
+//! a content steering server (`EXT-X-CONTENT-STEERING`) — and a date
+//! range whose client attributes name an asset (`…URI`, `…-LIST`), are
+//! dropped rather than rewritten or left pointing upstream. Those
+//! checks read the text as m3u8-rs splits it; a spelling only hls.js
+//! reads as a URI (`URI ="…"`) is caught by the check of the output. A URI
 //! built from `EXT-X-DEFINE` variables is read as the URI they spell:
 //! the variables are substituted before the parse
 //! ([`super::m3u8_define`]), a media playlist importing its master's.
 //!
-//! All functions are pure (no I/O). Property tests target idempotency
-//! and that every URI the parsed tags carry comes back on the proxy.
+//! All functions are pure (no I/O). Property tests target idempotency,
+//! that every playlist a master names comes back on the proxy, that
+//! every network URI a media playlist names does — what a media
+//! playlist keeps as written is no fetch — and that nothing hls.js
+//! would read from the output, as an hls.js-style reading finds it,
+//! is fetched past the proxy.
 
 use base64::Engine;
 use url::Url;
 
 use crate::error::{AniError, Result};
 use crate::proxy::host_budget_demand::Stream;
+use crate::proxy::m3u8_guard::keep_player_view_on_proxy;
+use crate::proxy::m3u8_lines::{player_lines, reads_as_media};
+use crate::proxy::m3u8_reach::{reach, Reach};
 use crate::proxy::token::{sign_marked, AppSecret, SessionId};
 
 /// How the proxy should render rewritten URIs back into the manifest.
@@ -183,35 +209,43 @@ pub fn rewrite_master_naming(
     vars: &str,
 ) -> Result<String> {
     let body =
-        &super::m3u8_define::substitute(body, master_url, &super::m3u8_define::Variables::new());
+        super::m3u8_define::substitute(body, master_url, &super::m3u8_define::Variables::new());
+    let body = &*player_lines(&body);
     let parsed = m3u8_rs::parse_master_playlist_res(body).map_err(|e| AniError::ParseFailed {
         detail: format!("master parse: {e}"),
     })?;
     let mut out = parsed;
 
-    for v in &mut out.variants {
-        let resolved = resolve(master_url, &v.uri)?;
-        v.uri = build_proxy_uri(
-            &resolved,
-            origin,
-            session,
-            secret,
-            Kind::Playlist(Stream::Main, vars),
-        );
-    }
-    for a in &mut out.alternatives {
-        let stream = alternative_stream(&a.media_type);
-        if let Some(uri) = a.uri.as_mut() {
-            let resolved = resolve(master_url, uri)?;
-            *uri = build_proxy_uri(
-                &resolved,
-                origin,
-                session,
-                secret,
-                Kind::Playlist(stream, vars),
-            );
+    let playlist = |uri: &str, stream: Stream| -> Result<Option<String>> {
+        let resolved = resolve(master_url, uri)?;
+        let kind = Kind::Playlist(stream, vars);
+        Ok(playlist_uri(&resolved, origin, session, secret, kind))
+    };
+    // A playlist entry the proxy cannot carry is dropped whole.
+    let mut variants = Vec::with_capacity(out.variants.len());
+    for mut v in std::mem::take(&mut out.variants) {
+        if let Some(uri) = playlist(&v.uri, Stream::Main)? {
+            v.uri = uri;
+            variants.push(v);
         }
     }
+    out.variants = variants;
+    let mut alternatives = Vec::with_capacity(out.alternatives.len());
+    for mut a in std::mem::take(&mut out.alternatives) {
+        let stream = alternative_stream(&a.media_type);
+        match a
+            .uri
+            .as_deref()
+            .map(|uri| playlist(uri, stream))
+            .transpose()?
+        {
+            Some(None) => continue,
+            Some(uri) => a.uri = uri,
+            None => {}
+        }
+        alternatives.push(a);
+    }
+    out.alternatives = alternatives;
     for key in &mut out.session_key {
         if let Some(uri) = key.0.uri.as_mut() {
             let resolved = resolve(master_url, uri)?;
@@ -230,9 +264,39 @@ pub fn rewrite_master_naming(
     out.write_to(&mut buf).map_err(|e| AniError::ParseFailed {
         detail: format!("master serialize: {e}"),
     })?;
-    String::from_utf8(buf).map_err(|e| AniError::ParseFailed {
-        detail: format!("master utf8: {e}"),
-    })
+    String::from_utf8(buf)
+        .map(|out| keep_player_view_on_proxy(&out, origin))
+        .map_err(|e| AniError::ParseFailed {
+            detail: format!("master utf8: {e}"),
+        })
+}
+
+/// Rewrite what the session's URL served: a master, or — from a source
+/// with a single quality — the media playlist of the main stream
+/// itself. Which one it is goes by hls.js's test — any line starting
+/// `#EXTINF:` or `#EXT-X-TARGETDURATION:` makes a media playlist —
+/// applied to the body as the master rewrite would parse it, its
+/// variables substituted. m3u8-rs parses
+/// a media playlist as a master without failing, a master with no
+/// variants, so a failed master parse cannot tell them apart.
+///
+/// # Errors
+/// As [`rewrite_master`] for a master and [`rewrite_media`] for a media
+/// playlist.
+pub fn rewrite_served(
+    body: &[u8],
+    url: &Url,
+    origin: &ProxyOrigin,
+    session: SessionId,
+    secret: &AppSecret,
+    vars: &str,
+) -> Result<String> {
+    let parsed = super::m3u8_define::substitute(body, url, &super::m3u8_define::Variables::new());
+    if reads_as_media(&player_lines(&parsed)) {
+        rewrite_media(body, url, origin, session, secret)
+    } else {
+        rewrite_master_naming(body, url, origin, session, secret, vars)
+    }
 }
 
 /// The kind of stream an `EXT-X-MEDIA` rendition carries. An alternate
@@ -310,7 +374,8 @@ pub fn rewrite_media_importing(
     stream: Stream,
     imported: &super::m3u8_define::Variables,
 ) -> Result<String> {
-    let body = &super::m3u8_define::substitute(body, media_url, imported);
+    let body = super::m3u8_define::substitute(body, media_url, imported);
+    let body = &*player_lines(&body);
     let parsed = m3u8_rs::parse_media_playlist_res(body).map_err(|e| AniError::ParseFailed {
         detail: format!("media parse: {e}"),
     })?;
@@ -351,14 +416,16 @@ pub fn rewrite_media_importing(
     out.write_to(&mut buf).map_err(|e| AniError::ParseFailed {
         detail: format!("media serialize: {e}"),
     })?;
-    String::from_utf8(buf).map_err(|e| AniError::ParseFailed {
-        detail: format!("media utf8: {e}"),
-    })
+    String::from_utf8(buf)
+        .map(|out| keep_player_view_on_proxy(&out, origin))
+        .map_err(|e| AniError::ParseFailed {
+            detail: format!("media utf8: {e}"),
+        })
 }
 
-/// Whether a tag the parser does not know carries a URI — a
-/// low-latency part, preload hint or rendition report, a content
-/// steering server. The rewrite cannot follow what it does not parse,
+/// Whether a tag the parser does not know carries a URI, by the text
+/// `URI=` — a low-latency part, preload hint or rendition report, a
+/// content steering server. The rewrite cannot follow what it does not parse,
 /// so such a tag is dropped rather than left pointing upstream; the
 /// player and the tools fall back to whole segments and the master's
 /// own variants without it.
@@ -385,12 +452,11 @@ fn resolve(base: &Url, uri: &str) -> Result<Url> {
     })
 }
 
-/// If the URI already points at our proxy origin, leave it alone
-/// (idempotent rewrite); a URI that is not a network URI — anything but
-/// `http` and `https`, such as an inline `data:` key or init segment, or
-/// a key a player resolves by a scheme of its own — is no fetch for the
-/// proxy and is left as written. Otherwise build a fresh proxy URL with
-/// token.
+/// The URI the rewritten manifest names for the media at `upstream`
+/// ([`super::m3u8_reach`]): a URI already on the proxy, or one that is
+/// no network fetch — an inline `data:` key or init segment, a key a
+/// player resolves by a scheme of its own — is kept as written; a
+/// network URI becomes a fresh proxy URL with its token.
 fn build_proxy_uri(
     upstream: &Url,
     origin: &ProxyOrigin,
@@ -399,17 +465,45 @@ fn build_proxy_uri(
     kind: Kind<'_>,
 ) -> String {
     let upstream_str = upstream.as_str();
-    if upstream_str.starts_with(&origin.base) || !matches!(upstream.scheme(), "http" | "https") {
-        return upstream_str.to_string();
+    if reach(upstream, origin, false) == Reach::AsWritten {
+        return upstream_str.to_owned();
     }
     let marks = marks(kind);
     let tok = sign_marked(secret, session, upstream_str, &marks);
     origin.marked_url(session, upstream_str, &tok, &marks)
 }
 
+/// The URI the rewritten manifest names for the playlist at
+/// `upstream`, as [`build_proxy_uri`] writes it, or `None` when the
+/// entry is dropped: a playlist that is no network fetch — an inline
+/// `data:` playlist — would be loaded and parsed by the player, which
+/// would fetch what it names past the proxy.
+fn playlist_uri(
+    upstream: &Url,
+    origin: &ProxyOrigin,
+    session: SessionId,
+    secret: &AppSecret,
+    kind: Kind<'_>,
+) -> Option<String> {
+    (reach(upstream, origin, true) != Reach::Dropped)
+        .then(|| build_proxy_uri(upstream, origin, session, secret, kind))
+}
+
 #[cfg(test)]
 #[path = "m3u8_define_test.rs"]
 mod define_tests;
+#[cfg(test)]
+#[path = "m3u8_escape_test.rs"]
+mod escape_tests;
+#[cfg(test)]
+#[path = "m3u8_player_attrs.rs"]
+mod player_attrs;
+#[cfg(test)]
+#[path = "m3u8_player_test.rs"]
+mod player_tests;
+#[cfg(test)]
+#[path = "m3u8_player_view.rs"]
+mod player_view;
 #[cfg(test)]
 #[path = "m3u8_uri_test.rs"]
 mod uri_tests;

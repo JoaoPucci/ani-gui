@@ -180,7 +180,7 @@ describe('QualityGovernor — healthy playback steps back up', () => {
 		expect(g.healthy(12_000 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(2);
 	});
 
-	it('never climbs past the level the setting names', () => {
+	it('never climbs past its target level', () => {
 		const g = governor({ kind: 'height', height: 720 });
 		g.start();
 		g.stall(10_000);
@@ -290,7 +290,7 @@ describe('QualityGovernor — the viewer chooses', () => {
 		expect(g.isPinned).toBe(false);
 	});
 
-	it('auto hands the choice back, at the setting level, with a fresh window', () => {
+	it('auto hands the choice back, at the target level, with a fresh window', () => {
 		const g = governor();
 		g.start();
 		g.pick(0, 5_000);
@@ -307,7 +307,7 @@ describe('QualityGovernor — the viewer chooses', () => {
 		expect(g.pick('auto', 5_000)).toBeNull();
 	});
 
-	it('auto with the setting level failed takes the highest level left below it', () => {
+	it('auto with the target level failed takes the highest level left below it', () => {
 		const g = governor();
 		g.start();
 		g.levelFailed(2);
@@ -315,7 +315,7 @@ describe('QualityGovernor — the viewer chooses', () => {
 		expect(g.pick('auto', 6_000)?.level).toBe(1);
 	});
 
-	it('auto with every level up to the setting failed takes the lowest left above it', () => {
+	it('auto with every level up to the target failed takes the lowest left above it', () => {
 		const g = governor({ kind: 'worst' });
 		g.start();
 		g.levelFailed(0);
@@ -394,7 +394,7 @@ describe('QualityGovernor — a pin is never exceeded while it is shown', () => 
 
 describe('QualityGovernor — a pinned play climbs back to its pin', () => {
 	it('after its segments failed, climbs back to the pinned level once healthy, and no higher', () => {
-		// The setting allows 1080p; the viewer pinned 720p.
+		// The target allows 1080p; the viewer pinned 720p.
 		const g = governor(BEST, 720);
 		g.start();
 		expect(g.fragmentsFailed(1, 1_000)?.level).toBe(0);

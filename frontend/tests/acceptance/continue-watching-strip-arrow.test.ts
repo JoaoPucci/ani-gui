@@ -28,7 +28,16 @@ vi.mock('$app/navigation', () => ({
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
-function ref(id: string, title: string, episodeCount: number) {
+import type {
+	AvailabilityResponse,
+	Config,
+	HistoryEntry,
+	HistoryNumber,
+	KitsuAnimeRef,
+	KitsuEpisode
+} from '../../src/lib/api';
+import { availabilityAnswer } from '../answers';
+function ref(id: string, title: string, episodeCount: number): KitsuAnimeRef {
 	return {
 		id,
 		canonical_title: title,
@@ -41,15 +50,19 @@ function ref(id: string, title: string, episodeCount: number) {
 		episode_count: episodeCount,
 		status: 'finished',
 		start_date: '2019-01-01',
-		average_rating: null
+		average_rating: null,
+		end_date: null,
+		subtype: null,
+		age_rating: null,
+		popularity_rank: null
 	};
 }
 
-function config(mode: 'sub' | 'dub') {
+function config(mode: 'sub' | 'dub'): Config {
 	return {
 		locale: 'en',
 		mode,
-		quality: 'best',
+		download_quality: 'best',
 		external_player: '',
 		external_player_kind: 'mpv',
 		external_player_custom_args: '',
@@ -60,9 +73,9 @@ function config(mode: 'sub' | 'dub') {
 		auto_skip_op: false,
 		auto_skip_ed: false,
 		use_custom_player_controls: true,
-		auto_update_anicli: false,
 		update_include_prereleases: false,
-		primary_account: ''
+		primary_account: '',
+		cache_resolutions: false
 	};
 }
 
@@ -148,35 +161,41 @@ describe('home Continue Watching scroll arrows', () => {
 		});
 
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(config('sub'))),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(config('sub'))),
 			// Two rows for one show — what a show watched through two
 			// providers, or catalogue drift between resolves, leaves in
 			// the history file. Both resolve to the same Kitsu entry, so
 			// the row collapses them into one card once they resolve.
 			http.get(`${API_BASE}/api/history`, () =>
-				HttpResponse.json([
+				HttpResponse.json<HistoryEntry[]>([
 					{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' },
 					{ ep_no: '2', id: 'allanime-2', title: 'Cowboy Bebop' }
 				])
 			),
 			// A row read again before it resumes reads as it did.
 			http.get(`${API_BASE}/api/history/:id/number`, ({ params }) =>
-				HttpResponse.json({ ep_no: params.id === 'allanime-2' ? '2' : '3' })
+				HttpResponse.json<HistoryNumber | null>({ ep_no: params.id === 'allanime-2' ? '2' : '3' })
 			),
 			http.post(`${API_BASE}/api/kitsu/search`, async () => {
 				await searchHeld;
-				return HttpResponse.json([ref('1', 'Cowboy Bebop', 26)]);
+				return HttpResponse.json<KitsuAnimeRef[]>([ref('1', 'Cowboy Bebop', 26)]);
 			}),
 			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({ available: true, episode_count: 26, approximate: false })
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({ available: true, episode_count: 26 })
+				)
 			),
-			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
-			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
-			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
-			http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([])
+			),
+			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({})),
+			http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () =>
+				HttpResponse.json<string | null>(null)
+			),
+			http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json<string | null>(null)),
 			http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json<KitsuEpisode[]>([]))
 		);
 
 		app = mount(HomePage, { target });

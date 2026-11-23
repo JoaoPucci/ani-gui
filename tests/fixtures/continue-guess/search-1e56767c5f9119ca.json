@@ -1,0 +1,403 @@
+{
+ "data": [
+  {
+   "id": "9965",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord",
+    "titles": {
+     "en": "Overlord",
+     "en_jp": "Overlord",
+     "ja_jp": "オーバーロード"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord",
+    "startDate": "2015-07-07",
+    "endDate": "2015-09-29",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13237",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord II",
+    "titles": {
+     "en_jp": "Overlord II",
+     "en_us": "Overlord II",
+     "ja_jp": "オーバーロードⅡ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-ii",
+    "startDate": "2018-01-09",
+    "endDate": "2018-04-03",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41174",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord III",
+    "titles": {
+     "en": "Overlord III",
+     "en_jp": "Overlord III",
+     "ja_jp": "オーバーロードⅢ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-iii",
+    "startDate": "2018-07-10",
+    "endDate": "2018-10-02",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "12915",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord Movie 2: Shikkoku no Eiyuu",
+    "titles": {
+     "en": "Overlord: The Dark Warrior",
+     "en_jp": "Overlord Movie 2: Shikkoku no Eiyuu",
+     "en_us": "Overlord: The Dark Hero",
+     "ja_jp": "【後編】劇場版総集編 オーバーロード 漆黒の英雄"
+    },
+    "abbreviatedTitles": [
+     "Gekijouban Overlord 2",
+     "Overlord Movie 2"
+    ],
+    "slug": "overlord-shikkoku-no-tenshi",
+    "startDate": "2017-03-11",
+    "endDate": "2017-03-11",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44529",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord IV",
+    "titles": {
+     "en": "Overlord IV",
+     "en_jp": "Overlord IV",
+     "ja_jp": "オーバーロードⅣ"
+    },
+    "abbreviatedTitles": [
+     "Overlord 4"
+    ],
+    "slug": "overlord-iv",
+    "startDate": "2022-07-05",
+    "endDate": "2022-09-27",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "12584",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord Movie 1: Fushisha no Ou",
+    "titles": {
+     "en_jp": "Overlord Movie 1: Fushisha no Ou",
+     "en_us": "Overlord: The Undead King",
+     "ja_jp": "【前編】劇場版総集編 オーバーロード 不死者の王"
+    },
+    "abbreviatedTitles": [
+     "Overlord Movie",
+     "Gekijouban Overlord"
+    ],
+    "slug": "overlord-fushisha-no-ou",
+    "startDate": "2017-02-25",
+    "endDate": "2017-02-25",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11166",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Ple Ple Pleiades",
+    "titles": {
+     "en_jp": "Overlord: Ple Ple Pleiades",
+     "ja_jp": "オーバーロード　ぷれぷれぷれあです"
+    },
+    "abbreviatedTitles": [
+     "Overlord Specials"
+    ],
+    "slug": "overlord-specials",
+    "startDate": "2015-09-25",
+    "endDate": "2016-02-24",
+    "episodeCount": 8,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "12239",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Ple Ple Pleiades (OVA)",
+    "titles": {
+     "en_jp": "Overlord: Ple Ple Pleiades (OVA)",
+     "ja_jp": "オーバーロード　ぷれぷれぷれあです"
+    },
+    "abbreviatedTitles": [
+     "Overlord OVA"
+    ],
+    "slug": "overlord-ple-ple-pleiades-ova",
+    "startDate": "2016-09-30",
+    "endDate": "2016-09-30",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "13402",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Mahoujin Guruguru (2017)",
+    "titles": {
+     "en": "Magical Circle",
+     "en_jp": "Mahoujin Guruguru (2017)",
+     "en_us": "Magical Circle",
+     "ja_jp": "魔法陣グルグル"
+    },
+    "abbreviatedTitles": [
+     "Mahoujin Guru Guru (2017)"
+    ],
+    "slug": "mahoujin-guru-guru-2017",
+    "startDate": "2017-07-12",
+    "endDate": "2017-12-20",
+    "episodeCount": 24,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "44530",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Sei Oukoku-hen",
+    "titles": {
+     "en": "Overlord: The Sacred Kingdom",
+     "en_jp": "Overlord: Sei Oukoku-hen",
+     "ja_jp": "劇場版 オーバーロード 聖王国編"
+    },
+    "abbreviatedTitles": [
+     "Overlord Movie",
+     "Overlord: Holy Kingdom Arc"
+    ],
+    "slug": "overlord-sei-oukoku-hen",
+    "startDate": "2024-09-20",
+    "endDate": "2024-09-20",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "14269",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Ple Ple Pleiades 2",
+    "titles": {
+     "en_jp": "Overlord: Ple Ple Pleiades 2",
+     "ja_jp": "オーバーロード　ぷれぷれぷれあです2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-ple-ple-pleiades-2",
+    "startDate": "2018-01-09",
+    "endDate": "2018-04-03",
+    "episodeCount": 13,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41482",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Ple Ple Pleiades 3",
+    "titles": {
+     "en_jp": "Overlord: Ple Ple Pleiades 3",
+     "ja_jp": "オーバーロード　ぷれぷれぷれあです3"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-ple-ple-pleiades-3",
+    "startDate": "2018-07-10",
+    "endDate": "2018-10-02",
+    "episodeCount": 13,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41338",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Ple Ple Pleiades Theatrical Version",
+    "titles": {
+     "en_jp": "Overlord: Ple Ple Pleiades Theatrical Version",
+     "ja_jp": "劇場版ぷれぷれぷれあです"
+    },
+    "abbreviatedTitles": [
+     "Overlord Movie Specials",
+     "Overlord: Ple Ple Pleiades - Doppelganger no Jikan!"
+    ],
+    "slug": "overlord-ple-ple-pleiades-theatrical-version",
+    "startDate": "2017-09-13",
+    "endDate": "2017-09-13",
+    "episodeCount": 2,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41644",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord Movie: Manner Movie",
+    "titles": {
+     "en_jp": "Overlord Movie: Manner Movie",
+     "ja_jp": "劇場版総集編オーバーロードマナームービー"
+    },
+    "abbreviatedTitles": [
+     "Gekijouban Soushuuhen Overlord Manner Movie",
+     "Overlord Theater Manners"
+    ],
+    "slug": "overlord-movie-manner-movie",
+    "startDate": "2017-09-13",
+    "endDate": "2017-09-13",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42044",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Ple Ple Pleiades - Clementine Toubou-hen",
+    "titles": {
+     "en_jp": "Overlord: Ple Ple Pleiades - Clementine Toubou-hen",
+     "ja_jp": "ぷれぷれぷれあです ～クレマンティーヌ逃亡編～"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-ple-ple-pleiades-clementine-toubou-hen",
+    "startDate": "2018-11-23",
+    "endDate": "2018-11-23",
+    "episodeCount": 3,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41351",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord 6: Drama CD-tsuki Tokusou-ban - Yokoku-hen",
+    "titles": {
+     "en_jp": "Overlord 6: Drama CD-tsuki Tokusou-ban - Yokoku-hen",
+     "ja_jp": "オーバーロード６ 【ドラマＣＤ付特装版】"
+    },
+    "abbreviatedTitles": [
+     "Overlord Picture Drama",
+     "Overlord: The Maid Tea Party"
+    ],
+    "slug": "overlord-6-drama-cd-tsuki-tokusou-ban-yokoku-hen",
+    "startDate": "2014-01-28",
+    "endDate": "2014-01-28",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46235",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Overlord: Ple Ple Pleiades 4",
+    "titles": {
+     "en_jp": "Overlord: Ple Ple Pleiades 4",
+     "ja_jp": "オーバーロード　ぷれぷれぷれあです4"
+    },
+    "abbreviatedTitles": [],
+    "slug": "overlord-ple-ple-pleiades-4",
+    "startDate": "2022-07-05",
+    "endDate": "2022-09-27",
+    "episodeCount": 13,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "2622",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ganbare Goemon",
+    "titles": {
+     "en": "Legend of the Mystical Ninja",
+     "en_jp": "Ganbare Goemon",
+     "en_us": "Legend of the Mystical Ninja",
+     "ja_jp": "がんばれゴエモン"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ganbare-goemon",
+    "startDate": "1997-10-04",
+    "endDate": "1998-03-28",
+    "episodeCount": 23,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48197",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ple Ple Pleiades × Kage-Jitsu!",
+    "titles": {
+     "en_jp": "Ple Ple Pleiades × Kage-Jitsu!",
+     "ja_jp": "ぷれぷれぷれあです × かげじつ！"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ple-ple-pleiades-x-kage-jitsu",
+    "startDate": "2023-10-31",
+    "endDate": "2023-10-31",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48528",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ple Ple Pleiades Special Edition",
+    "titles": {
+     "en": "Overlord: Ple Ple Pleiades - Special Edition",
+     "en_jp": "Ple Ple Pleiades Special Edition",
+     "ja_jp": "ぷれぷれぷれあです特別編"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ple-ple-pleiades-special-edition",
+    "startDate": "2015-09-30",
+    "endDate": "2015-09-30",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

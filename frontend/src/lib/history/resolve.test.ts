@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as fc from 'fast-check';
 import {
 	cachedBindingVerdict,
 	isCandidateForRow,
@@ -12,6 +13,8 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 const stubKitsu = (id = '13'): KitsuAnimeRef => ({
 	id,
 	canonical_title: 'Stub',
+	titles: {},
+	abbreviated_titles: [],
 	slug: null,
 	synopsis: null,
 	start_date: null,
@@ -131,6 +134,28 @@ describe('resolveHistoryEntry — direct episode mapping', () => {
 		expect(r.kitsuEpisode).toBe(4);
 	});
 
+	it('reads a cour number written right after its keyword ("Season2"), as the backend does', () => {
+		// The backend's resume lookup reads the title match under the cour
+		// its own parser reads (`cour_from_title`), which takes "Season2"
+		// as cour 2; the key Home stores must be that one.
+		expect(resolveHistoryEntry(entry('Foo Season2', '1'), null).cour).toBe(2);
+		expect(resolveHistoryEntry(entry('Foo: Part3 (12 episodes)', '1'), null).cour).toBe(3);
+		expect(resolveHistoryEntry(entry('Foo Cour 4', '1'), null).cour).toBe(4);
+		expect(resolveHistoryEntry(entry('Seasonal Foo', '1'), null).cour).toBe(1);
+	});
+
+	it('reads a cour past what the backend can hold as none, as the backend does', () => {
+		// The backend parses a cour as a u32 and reads one past it as no
+		// cour (the first), so the key it reads is c1.
+		expect(resolveHistoryEntry(entry('Foo Season 4294967295', '1'), null).cour).toBe(4294967295);
+		expect(resolveHistoryEntry(entry('Foo Season 4294967296', '1'), null).cour).toBe(1);
+		expect(resolveHistoryEntry(entry('Foo 99999999999th Season', '1'), null).cour).toBe(1);
+		expect(resolveHistoryEntry(entry('Foo Season 002', '1'), null).cour).toBe(2);
+		expect(resolveHistoryEntry(entry('Foo Season 0004294967295', '1'), null).cour).toBe(4294967295);
+		expect(resolveHistoryEntry(entry('Foo Season 00004294967296', '1'), null).cour).toBe(1);
+		expect(resolveHistoryEntry(entry('Foo 0004294967296th Season', '1'), null).cour).toBe(1);
+	});
+
 	it('parses ordinal-season suffixes ("2nd Season", "Fourth Season") as the cour', () => {
 		// resolveHistoryEntry only recognized "Season N"; the "Nth Season" /
 		// "<word> Season" forms left cour=1, so the cour-slug guard never ran and
@@ -170,6 +195,171 @@ describe('resolveHistoryEntry — episode-number quirks', () => {
 	it('falls back to 1 when ep_no is not numeric', () => {
 		const r = resolveHistoryEntry(entry('Show (12 episodes)', 'foo'), stubKitsu());
 		expect(r.displayEpisode).toBe(1);
+	});
+});
+
+describe('resolveHistoryEntry — the year a legacy title names', () => {
+	const at = (title: string, key_year?: number) =>
+		resolveHistoryEntry(
+			{ id: 'legacy-id', ep_no: '1', title, ...(key_year ? { key_year } : {}) },
+			null
+		);
+
+	it('reads the year after a legacy episode tail, which the search title drops', () => {
+		const r = at('Show (12 episodes) (2009)');
+		expect(r.searchTitle).toBe('Show');
+		expect(r.year).toBe(2009);
+	});
+
+	it('reads the year before a legacy episode tail, and a title that ends with one', () => {
+		expect(at('Show (2009) (12 episodes)').year).toBe(2009);
+		expect(at('Show (2009)').year).toBe(2009);
+	});
+
+	it("falls back to the key's year when the title names none", () => {
+		expect(at('Show (12 episodes)', 2000).year).toBe(2000);
+		expect(at('Show (12 episodes)').year).toBeNull();
+	});
+
+	it('reads the year from every legacy shape', () => {
+		const word = fc.stringMatching(/^[A-Z][a-z]{1,6}$/);
+		fc.assert(
+			fc.property(
+				fc.array(word, { minLength: 1, maxLength: 3 }),
+				fc.integer({ min: 1960, max: 2039 }),
+				fc.integer({ min: 1, max: 1999 }),
+				fc.constantFrom(0, 1, 2, 3),
+				fc.boolean(),
+				(words, y, n, shape, one) => {
+					const t = words.join(' ');
+					const tail = `(${n} episode${one ? '' : 's'})`;
+					const titled = [
+						`${t} (${y})`,
+						`${t} ${tail} (${y})`,
+						`${t} (${y}) ${tail}`,
+						`${t}  ${tail}  ( ${y} )`
+					][shape];
+					expect(at(titled).year).toBe(y);
+					expect(at(`${t} ${tail}`).year).toBeNull();
+				}
+			)
+		);
+	});
+});
+
+describe('pickKitsuMatch — the hit the row names', () => {
+	// Recorded Kitsu answers for the user's lines (search "black clover",
+	// "jojo's bizarre adventure"), the fields the pick reads.
+	const ref = (
+		id: string,
+		canonical_title: string,
+		slug: string,
+		subtype: string,
+		start_date: string,
+		episode_count: number,
+		titles: Record<string, string>
+	): KitsuAnimeRef => ({
+		...stubKitsu(id),
+		canonical_title,
+		slug,
+		subtype,
+		start_date,
+		episode_count,
+		status: 'finished',
+		titles
+	});
+	const blackCloverTv = ref('13209', 'Black Clover', 'black-clover-tv', 'TV', '2017-10-03', 170, {
+		en: 'Black Clover',
+		en_jp: 'Black Clover'
+	});
+	const blackCloverSpecial = ref(
+		'12625',
+		'Black Clover: Jump Festa 2016 Special',
+		'black-clover',
+		'special',
+		'2016-11-27',
+		1,
+		{ en_jp: 'Black Clover: Jump Festa 2016 Special' }
+	);
+	const jojoTv = ref(
+		'7158',
+		'JoJo no Kimyou na Bouken (TV)',
+		'jojo-s-bizarre-adventure-2012',
+		'TV',
+		'2012-10-06',
+		26,
+		{
+			en_us: "JoJo's Bizarre Adventure",
+			en: "JoJo's Bizarre Adventure (2012)",
+			en_jp: 'JoJo no Kimyou na Bouken (TV)'
+		}
+	);
+	const jojo2000 = ref(
+		'7730',
+		'JoJo no Kimyou na Bouken: Adventure',
+		'jojo-s-bizarre-adventure-2000',
+		'OVA',
+		'2000-05-25',
+		7,
+		{
+			en_jp: 'JoJo no Kimyou na Bouken: Adventure',
+			en: "JoJo's Bizarre Adventure (2000)"
+		}
+	);
+
+	it('takes the TV series titled as the row over the special whose slug its title makes', () => {
+		const r = resolveHistoryEntry(
+			{ id: 'hianime:black-clover-949', ep_no: '1', title: 'Black Clover' },
+			null
+		);
+		expect(pickKitsuMatch([blackCloverTv, blackCloverSpecial], r)?.id).toBe('13209');
+	});
+
+	it("takes the entry from the year the row's key names", () => {
+		const r = resolveHistoryEntry(
+			{
+				id: 'hianime:jojos-bizarre-adventure-2000-5182',
+				ep_no: '1',
+				title: "JoJo's Bizarre Adventure",
+				key_year: 2000
+			},
+			null
+		);
+		expect(r.year).toBe(2000);
+		expect(pickKitsuMatch([jojoTv, jojo2000], r)?.id).toBe('7730');
+	});
+
+	it('takes the series titled as the row, not a sibling a mark tells apart', () => {
+		const r = resolveHistoryEntry(
+			{ id: 'hianime:gintama-1237', ep_no: '1', title: 'Gintama' },
+			null
+		);
+		const sibling = ref('5971', "Gintama'", 'gintama-2', 'TV', '2011-04-04', 51, {
+			en_jp: "Gintama'",
+			en_us: 'Gintama Season 2'
+		});
+		const series = ref('818', 'Gintama', 'gintama', 'TV', '2006-04-04', 201, { en: 'Gintama' });
+		expect(pickKitsuMatch([sibling, series], r)?.id).toBe('818');
+	});
+
+	it("leaves a season the cour rule names among hits from the row's year", () => {
+		const r = resolveHistoryEntry(
+			{ id: 'hianime:show-season-2-2019-9', ep_no: '1', title: 'Show Season 2', key_year: 2019 },
+			null
+		);
+		expect(r.cour).toBe(2);
+		const first = ref('s1', 'Show', 'show', 'TV', '2019-01-10', 12, {});
+		const second = ref('s2', 'Show Season 2', 'show-season-2', 'TV', '2019-10-02', 12, {});
+		expect(pickKitsuMatch([first, second], r)?.id).toBe('s2');
+	});
+
+	it('leaves the pick as it was when the row names neither', () => {
+		const r = resolveHistoryEntry(
+			{ id: 'hianime:x-1', ep_no: '1', title: 'Black Clover Recap' },
+			null
+		);
+		expect(r.year).toBeNull();
+		expect(pickKitsuMatch([blackCloverTv, blackCloverSpecial], r)?.id).toBe('13209');
 	});
 });
 
@@ -437,7 +627,7 @@ describe('pickKitsuMatch', () => {
 });
 
 describe('isMusicSubtype', () => {
-	it('is true for "music" (case-insensitive) — never playable through the provider', () => {
+	it('is true for "music" (case-insensitive) — a subtype search never offers', () => {
 		expect(isMusicSubtype('music')).toBe(true);
 		expect(isMusicSubtype('Music')).toBe(true);
 	});
@@ -453,7 +643,7 @@ describe('titlesPlausiblySameShow', () => {
 	const ref = (canonical_title: string, titles?: Record<string, string>): KitsuAnimeRef => ({
 		...stubKitsu('x'),
 		canonical_title,
-		titles
+		titles: titles ?? {}
 	});
 
 	it('rejects a gross mismatch sharing only a generic word (the Idol bug)', () => {
@@ -661,6 +851,50 @@ describe('cachedBindingVerdict', () => {
 		).toBe('reresolve');
 	});
 
+	it('trusts a season whose slug lacks a suffix when Kitsu titles it as the provider does', () => {
+		// Gintama' is `gintama-2` on Kitsu, titled "Gintama Season 2" —
+		// the provider's card title. The slug alone reads as cour 1.
+		const p = resolveHistoryEntry(entry('Gintama Season 2', '3'), null);
+		expect(
+			cachedBindingVerdict(
+				ref({
+					canonical_title: "Gintama'",
+					titles: { en_jp: "Gintama'", en_us: 'Gintama Season 2' },
+					abbreviated_titles: ['Gintama (2011)'],
+					slug: 'gintama-2',
+					episode_count: 51
+				}),
+				p,
+				true
+			)
+		).toBe('trust');
+	});
+
+	it('still re-resolves Stone Ocean Part 2 bound to Part 1', () => {
+		// The pairing the cour check was written for: Part 1's entry has no
+		// suffix on its slug and no title naming Part 2.
+		const p = resolveHistoryEntry(
+			entry("JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", '3'),
+			null
+		);
+		expect(
+			cachedBindingVerdict(
+				ref({
+					canonical_title: "JoJo's Bizarre Adventure: Stone Ocean",
+					titles: {
+						en: "JoJo's Bizarre Adventure: Stone Ocean",
+						en_jp: 'JoJo no Kimyou na Bouken: Stone Ocean'
+					},
+					abbreviated_titles: ['Jojo part 6'],
+					slug: 'jojo-no-kimyou-na-bouken-stone-ocean',
+					episode_count: 12
+				}),
+				p,
+				true
+			)
+		).toBe('reresolve');
+	});
+
 	it('an absent slug on a multi-cour binding is trusted only when trustOnAbsentSlug', () => {
 		const p = resolveHistoryEntry(entry('Some Anime Part 2 (12 episodes)', '3'), null);
 		const r = ref({ canonical_title: 'Some Anime Part 2', slug: null, episode_count: 12 });
@@ -713,7 +947,7 @@ describe('cachedBindingVerdict', () => {
 	});
 });
 
-describe('pickKitsuMatch — music subtype is never playable', () => {
+describe('pickKitsuMatch — a music hit is never picked for the row', () => {
 	const hit = (
 		id: string,
 		canonical_title: string,
@@ -726,7 +960,7 @@ describe('pickKitsuMatch — music subtype is never playable', () => {
 		expect(pickKitsuMatch([hit('mv', 'Idol', 'music', 1)], r)).toBeNull();
 	});
 
-	it('skips a count-compatible music hit and picks the streamable one', () => {
+	it('skips a count-compatible music hit and picks the other one', () => {
 		// Without the filter the music MV (subtype music, 1 ep) is
 		// candidates[0] and wins; it must be dropped so the real entry is
 		// chosen.
@@ -864,6 +1098,7 @@ describe('a search hit by the words its titles share with the row', () => {
 			en_jp:
 				'Magical★Explorer: Eroge no Yuujin Chara ni Tensei Shitakedo, Game Chishiki Tsukatte Jiyuu ni Ikiru'
 		},
+		abbreviated_titles: [],
 		slug: 'magical-explorer-eroge-no-yuujin-chara-ni-tensei-shitakedo-game-chishiki-tsukatte-jiyuu-ni-ikiru',
 		synopsis: null,
 		start_date: null,

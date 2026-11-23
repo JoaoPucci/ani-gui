@@ -1,0 +1,243 @@
+{
+ "data": [
+  {
+   "id": "50019",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Fuyu no Suta-furu-tsu",
+    "titles": {
+     "en": "Winter Star",
+     "en_jp": "Fuyu no Suta-furu-tsu",
+     "ja_jp": "冬のスターフルーツ"
+    },
+    "abbreviatedTitles": [],
+    "slug": "fuyu-no-suta-furu-tsu",
+    "startDate": "2022-01-01",
+    "endDate": "2022-01-01",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "9843",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Heart Cocktail",
+    "titles": {
+     "en_jp": "Heart Cocktail",
+     "ja_jp": "ハートカクテル"
+    },
+    "abbreviatedTitles": [],
+    "slug": "heart-cocktail",
+    "startDate": "1986-10-03",
+    "endDate": "1988-03-26",
+    "episodeCount": 77,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "50580",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Marika-chan no Koukando wa Bukkowareteiru",
+    "titles": {
+     "en": "Marika's Love Meter Malfunction",
+     "en_jp": "Marika-chan no Koukando wa Bukkowareteiru",
+     "ja_jp": "茉莉花ちゃんの好感度はぶっ壊れている"
+    },
+    "abbreviatedTitles": [],
+    "slug": "marika-chan-no-koukando-wa-bukkowareteiru",
+    "startDate": "2026-04-05",
+    "endDate": "2026-06-08",
+    "episodeCount": 8,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4551",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Yuki Terai",
+    "titles": {
+     "en_jp": "Yuki Terai",
+     "ja_jp": "テライユキ"
+    },
+    "abbreviatedTitles": [
+     "Yuki Terai: Secrets",
+     "Yuki Terai: Secret Films",
+     "Yuki Terai: Secret Live"
+    ],
+    "slug": "yuki-terai",
+    "startDate": "2000-09-20",
+    "endDate": "2000-09-20",
+    "episodeCount": 6,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46170",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "[Oshi no Ko]",
+    "titles": {
+     "en": "Oshi no Ko",
+     "en_jp": "[Oshi no Ko]",
+     "ja_jp": "【推しの子】"
+    },
+    "abbreviatedTitles": [
+     "【OSHI NO KO】",
+     "[Mein*Star]",
+     "Favorite Girl",
+     "My Idol's Child",
+     "เกิดใหม่เป็นลูกโอชิ",
+     "Anak Idola",
+     "【推しの子】Mother and Children",
+     "[Oshi no Ko] Mother and Children",
+     "【MOJA GWIAZDA】",
+     "我推的孩子"
+    ],
+    "slug": "oshi-no-ko",
+    "startDate": "2023-04-12",
+    "endDate": "2023-06-28",
+    "episodeCount": 11,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "924",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ouritsu Uchuugun: Honneamise no Tsubasa",
+    "titles": {
+     "en": "Royal Space Force: The Wings of Honneamise",
+     "en_jp": "Ouritsu Uchuugun: Honneamise no Tsubasa",
+     "ja_jp": "王立宇宙軍 オネアミスの翼"
+    },
+    "abbreviatedTitles": [
+     "Wing of Royal Space Troop Honneamise",
+     "Star Quest"
+    ],
+    "slug": "ouritsu-uchuugun-honneamise-no-tsubasa",
+    "startDate": "1987-03-14",
+    "endDate": "1987-03-14",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47232",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Boku no Hero Academia 7",
+    "titles": {
+     "en": "My Hero Academia Season 7",
+     "en_jp": "Boku no Hero Academia 7",
+     "ja_jp": "僕のヒーローアカデミア7"
+    },
+    "abbreviatedTitles": [],
+    "slug": "boku-no-hero-academia-7th-season",
+    "startDate": "2024-05-04",
+    "endDate": "2024-10-12",
+    "episodeCount": 21,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "47025",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Watashi dake no Okosama Lunch",
+    "titles": {
+     "en": "My Precious Lunch",
+     "en_jp": "Watashi dake no Okosama Lunch",
+     "ja_jp": "わたしだけのお子さまランチ"
+    },
+    "abbreviatedTitles": [
+     "みんなのお子さまランチ",
+     "Our Precious Lunch",
+     "My Very Own Kid's Lunch",
+     "Delicious Party Pretty Cure: Watashi dake no Oko-sama Lunch",
+     "Delicious Party Precure: Watashi dake no Oko-sama Lunch"
+    ],
+    "slug": "watashi-dake-no-okosama-lunch",
+    "startDate": "2022-09-23",
+    "endDate": "2022-09-23",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49492",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Tunshi Xingkong Movie: Xueluo Dalu",
+    "titles": {
+     "en": "Swallowed Star: Blood Luo Continent",
+     "en_cn": "Tunshi Xingkong Movie: Xueluo Dalu",
+     "zh_cn": "吞噬星空剧场版 血洛大陆"
+    },
+    "abbreviatedTitles": [
+     "Tunshi Xingkong Juchang Ban: Xueluo Dalu",
+     "Swallowed Star Movie"
+    ],
+    "slug": "tunshi-xingkong-movie-xueluo-dalu",
+    "startDate": "2024-12-07",
+    "endDate": "2024-12-07",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "49082",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Zutaboro Reijou wa Ane no Moto Konyakusha ni Dekiai sareru",
+    "titles": {
+     "en": "Betrothed to My Sister's Ex",
+     "en_jp": "Zutaboro Reijou wa Ane no Moto Konyakusha ni Dekiai sareru",
+     "ja_jp": "ずたぼろ令嬢は姉の元婚約者に溺愛される"
+    },
+    "abbreviatedTitles": [
+     "Loved by Her Sister's Former Fiancée"
+    ],
+    "slug": "zutaboro-reijou-wa-ane-no-moto-konyakusha-ni-dekiai-sareru",
+    "startDate": "2025-07-04",
+    "endDate": "2025-09-20",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8287",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Pretty Rhythm Movie: All Star Selection - Prism Show☆Best Ten",
+    "titles": {
+     "en_jp": "Pretty Rhythm Movie: All Star Selection - Prism Show☆Best Ten",
+     "ja_jp": "劇場版 プリティーリズム・オールスターセレクション プリズムショー☆ベストテン"
+    },
+    "abbreviatedTitles": [
+     "Gekijouban Pretty Rhythm",
+     "Pretty Rhythm The Movie",
+     "Pretty Rhythm Movie"
+    ],
+    "slug": "pretty-rhythm-all-stars-selection-prism-show-best-ten-movie",
+    "startDate": "2014-03-08",
+    "endDate": "2014-03-08",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  }
+ ]
+}

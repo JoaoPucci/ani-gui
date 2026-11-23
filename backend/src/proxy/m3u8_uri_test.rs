@@ -2,9 +2,10 @@
 //! not at all: a player or a relayed download reads the rewritten
 //! manifest, and a URI left pointing upstream is fetched without the
 //! session's referer and outside the host's budget, and a relative one
-//! resolves against the proxy and reaches nothing. A URI whose scheme
+//! resolves against the proxy and reaches nothing. Media whose scheme
 //! is not the network's — an inline `data:` key or init segment — is
-//! no fetch at all, and passes through as written.
+//! no fetch at all, and passes through as written; a playlist that is
+//! not a network URI is dropped (`m3u8_escape_test.rs`).
 
 use super::*;
 
@@ -31,8 +32,16 @@ fn uris(out: &str) -> Vec<String> {
     found
 }
 
+/// Whether `uri` is on the proxy's own scheme, host and port — parsed,
+/// so a URI that only begins with the proxy's origin is not.
+fn on_proxy(uri: &str) -> bool {
+    Url::parse(uri).is_ok_and(|u| {
+        u.scheme() == "http" && u.host_str() == Some("127.0.0.1") && u.port() == Some(42_337)
+    })
+}
+
 fn all_proxied(out: &str) -> bool {
-    uris(out).iter().all(|u| u.starts_with(&origin().base))
+    uris(out).iter().all(|u| on_proxy(u))
 }
 
 #[test]
@@ -231,10 +240,7 @@ fn a_uri_that_is_not_a_network_uri_passes_through_as_written() {
     )
     .expect("master");
     assert!(out.contains(&format!("URI=\"{inline}\"")), "{out}");
-    assert!(
-        uris(&out).iter().any(|u| u.starts_with(&origin().base)),
-        "{out}"
-    );
+    assert!(uris(&out).iter().any(|u| on_proxy(u)), "{out}");
     let media = format!(
         "#EXTM3U\n#EXT-X-TARGETDURATION:5\n\
          #EXT-X-KEY:METHOD=AES-128,URI=\"{inline}\"\n\
@@ -262,8 +268,5 @@ fn a_uri_that_is_not_a_network_uri_passes_through_as_written() {
         .lines()
         .filter(|l| !l.starts_with('#') && !l.is_empty())
         .collect();
-    assert!(
-        segments.iter().all(|s| s.starts_with(&origin().base)),
-        "{out}"
-    );
+    assert!(segments.iter().all(|s| on_proxy(s)), "{out}");
 }

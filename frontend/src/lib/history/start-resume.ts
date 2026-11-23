@@ -28,16 +28,23 @@ import { pickNextEpisode, resumeOr } from '$lib/play/next-episode';
 import { parseHistoryEpisode } from '$lib/play/episode-number';
 import { claimOrHold } from '$lib/navigation/claims';
 import { settledRow } from './settled-row';
+import { guessBinds, guessRow } from '$lib/play/play-origin';
 
 export interface ResumePlayArgs {
-	/** Whether the card's match is only a guess (row-trust.ts): its id
-	 *  is then not recorded, and the session is opened as a guess. */
+	/** Whether the card's match is only a guess (row-trust.ts): the
+	 *  session is opened as a guess, and its id is recorded only where
+	 *  the play landed on the card's own listing. On the watch's stamp,
+	 *  whether that stamp may record the id. */
 	guess?: boolean;
+	/** The clicked card's history row, named only on a guess's play. */
+	row?: string;
+	/** The card's line, named on a play no guess opened: the backend
+	 *  keeps the show it records ($lib/play/session-show.ts `cardRow`). */
+	cardRow?: string;
 	match: KitsuAnimeRef;
 	title: string;
 	episode: number;
 	mode: 'sub' | 'dub';
-	quality: string;
 }
 
 export interface StartResumeDeps {
@@ -55,10 +62,17 @@ export interface StartResumeDeps {
 		args: ResumePlayArgs,
 		/** Whether the click's navigation claim still holds — asked once
 		 *  the failure is worded, which can outlast the viewer staying. */
-		isCurrent?: () => boolean
+		isCurrent?: () => boolean,
+		/** Whether the card's line could not be read, so the play is of
+		 *  the card's own row, which may not be the line. */
+		lineUnread?: boolean
 	) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
-	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
+	getSettings: () => Promise<{ mode: 'sub' | 'dub' }>;
+	/** The audio the clicked show plays in, given the settings' mode as
+	 *  the default (`audioFor` in `$lib/play/audio-choice`). Omitted,
+	 *  the settings' mode plays. */
+	modeFor?: (kitsuId: string, fallback: 'sub' | 'dub') => 'sub' | 'dub';
 	getPlayableCount: (entryId: string) => number | null;
 	/** Whether the stored cap came from the search hit rather than the
 	 *  detail fetch. An approximate cap is revalidated before use —
@@ -87,6 +101,11 @@ export interface StartResumeDeps {
 		episode?: string;
 		former_episode?: string;
 		episode_unverified?: boolean;
+		/** Whether a guess's play landed on the card's own listing. */
+		own_listing?: boolean;
+		/** Whether the backend kept a card's play off its line, which
+		 *  records another show. */
+		line_kept?: boolean;
 	}>;
 	markWatched: (args: ResumePlayArgs) => Promise<void>;
 	syncTrackers: (
@@ -124,6 +143,12 @@ export interface StartResumeDeps {
 	/** Keeps what was kept for `from` of `kitsuId` under `to` instead.
 	 *  Omitted, nothing moves. */
 	movePosition?: (kitsuId: string, from: number, to: number) => void;
+	/** A view of the rows as they are matched now ($lib/history/card-relink.ts),
+	 *  taken when the click starts: the cap the click learns is pinned only
+	 *  while the view holds for the row. A row linked while the click
+	 *  works is another show, and the cap is the former one's. Omitted,
+	 *  the cap is always pinned. */
+	since?: () => (row: string) => boolean;
 	/** Resolves `args` without recording a watch — a prefetch — so the
 	 *  backend fetches the show's listing. Omitted, nothing is warmed. */
 	warm?: (args: ResumePlayArgs) => Promise<unknown>;
@@ -136,23 +161,36 @@ export interface StartResumeDeps {
 	) => number;
 }
 
-export function makeStartResume(
-	deps: StartResumeDeps
-): (
+export function makeStartResume(deps: StartResumeDeps): (
 	entry: HistoryEntry,
 	match: KitsuAnimeRef,
 	seriesTotal: number | null,
-	seriesFinished: boolean
+	seriesFinished: boolean,
+	/** The line the card stands for, when it is another row than the
+	 *  one it shows ($lib/history/card-lines.svelte.ts): the play is a guess of
+	 *  that line, from the shown row's progress. Home hands it while it may
+	 *  still be asking; `null` when it could not be read. */
+	cardRow?: string | null | Promise<string | null>
 ) => Promise<void> {
-	return async (entry, match, seriesTotal, seriesFinished) => {
+	return async (entry, match, seriesTotal, seriesFinished, cardRow) => {
 		if (deps.isBusy()) return;
 		const title = match.canonical_title;
 		if (!title) return;
 		const stillHere = claimOrHold(deps.claimNavigation);
+		const asFound = deps.since?.() ?? (() => true);
 		deps.onBusy(match.id);
 		deps.onProgress(null);
+		// Home may still be asking which line the card stands for: the
+		// click's claim and busy state come first, the line once known.
+		// Home waits for one more ask when the last failed. One that still
+		// could not be read (`null`) plays the card's own row rather than
+		// refuse the play, but its failure offers no correction.
+		const asked = await cardRow;
+		const lineUnread = asked === null;
+		const line = asked ?? entry.id;
 
-		const { mode, quality } = await deps.getSettings();
+		const settings = await deps.getSettings();
+		const mode = deps.modeFor ? deps.modeFor(match.id, settings.mode) : settings.mode;
 		// The viewer moved on while settings loaded: nothing of the
 		// click's provider work, the cap lookup included, is theirs.
 		if (!stillHere()) {
@@ -180,7 +218,7 @@ export function makeStartResume(
 		// for the listing that puts its numbering right, and the card
 		// read it before. A position kept under what it read as moves.
 		const card = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
-		const guess = deps.isGuess?.(entry.id) ?? false;
+		const guess = deps.isGuess?.(line) ?? false;
 		const now = await settledRow(
 			deps,
 			entry.id,
@@ -190,7 +228,6 @@ export function makeStartResume(
 				match,
 				title,
 				mode,
-				quality,
 				guess
 			},
 			stillHere
@@ -210,11 +247,16 @@ export function makeStartResume(
 			next,
 			last !== null && (deps.leftPartWay?.(match.id, last) ?? false)
 		);
-		if (typeof count === 'number') {
+		if (typeof count === 'number' && asFound(entry.id)) {
 			deps.setPlayableCount(entry.id, count, approximate);
 		}
 
-		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
+		const row = guessRow(guess, line);
+		const args: ResumePlayArgs = { match, title, episode, mode, guess };
+		if (row) args.row = row;
+		// No guess: the card's line, so a correction that lands before the
+		// play is recorded keeps its show.
+		else args.cardRow = line;
 		// The viewer moved on while the click was still settling what to
 		// play: no play has begun, so none is resolved, started or
 		// recorded.
@@ -222,19 +264,25 @@ export function makeStartResume(
 			deps.onBusy(null);
 			return;
 		}
-		deps.markStarted?.(match.id, episode, entry.id);
+		deps.markStarted?.(match.id, episode, line);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
 			// The episode the session plays, which the request may have
 			// named by a number it no longer carries.
 			const played = deps.followPlayed?.(match.id, session, episode) ?? episode;
+			// A guess whose play landed on the card's own listing names the
+			// show the row has been playing: it is recorded, and reaches the
+			// trackers, as a play of the show's own page would be.
+			// A play the backend kept off its line, which records another
+			// show, records nothing there either.
+			const binds = guessBinds(guess, session) && session.line_kept !== true;
 			// Marked as the episode played: a resolve the request named by a
 			// former tag is kept under it.
-			void deps.markWatched({ ...args, episode: played }).catch(() => {});
-			// A guessed match writes nothing to the user's tracker accounts,
+			void deps.markWatched({ ...args, episode: played, guess: !binds }).catch(() => {});
+			// Any other guess writes nothing to the user's tracker accounts,
 			// nor does an episode the session could not verify: a row past
 			// Kitsu's count that may be an extra the provider appended.
-			if (!guess && !session.episode_unverified) {
+			if (binds && !session.episode_unverified) {
 				void deps.syncTrackers(match.id, played, seriesTotal, seriesFinished).catch(() => {});
 			}
 			// The viewer moved on while the session was on its way: the
@@ -245,7 +293,7 @@ export function makeStartResume(
 				deps.onBusy(null);
 				return;
 			}
-			deps.navigateToSession(match.id, session, played, guess, entry.id);
+			deps.navigateToSession(match.id, session, played, guess, line);
 		} catch (e) {
 			deps.onProgress(null);
 			// A failure about a page the viewer has moved on from says
@@ -258,7 +306,7 @@ export function makeStartResume(
 			// after a cache lookup, and a card left idle meanwhile would
 			// take a second click whose play the late message then covers.
 			try {
-				await deps.onFailure(title, e, args, stillHere);
+				await deps.onFailure(title, e, args, stillHere, lineUnread);
 			} finally {
 				deps.onBusy(null);
 			}

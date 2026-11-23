@@ -20,7 +20,27 @@ else is able to read.
 
 Adding an entry is not a way to avoid the work. `AGENTS.md` §14 lists
 it third of four options, after doing it here and doing it in its own
-pull request.
+pull request, and it is the one an agent never takes alone: an entry
+is added, or widened to defer more, only when the maintainer has
+chosen to defer. Correcting an entry so it stays true, or removing it
+when the work lands, needs no such choice — the pull request that does
+it must say so. An entry is false only when something it states no
+longer holds, or never did; a view that the work is not worth doing
+never makes it false. An entry that is wholly false is removed as its
+correction. Removing an entry, or part of one, for any other reason,
+such as work that still holds but seems not worth doing, is the
+maintainer's choice too, however it was reached. Where only part of an
+entry is false, the change corrects that part, and the rest stays
+unless the maintainer chooses to drop it.
+
+An entry is a reminder, not a constraint. A change considers an entry
+only when tackling it would unblock the change, or when the change
+would otherwise have to be built differently or around it. Then, if
+the entry is still true and worth doing, the change prefers tackling
+it; one too large or risky to take on goes to the maintainer as a
+choice, as `AGENTS.md` §14 describes, and so does one that seems not
+worth doing, as above. An entry that only shares the change's area is
+not raised, and the log is not scanned by area or keyword.
 
 Write an entry about the code, not about the work in flight. An entry
 stands on its own: what is wrong, where it lives, and what should
@@ -91,6 +111,20 @@ that never existed as described. Check an item against the code before
 starting it, and delete it when you find it done.
 
 ## Correctness in the app
+
+- **A later season Kitsu titles only with a bare number is refused
+  by the cross-cour guard.** "That Time I Got Reincarnated as a Slime
+  Season 2" is Kitsu's `tensei-shitara-slime-datta-ken-2`, titled
+  "That Time I Got Reincarnated as a Slime 2" and "Tensei Shitara Slime
+  Datta Ken 2nd Season Part 1" — no title names it as the provider
+  does, and the guard reads neither a slug's bare trailing number nor
+  a title's as a season, so a play from its page records no id on its
+  history row and stores no mapping. It waited because both obvious
+  readings accept wrong pairings: read as a season, the slug's bare
+  trailing number accepts the "Slime 2nd Season Part 2" listing
+  against this Part 1 entry, and a title's bare trailing number
+  collides with names that end in one (Mob Psycho 100). The 2nd-Season-Part-1 alias suggests reading a season and a
+  part together rather than one trailing cour.
 
 - **Decide the resolution cache's final shape after the opt-in
   trial.** Caching play resolutions is a setting now
@@ -168,7 +202,7 @@ starting it, and delete it when you find it done.
   de Te Koi (Kitsu 40684, MAL 35061) was played as a hentai OVA whose
   listing names MAL 36256 (episode 33370, 2026-10-16); HenSemi (TV) was
   played as Medaka Box Abnormal, whose listing names MAL 14527. Kitsu's mapping is
-  already cached per entry (`kitsu:external-ids:v2:k<id>`). It waited
+  already cached per entry (`kitsu:external-ids:v3:k<id>`). It waited
   because it is not free where it would decide: the listing is fetched
   only after the pick — for the requested episode on the play path, for
   sampled episodes in the availability probe — so choosing among
@@ -251,7 +285,34 @@ starting it, and delete it when you find it done.
 
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
-  only, since nothing builds or launches the Windows app in CI.
+  only, since nothing launches the Windows app in CI: a workflow
+  builds the Windows installer, and nothing installs or runs it.
+- **Nothing runs the Windows installer's script.** A workflow builds
+  the Windows installer (`packages.yml`), but nothing installs or runs
+  it, so a change to `electron/build-resources/installer.nsh` cannot
+  start from a failing test, as `AGENTS.md` §2 asks. The maintainer
+  accepted the fix for a restored ffmpeg whose version stamp could not
+  be put back (it is now downloaded again instead of taken for 7.1.1)
+  on that basis, checked by reading, and chose to make the script
+  testable later rather than hold that fix for it. NSIS and Wine on the Linux runners is the
+  cheaper route, but Wine is not Windows, and file renames and locks
+  are where the two can differ; a Windows runner that installs the
+  installer it built and runs an update is the faithful one, at more
+  CI time. Either is new to the stack and the maintainer's decision.
+- **Test builds and release builds from the Packages workflow.** A
+  run started by hand builds whatever version the committed manifests
+  carry, so a test build and a release build of the same version look
+  alike. It could offer two kinds instead: a test build whose version
+  is generated (for example `<next patch>-test.<run number>`, marked
+  as a test in its file names, and below the real release in semver so
+  the update notifier still offers that release), and a release build
+  on the committed version, run on the release commit. The point is
+  telling test builds apart and ordering them, not installing one over
+  another: the Windows installer already replaces an existing install
+  whatever its version, since electron-builder's NSIS template runs the
+  old install's uninstaller without comparing versions
+  (`uninstallOldVersion` in `templates/nsis/include/installUtil.nsh`).
+  The maintainer chose to revisit it with the planned quality work.
 
 ## Correctness in the app (continued)
 
@@ -316,10 +377,11 @@ starting it, and delete it when you find it done.
   did — and the routing changes how a working handoff behaves.
 
 - **The resolver's requests to a CDN pass the host's budget.** A
-  fresh resolve fetches the master playlist — and the variant, for a
-  quality other than best — through the impersonating transport, ahead
-  of the player's own fetches of the same host, and the budget does not
-  count them. Downloads running past the budget are held to what their
+  fresh resolve fetches the master playlist through the impersonating
+  transport — and the variant too, for a download whose download
+  quality is not Best; a play or hand-off fetches the master alone —
+  ahead of the player's own fetches of the same host, and the budget
+  does not count them. Downloads running past the budget are held to what their
   requests in flight leave and a cached row's liveness check waits
   for its tokens; the resolver is not counted, because it runs in
   the providers, which hold no budget, and its other requests go to the
@@ -368,16 +430,106 @@ starting it, and delete it when you find it done.
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
 
+- **Some guessed Continue cards still open the wrong show.** A
+  Continue row that recorded no show is matched by a Kitsu search for
+  its title (`pickKitsuMatch` in `frontend/src/lib/history/resolve.ts`,
+  narrowed first by `frontend/src/lib/history/pick-rank.ts`, after the
+  hits the row itself rules out are withheld,
+  `backend/src/commands/continue_guess.rs`). Of the hianime listings the
+  season picker's audit paired with their Kitsu entries, these still
+  pick another entry, and a click on the card opens that one, playing
+  whatever the provider lists for it, if anything:
+
+  - "Haikyuu!!: To the Top (Part 1+2)" takes To the Top 2.
+  - "Attack on Titan: Final Season, Part 1" takes the Final Chapters'
+    Part 1: at the row's first episode nothing rules that one-episode
+    special out, and past it the resolve from the show key's words
+    answers the same entry.
+  - "JoJo's Bizarre Adventure Part 2: Stardust Crusaders (Uncensored)"
+    takes Stone Ocean Part 2, the only hit Kitsu's search returns for
+    it, which carries the title's first word and no season.
+
+  Two of the corpus's other cards pick another entry too, and nothing
+  the row carries can settle them:
+
+  - The 1993 "JoJo's Bizarre Adventure" OVA takes the 2012 series: the
+    provider lists the OVA under the bare title, as it does the 2000
+    OVA, and the OVA's show key (`jojos-bizarre-adventure-706`) names
+    no year.
+  - "My Star: Specials" takes [Oshi no Ko]: neither Kitsu's answer for
+    its title nor the one for its show key's words holds the specials.
+
+  What corrects these two is the user rather than a rule, where Kitsu
+  holds the entry at all: the player's "Is this the show you meant?"
+  on a guessed play, the other ways to correct a card by hand, or a
+  play of the show from its own page, all below.
+
+  The first three waited because no rule tried fixed them without
+  breaking picks that are right. Ruling out a hit whose titles and the
+  row's each carry a word the other lacks would refuse Stone Ocean Part
+  2 here, but it also refused the right entry for "86 EIGHTY-SIX Season
+  2 Recap", which Kitsu titles "86 Part 2 Recaps", and it would refuse
+  any entry Kitsu titles only in romanized Japanese. Stripping "(TV)",
+  "(Uncensored)" and "(Part 1+2)" before comparing titles changed no
+  pick.
+
+  The user can correct a card by hand: its "Not what you watched?" pill
+  on Home, its failed resume, the player's slip and ⋯ menu, and the show
+  page its player led to all link the line to the show the user names.
+  Playing the show from its own page also corrects one: when that play
+  lands on the card's listing, the line records the show and the card
+  goes by it from then on — unless the cross-cour guard refuses the
+  record, as it does for the Slime season (the entry on a later season
+  Kitsu titles only with a bare number). The guess itself is what
+  waits, and it is worth revisiting when the guess can read
+  more of the provider's listing than its title, the year and words its
+  key names and the episode it reached — the year it aired, its
+  format, or its episode count — or when another wrong pick on a
+  user's card is reported.
+
+- **Kitsu hides every entry it marks adult, and some are not hentai.**
+  Read without a login, Kitsu leaves out every entry it flags `nsfw`
+  (all of them rated R18): search and browse never return one,
+  `filter[ageRating]=R18` answers an empty list, and `/anime/<id>`
+  answers 404. So the app cannot search for, browse to or open these
+  shows. The flag is meant for hentai, but of 152 hidden shows
+  checked, 13 were not hentai, among them Redo of Healer, Kanashimi no
+  Belladonna, Cleopatra (1970), Senya Ichiya Monogatari, the Nukitashi
+  OVAs, Maou Evelogia ni Mi wo Sasageyo and Ikenai BOY. It waits
+  because the maintainer chose to leave it for now. Two things worth
+  knowing: nor does the flag follow erotic content, since Kitsu rates
+  some erotic short series that aired censored R and shows them
+  (Yubisaki kara Honki no Netsujou), so the line it draws is its own;
+  and the mappings lookup by MAL or AniList id does serve a hidden
+  entry inline (MAL 40750 gives Redo of Healer, Kitsu 42732, R18); the
+  trending row and the Watch Later rail are built on that lookup and
+  leave such entries out, so they show only what search and browse can.
+
 ## Interface
 
 - **GNOME's newer Reduced Motion preference does not reach the renderer.**
   On GNOME 50.1 with Electron 33, the accessibility preference was
   `reduce` while the older global animation switch remained enabled;
   Electron still reported `prefers-reduced-motion: no-preference`.
-  The rail animations honor that media query, so on such a system they
-  still play. What Electron reported matched the older switch, not the
+  The app's motion honours that media query, so on such a system it
+  still plays. What Electron reported matched the older switch, not the
   new preference. The preference could be read another way and handed
   to the renderer, or a later Electron may expose it to the query.
+
+- **Small text over a thumbnail can fall below WCAG AA on a bright
+  frame.** The "EP" key and number set over an episode thumbnail (the
+  show page's tiles, the Continue cards) rely on a bottom scrim that
+  fades from transparent to the page ink at 75%, drawn at 0.85 until
+  hover. The text sits partway up that gradient, so over a near-white
+  frame the 11–12px key falls well under 4.5:1; over a typical frame
+  it clears with room. The text tiers themselves meet AA on every ink
+  surface, which `frontend/tests/lint/text-contrast.test.ts` holds,
+  but nothing measures text against imagery. Closing it means a scrim
+  strong enough at the text's height to hold AA over white, which
+  darkens the lower part of every thumbnail, or a local protection
+  behind the text alone; either changes how the thumbnails look, so
+  it waits on a design choice. The hero's eyebrow over its banner is
+  in the same position.
 
 - **An episode's listed length can disagree with the video.** The
   detail page's episode list shows the length Kitsu gives each
@@ -401,6 +553,36 @@ starting it, and delete it when you find it done.
   `startDate` and `averageRating` in either direction. Name any further
   filters wanted before starting, rather than reading this as filters
   being missing.
+- **A search result the provider turns out not to carry vanishes
+  from under the user.** The search page renders each page of
+  results first and checks it against the provider afterwards
+  (`frontend/src/lib/availability/progressive.ts`). Cached verdicts
+  and those that settle within two seconds shape the first render. A
+  later "not carried" for a finished show removes its card from a
+  grid the user is already reading, on any page loaded so far, with
+  no motion and no explanation. The other surfaces that hide such
+  cards never remove one in view: Home's rows, a show page's
+  similar-titles strip, the search page's own discovery rows and the
+  topbar's live results filter against verdicts before rendering, so
+  a card known to be unplayable never appears there in the first
+  place. Continue Watching never hides a card on an availability
+  verdict. What search should do instead is undecided. One option is
+  the exit motion Continue Watching plays when the user deletes a
+  card. The other, which the maintainer leans towards, is to keep the
+  card and mark it, so a show the user searched for by name doesn't
+  silently disappear and the reason is visible. That raises questions
+  a design pass has to settle: what the mark says and where it sits,
+  whether a marked card still opens its page, whether the grid's
+  order or count changes, and whether the surfaces that hide such
+  cards before rendering should show them marked too. Once that is
+  decided, search's exclusion of music videos is to be revisited
+  (maintainer, 2026-11-16): music videos are kept out because Kitsu
+  lists far more of them than the provider serves, so showing them
+  would put many results in search that then get filtered out as not
+  carried; they would belong in search only if that ratio were good.
+  The revisit covers the detail page too, which holds every music
+  video unavailable, the ones the provider does play included, and
+  the search page's type filters, which offer none for music.
 - **Search has no title order.** Kitsu cannot sort a text search by
   title: `sort=canonicalTitle` and `sort=slug` answer 500, and
   `titles.en` is refused as a sort criterion. Sorting only the pages
@@ -418,15 +600,44 @@ starting it, and delete it when you find it done.
   are written into `electron/oauth-server.js`; the main process has a
   message table in every shipped locale for its dialogs
   (`electron/lib/main-messages.cjs`), and they belong in it.
-- **Adopt the `documentPictureInPicture` browser API** for the player's
-  pop-out window. Not a request to write documentation — "Document
-  Picture-in-Picture" is the W3C API's name.
+- **Picture-in-picture shows no subtitles; a mini-player window is to
+  replace it.** Chromium's picture-in-picture window draws the video's
+  picture and not its text tracks, so the subtitles stay behind in the
+  main window. The pop-out the player needs is an app-owned window
+  carrying the player itself, studied in
+  [`proposals/mini-player.md`](./proposals/mini-player.md).
 
-  Electron exposes the API but omits the window-creation glue, so it
-  cannot work today: electron/electron#39633, open since 2023. Do not
-  re-attempt until that lands. PiP as it exists now — the player's
-  video, while the player is open — ships and is described in
-  `README.md` and `docs/architecture.md`.
+  The `documentPictureInPicture` browser API ("Document
+  Picture-in-Picture" is the W3C API's name) would have been the other
+  way, but Electron exposes it without the window-creation glue, so it
+  cannot work: electron/electron#39633, open since 2023. The maintainer
+  chose not to wait for it. PiP as it exists now — the player's video,
+  while the player is open — ships and is described in `README.md` and
+  `docs/architecture.md`.
+- **An mp4 stream resumed at a point can still show its first frame
+  in picture-in-picture.** The resume hold (`$lib/play/resume-hold`)
+  hides the picture with the page's CSS until the resume seek lands,
+  and picture-in-picture and a `<video>` that is itself fullscreen
+  show the element, not the page. An hls stream closes that gap by
+  starting its engine at the fragment that holds the point, so
+  nothing before it is fetched. An mp4 stream is played from `src`,
+  and there Chromium starts the stream at 0 and decodes and shows the
+  frame there unless the seek reaches the media pipeline first. Every way the page can
+  say "start here" becomes that same seek, issued from the main
+  thread when the metadata arrives: `currentTime` set before the
+  metadata, a `#t=` media fragment, and `preload="metadata"` all
+  race. Measured in Electron 33 by noting every frame the element
+  presented (`requestVideoFrameCallback`) across an episode switch
+  in picture-in-picture, with segment latency and a busy main thread:
+  each of the three still showed frame 0 in some switches — in
+  setups where hls never did, and where the hold without any of them
+  showed it every time. The two fixes that do not race are making the
+  proxy serve an mp4 that starts at the point (a backend change that
+  has to ship on Linux and Windows alike, AGENTS.md §15), or playing
+  mp4 sessions through Media Source Extensions with a remuxer, so the
+  page appends only what follows the point. When this entry was
+  written the maintainer's recorded plays were all hls, so the gap
+  reaches only sources the provider serves as mp4.
 - **A flatpak-only mpv goes undetected by the external-player
   surface.** Upstream ani-cli fixed exactly this for its own player
   launch just before the repositories parted (pystardust/ani-cli
@@ -448,17 +659,69 @@ starting it, and delete it when you find it done.
   settings; and external players and Syncplay receive the tracks as
   files and style them themselves, so this is the embedded player
   only.
-- **Subtitle track selection: a locale-aware default, and a remembered
-  choice.** Which track shows when an episode opens is the provider's
-  call, in every app locale: the browser turns on the track the
-  provider flagged default, the rest start hidden, and the page flips
-  one to showing only when the user picks it. Nothing is remembered —
-  the next episode starts from the provider's flag again.
+- **One set of player controls.** The player has two: the app's own,
+  and Chromium's native ones, which Settings swaps in when "Custom
+  player controls" (`use_custom_player_controls`, on by default) is
+  turned off. Every player feature has to work through
+  both, so it is built twice. The per-show subtitle memory is one
+  case: a pick in the app's captions menu is recorded as it
+  is made, while a pick in the browser's menu has to be inferred from
+  the video's text-track changes. The quality picker is another: the
+  native bar has none, so with it the picker is in the page's ⋯ menu,
+  as Watch together is.
 
-  It waits on evidence. Every hianime listing captured or played so
-  far carried English alone, flagged default, so an app-language
-  preference has nothing to choose between yet. A payload that flags
-  no track at all starts with every subtitle off.
+  Investigate choosing one. Before deciding, measure what the native
+  path still offers that the custom one does not — the setting's own
+  hint names picture-in-picture and the native captions menu — and
+  decide from that.
+- **The starting captions on a playlist-only stream.** The app
+  applies a session's starting captions — the language last picked on
+  the show (Off included), else the app's language — only where the
+  session lists sidecar subtitle tracks. A stream whose subtitles
+  exist only inside its own playlist never gets one, whichever player
+  controls are on: hls.js's own choice plays, a language or Off
+  picked in the app's captions menu is remembered but not applied on
+  the show's next such episode, and with the custom controls off a
+  pick in Chromium's own menu is not remembered at all, since that is
+  recorded only once the app has applied a start.
+
+  It waits because no episode seen has that shape — every one lists
+  its tracks beside the stream — and because the obvious fix, taking
+  the captions as they stand when such a session starts, would let
+  hls.js's own switching of playlist tracks read as the viewer's pick.
+
+  The gap is in where the start is applied, not in either menu, so
+  choosing one set of player controls (above) would not remove it.
+- **Sidecar subtitles on a stream that also carries its own.** Each
+  time hls.js switches its own subtitle track it disables every
+  labelled subtitle track but the one it chose
+  (`SubtitleTrackController.toggleTrackModes`), the app's sidecar
+  `<track>`s included, and it reads the captions again on every
+  change to them. On a stream whose playlist lists subtitle
+  renditions as well as sidecar tracks, then, a sidecar track picked
+  from the captions menu goes off the moment it is picked: showing it
+  reads to hls.js as "none of mine", so it switches to none. The
+  session's start fares the same way. When hls.js picks its playlist
+  track after the sidecar tracks attach, that track replaces the
+  start; when it picked before, the start's own change makes it
+  switch to none, and every track goes off. The pick and the first
+  order were measured on the packaged app with a fixture stream of
+  that shape; the second follows from the same code.
+
+  It waits because the provider serves no such stream. Episodes
+  resolved across sub and dub in November 2026 carried no
+  `EXT-X-MEDIA` subtitle rendition and no closed captions, and each
+  had a single level. With no playlist tracks hls.js's subtitle track
+  stays at none and it never switches: a minute of playback, a pick
+  and a seek leave the sidecar tracks as the app set them.
+
+  Undoing hls.js's change after it happens is not the fix: with the
+  custom controls off, a caption change the app did not make is read
+  as the viewer's pick (`$lib/play/caption-watch`) — all but a track
+  turned on beside the one the app set, and hls.js switches that one
+  off first. The fix
+  belongs in keeping hls.js's own subtitle selection in step with the
+  captions menu.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** The app's notices are scattered —
   update availability is a topbar badge with its dialog, download
@@ -482,7 +745,8 @@ starting it, and delete it when you find it done.
   the number the card shows beforehand, where it shows one, is not
   always the episode played. Nothing else on the card or the row
   leads to the show either: the chip on a card removes it, the
-  row's menu clears the row whole, the strip's arrows scroll it.
+  row's Clear history action clears it whole, the strip's arrows
+  scroll it.
   (An entry the matcher could not place renders as a link to search
   instead, and has no show to route to; one whose match came back
   without a title renders as a card whose click does nothing. This
@@ -590,6 +854,22 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
+- **The Home banner's message states have no artwork.** When there is
+  no show to feature (the trending list came back empty, every show in
+  it was filtered out as unavailable, or the fetch failed), the banner
+  shows a short message and an Open Search button as plain text on a
+  dark band, at the banner's full height. It works, but it looks
+  unfinished next to a banner with art. A placeholder image or
+  illustration for those states would let them look finished. It
+  waits on a design study, held to the guard rails in `AGENTS.md` §7.
+  [`proposals/luma-custom-assets.md`](proposals/luma-custom-assets.md)
+  plans original illustrations for empty, loading and error states
+  elsewhere in the app (the "Illustrated brand assets" entry above is
+  that same work); the banner would be one more surface for it,
+  though the proposal does not list it. The proposal also rules out
+  generated art standing in for a licensed show's banner, so the
+  artwork here would be the app's own, not a substitute for a show.
+
 ## A second provider, and what it would allow
 
 - **Add a second provider when one is worth having.** One provider
@@ -598,7 +878,7 @@ starting it, and delete it when you find it done.
   label are all written for several, so a second is mostly a client
   behind the `Provider` trait; the recipe in
   `backend/src/provider_set.rs` lists every place it has to be named.
-  The survey in [`proposals/additional-providers.md`](./proposals/additional-providers.md)
+  The survey in [`architecture.md`](./architecture.md#adding-a-provider)
   is the starting list; it rots quickly, so re-verify every row.
 
   anidb.app, which shipped first, left in October 2026 after its
@@ -637,6 +917,23 @@ starting it, and delete it when you find it done.
   the canonical domain is filtered per ISP, and the origin is a
   constant with a test override only.
 
+- **Subtitles burned into the picture (hardsub).** Every stream the
+  app plays today carries its subtitles as separate files beside the
+  video, which the player switches on and off. A provider, or hianime
+  itself, could instead serve video with the subtitles drawn into the
+  picture. The app would not know, and would then offer its own
+  captions over them: two sets of text on screen, a captions menu
+  that cannot turn the burned-in ones off, and a remembered "Off"
+  that appears to be ignored. Handling it needs the stream to say so
+  (a provider label such as hardsub or softsub, or a server that only
+  serves one kind), the player to start with its own captions off and
+  say why, and the external-player hand-off to pass no subtitle file.
+  It waited because no stream seen so far has been burned in, so
+  there is nothing to detect yet. Subtitles carried as tracks inside
+  the stream's own playlist are a different case: they can be turned
+  off, but the player's engine and the app's own subtitle files can
+  switch each other off.
+
 ## Following a provider's legitimate domain move
 
 - **Let a provider's move to another domain reach the app without a
@@ -644,16 +941,40 @@ starting it, and delete it when you find it done.
   redirect off it is not followed, and an answer from elsewhere is a
   failure (`docs/architecture.md`, "Providers and failover"). That
   stops a redirect to an unrelated site from being read as the
-  provider's answer, as anidb.app's was; the price is that when
-  hianime moves its front by redirect — its canonical domain is
-  filtered per ISP, and the app already reads it at another front —
-  the app treats the move as an outage until a release changes the
-  client's base URL.
+  provider's answer, as anidb.app's was; the price is that a
+  provider's legitimate move by redirect looks like an outage until a
+  release changes the client's base URL. That happened when, by
+  2026-11-17, hianime.at was redirecting every request to hianime.fm:
+  nothing played in any release that reads hianime until pull request
+  #473 changed the base and 0.18.0 shipped, which every user then had
+  to install by hand.
 
-  Why it waits: telling a provider's own move from a hijack needs a
-  source of truth other than the redirect itself, such as a list of
-  fronts the app trusts or one it can update outside a release, and
-  none exists yet.
+  Why it waits: the maintainer chose (2026-11-18) to keep fixing a
+  move with a release, and to revisit it later. Whatever names the
+  address decides where every user's searches and plays go, and from
+  that host's answers which embed pages and video servers the app
+  contacts and what plays; moving it outside a release means trusting
+  a signing key with all of that, and that trade was declined for now.
+
+  What a revisit needs: the address signed, not merely fetched. A
+  flag's file can only choose among the values its declaration
+  allows, while an address can name any host, so a signature is the
+  only limit on where it sends every user. A signature alone is not
+  enough either: an old signed file still verifies, and one naming a
+  domain the site later abandoned and someone else registered is a
+  hijack. So the file also needs a sequence number that only rises,
+  with each release's own number as the floor so a fresh install
+  cannot be handed an older file; an expiry; and strict checks on the
+  value. It builds on the signed flags work, whose signature check it
+  would reuse, and on refusing a signed file older than the one
+  already held, which that check does not do by itself.
+
+  Less of it is new than it sounds: the client already takes its base
+  as a value (`HianimeClient::with_base`), the provider set carries a
+  per-provider override that every client the app builds reads, fixed
+  when the app starts (`ProviderSet::set_origin`, set only by tests
+  today), and nothing on disk — show keys, availability rows,
+  history — names the host, so a new address invalidates no cache.
 
 ## Decoding hianime's other embed hosts
 
@@ -706,31 +1027,40 @@ starting it, and delete it when you find it done.
 
 ## Reading hianime.ms and vidnest.fun as providers
 
-- **Read hianime.ms, and the vidnest.fun embed it lists**, so an
-  episode has somewhere left to play from when the hianime the app
-  reads runs out of working embed hosts. hianime.ms is a second
-  front under the hianime name and a different application from
-  hianime.at: its watch page takes its own shape
+- **Read hianime.ms, and the embeds it lists beside its megaplay
+  server**, so an episode has somewhere left to play from when the
+  hianime the app reads runs out of working embed hosts. hianime.ms
+  is a second front under the hianime name and a different
+  application from hianime.fm (formerly hianime.at): its watch page
+  takes its own shape
   (`https://hianime.ms/watch-<slug>-episode-1-f3808`) and is served
-  from its own templates, it exposes a `/api/player/check` endpoint
-  rather than hianime.at's `/api/theme/...` listing endpoints, and
-  its server list is drawn as buttons — "Ryu", which is its own
-  built-in backup player (`data-server="backup"`), and an embed on
-  vidnest.fun (`https://vidnest.fun/anime/<id>/...`).
+  from its own templates, and it exposes a `/api/player/check`
+  endpoint rather than hianime.fm's `/api/theme/...` listing
+  endpoints. Its first server is not a host of its own, though:
+  "Ryu" (`data-server="backup"`) redirects to megaplay.buzz's
+  `/stream/s-2/<id>/<mode>`, the host and address the app already
+  decodes from hianime.fm's listings, so the two sites are fronts over
+  the same library there. What hianime.ms adds is the servers beside
+  Ryu, embeds keyed by AniList id on hosts the app does not read: two
+  on vidnest.fun (`https://vidnest.fun/anime/<id>/...` and
+  `/animepahe/...`) and one on tryembed.us.cc.
 
   Why it matters: on 2026-09-17 both embed hosts hianime.at lists
   for an episode failed for the app at once — zokoanime's CDN origin
   timed out with a 522, and megaplay changed its sources answer to
   an encrypted field with a CDN selector on the embed URL — while
   the provider the app then asked first was under maintenance, and
-  hianime.ms kept playing the
-  same episodes through Ryu. A third catalogue front, or a third
-  embed host, is what a fallback of one site cannot give.
+  hianime.ms kept playing the same episodes through Ryu. Ryu
+  redirects to megaplay today; if it did then too, that was most
+  likely megaplay's own player reading the answer the client could
+  not yet read (it reads it now), not a host the app lacked. Whatever
+  hianime.ms offers against megaplay itself failing lies in its other
+  servers.
 
-  Why it waited: reading either site is its own reverse-engineering
-  — hianime.ms's player and catalogue API, vidnest's embed page —
-  each a maintenance cost of its own, like every host the client
-  reads.
+  Why it waited: reading it is its own reverse-engineering —
+  hianime.ms's player and catalogue API, the vidnest and tryembed
+  embed pages — each a maintenance cost of its own, like every host
+  the client reads.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
@@ -738,8 +1068,9 @@ starting it, and delete it when you find it done.
   installs**, and everything that exists to report it: the sweep
   module, the field it carries onto app-info, and the diagnostics
   notice that renders it. The maintainer has tied this removal to
-  v1.0 — it is the last piece of the app that exists because of what
-  the app used to be, and shipping without it is what 1.0 means here.
+  v1.0 — it is one of the last pieces of the app that exist because of
+  what the app used to be, and shipping without them is what 1.0 means
+  here.
 
   Why it waits: the sweep serves installs upgrading from before 0.12,
   which kept a maintained copy of the script in the cache. Removing
@@ -747,6 +1078,115 @@ starting it, and delete it when you find it done.
   version to a post-removal one — the file just stays, unreported.
   The judgment of when that cost is acceptable is the whole decision,
   which is why it is a version call and not a cleanup.
+
+## Retiring the legacy-history stamp repair — the v1.0 marker
+
+- **Remove the repair that puts a legacy history row's display stamp
+  back on its slot** (`backend/src/commands/numbering_offset_drift.rs`,
+  its rule module and its tests), together with the guard that leaves
+  alone a stamp that moved while the repair waited for the lock, and
+  the entry "A stamp repair can land inside an older instance's play"
+  under "Correctness in the app (continued)". The maintainer has tied
+  this removal to v1.0, with the legacy-script sweep.
+
+  Why it waits: the repair serves rows written before history rows
+  recorded the app's own number, carrying drift left by builds from
+  before that marker. A row is put right only when its show is next
+  resolved, probed or downloaded against a listing that agrees with
+  the numbering sidecar, so a show not touched since upgrading still
+  carries the drift. Removing the repair leaves such a row reading one
+  episode high where the show has a single recap, for good. The guard
+  and the window it narrows matter only while a build of 0.15.1 or
+  older can share a profile with this one. When that cost is
+  acceptable is the decision, which is why it is a version call and
+  not a cleanup.
+
+## Retiring the Continue-card title guess — the v1.0 marker
+
+- **Remove everything that exists only for history rows that record
+  no Kitsu id.** That is the title guess — the rules that rule hits
+  out (`backend/src/commands/continue_guess*.rs`) and the route the
+  renderer asks them through, `/api/history/guess/ruled-out`; the
+  regression corpus under `tests/fixtures/continue-guess/`; the stored
+  title matches and their version; and `/api/kitsu/resolve-allmanga/`,
+  whose one caller is the guess and whose mappings, stored without a
+  play, come back as the guess's first answer — and, once the
+  guessed-card linking work lands, the player's "Is this the show you
+  meant?" and its slip, the rows' `guessed_from` notes, the failure
+  overlay's "Pick the right show", and the "Which show is it?" picker
+  with "Not this show?", Home's "Not what you watched?" and the
+  marks on rows named through it. A row a normal play wrote
+  records the show it was played from, so the card cannot name the
+  wrong show and needs no correcting. The entry
+  "Some guessed Continue cards still open the wrong show" goes with
+  it. The maintainer has tied this removal to v1.0, with the two
+  above.
+
+  What stays: the rematch of a row whose recorded Kitsu entry Kitsu
+  has since deleted, still needed because Kitsu deletes and merges
+  entries. It is not separate code today. Home matches such a row
+  exactly as a row with no id (`resolveKitsuMatchWithTrust` in
+  `frontend/src/lib/history/match.ts`), and the detail page's resume
+  lookup finds it by the title match Home stored
+  (`backend/src/commands/history_claim.rs`). So the title matches,
+  and the mappings `/api/kitsu/resolve-allmanga/` stores, serve this
+  rematch as well, and it needs a route of its own before they go. The launch sweep of a retired
+  source's rows also reads a row's title matches to judge which show
+  it stands for.
+
+  Decided for v1.0: a row with no id still present stays on Continue
+  Watching with its title, the one the streaming site listed it
+  under, and its episode. A click on it opens the search page with
+  that title filled in; the site's title can differ from the
+  catalogue's ("My Star" for [Oshi no Ko]), so the viewer may have to
+  edit it. Nothing is deleted on the viewer's behalf. Rows are keyed
+  by the listing, so a play of the same listing writes the Kitsu id
+  onto the old row, while a play that lands on another listing (the
+  show now listed elsewhere, or a retired source's row) writes a new
+  row and leaves the old one; only a retired source's row can go on
+  its own, through the launch sweep, once the new row resumes over
+  it. So a small bridge goes with it: the search opened from such a
+  card remembers the row it came from, and the first play started
+  from that search replaces that row, leaving one line, on the right
+  show. What the app tracks today is the page behind a page, not the
+  row a search came from, so that part is new.
+
+  Decided for v2.0: the bridge goes too. A row with no id still
+  present then only opens the search with its title, and if the play
+  lands on another listing the viewer removes the old card by hand.
+
+  Why it waits: the guess is how such rows are shown today, and the
+  removal is a version call. The guess's own writer of rows with no
+  id — a guessed card's play that lands on a listing other than the
+  card's — goes with it. A play from a show's page records the show's
+  Kitsu id, except when the cour check refuses the pairing, or when
+  the id waits for the watch and the window closes first; both write
+  a row without one and go on doing so after v1.0, and such a row is
+  answered by the same search. The marks on named rows are what keep
+  a refused watch from clearing an id the viewer chose, so once they
+  go, a refused watch of such a show joins those rows too. A change of
+  streaming source creates no such rows of itself, since the id names
+  the show, not the listing, though a source that names its seasons
+  its own way can add cour refusals. Moving off Kitsu as the catalogue
+  would be its own migration, through the cross-catalogue id mappings
+  first, and is no reason to keep the guess.
+
+## Retiring the old-scratch sweep — the v1.0 marker
+
+- **Remove the sweep that clears the scratch files versions up to
+  0.18.0 left in a download folder**
+  (`backend/src/commands/download_old_scratch.rs`, its name parser and
+  their tests). Those versions wrote a transfer's unfinished files
+  beside the episode, and a quit that ended the backend outright —
+  every quit on Windows — left them there, in view on Windows. A
+  download now removes the ones more than a day old from each folder
+  it runs into. It is migration code: the maintainer has tied its removal
+  to around v1.0, once installs from before 0.18.1 are no longer
+  expected.
+
+  Why it waits: nothing else removes those files. Taking the sweep out
+  leaves them, often most of an episode each, in the folders of anyone
+  who upgrades straight from 0.18.0 or earlier.
 
 ## Recovering a download's abandoned claim automatically
 
@@ -777,8 +1217,9 @@ starting it, and delete it when you find it done.
 
 ## A scratch name that overflows where the target does not
 
-- **Publication's scratch file adds ~55 characters to the destination
-  path, so a folder deep enough can accept the episode's own name and
+- **Publication's scratch file adds about 60 characters to the
+  destination path — the hidden working folder and the scratch's own
+  name — so a folder deep enough can accept the episode's own name and
   reject the scratch's** — the transfer then fails on a target the
   user was allowed to choose.
 
@@ -791,59 +1232,39 @@ starting it, and delete it when you find it done.
   directory-handle-relative filesystem work (a `cap-std`-shaped
   dependency) on Linux and a separate answer for Windows path limits.
 
-## A content security policy for the renderer
+## The AppImage runs without Chromium's sandbox where the namespace sandbox cannot start
 
-- **The renderer runs under no content security policy, in the
-  packaged app as much as in development.** Nothing sets one.
-  Electron prints its insecure-policy warning on every development
-  launch for exactly this and suppresses the same warning once
-  packaged, so the warning going quiet is not the gap closing.
+- **The AppImage starts Electron with `--no-sandbox` wherever
+  Chromium's namespace sandbox cannot start for it** — Ubuntu 23.10
+  and later, by default. The unprivileged FUSE mount an AppImage runs
+  from does not honour setuid execution, so Chromium's setuid sandbox
+  helper cannot be used from inside it. The `.deb` sets the helper's
+  SUID bit in its postinst and keeps the sandbox. It is a packaging
+  question of its own, described in `docs/architecture.md`; the
+  renderer's content security policy is enforced either way, but
+  script that got past it in an AppImage that fell back would run
+  unsandboxed.
 
-  What the policy would guard against is script injected into the
-  renderer, and today's exposure is narrow: the window runs with
-  context isolation on and node integration off, the packaged app
-  loads its bundle over the app's private scheme (development loads
-  the Vite server instead, over plain HTTP by default — the URL is
-  an environment override — which is one more reason the two builds
-  will not share one policy), and no component
-  injects HTML — Svelte escapes every string it renders. A policy is
-  still the standard hardening for an Electron renderer, and one of
-  the items on Electron's security checklist the app does not meet.
-  Two others are known. Navigation: the window refuses new windows
-  through its open handler but installs no `will-navigate` guard, so
-  nothing stops the renderer's own document from navigating away
-  from the app's origin; that closes together with the policy, in a
-  few lines of the main process. And the sandbox: the AppImage is
-  repacked to start Electron with `--no-sandbox`, because the
-  unprivileged FUSE mount an AppImage runs from does not honour
-  setuid execution, so Chromium's setuid sandbox helper cannot be
-  used from inside it (the `.deb` sets the helper's SUID bit in its
-  postinst and keeps the sandbox), which is a packaging question of
-  its own and not part of this entry.
+## Which program the app runs is the page's choice
 
-  Two things a grep will not surface. The manual diagnostic route
-  hands a pasted public URL straight to the player, the one place
-  the renderer loads a stream from anywhere but the loopback
-  backend, so a policy limited to the loopback closes it — which is
-  the boundary rule catching up with the route, since every stream
-  is meant to pass through the proxy; the work sends it through the
-  proxy like every other stream, or retires it. And the HLS player
-  attaches media through blob URLs, which no origin-shaped rule
-  covers.
+- **The external player's and Syncplay's program paths are stored
+  from Settings unchecked, so the app's own page chooses what runs.**
+  The page writes them, with the rest of Settings, through
+  `PUT /api/settings` (`external_player`, `syncplay_binary`), and the
+  backend starts whatever path it was handed when the user next opens
+  an episode in the external player or watches together. No request
+  names a program any more, but a script running in the app's page,
+  which holds the launch's secret, can still pick the program by
+  rewriting Settings first. The Browse buttons open a
+  main-process file picker, but its answer comes back to the page and
+  is saved through the same `PUT`, like a typed path.
 
-  The loopback origins it would allow are the backend's lanes — six,
-  on ports the kernel assigns at every start and the handshake
-  announces — so the policy is one the main process writes for each
-  launch rather than a constant.
-
-  It waited for a play to verify against — one that goes through
-  the proxy and the event stream the page listens to. At the time
-  of writing the only provider's catalogue answered every request
-  with a maintenance page, so a fresh resolution could not be had on
-  the default branch; only an installation that had opted into
-  cached resolutions, with a row still live, could play through
-  that path, and the diagnostic route's pasted URL exercises neither
-  the proxy nor the event stream.
+  The direction chosen is that a path is set only through the
+  main-process file picker. It waited for a small Settings UI study:
+  dropping the free-text path changes how both fields look and
+  behave. What a picker cannot cover is the custom-arguments template
+  (`external_player_custom_args`): no dialog picks arguments, so it
+  needs an answer of its own.
 
 ## Metadata the app does not use yet
 
@@ -963,13 +1384,10 @@ the shape against the app as it is then.
   to allow for. WebM plays natively in the renderer, so no HLS
   machinery is involved, and the proxy already has a progressive
   pass-through route beside its HLS one — but that route is chosen
-  by a media kind the session infers from the URL's extension, and
-  the kinds it knows are `m3u8` and `mp4`; anything else, `webm`
-  included, falls to HLS and is handed to the manifest parser, so
-  a session for a theme is not only wiring but a media kind the
-  classifier learns or the caller sets outright (the manual
-  diagnostic route does not go through the proxy at all: it hands
-  its pasted URL straight to the player).
+  by the media kind whoever opens the session names, and the kinds
+  there are HLS and MP4; WebM is neither, so a session for a theme
+  is not only wiring but a kind its opener names for the
+  pass-through route to serve.
   The alternative — cutting openings
   out of episodes with the skip intervals the player already has —
   was looked at and set aside: the intervals are crowd-sourced and
@@ -1018,9 +1436,10 @@ the shape against the app as it is then.
   changes, which means the app would need a way to refresh yt-dlp.
   Playback: YouTube's embedded player in a frame is the sanctioned
   way, common, and plays every quality; its costs are a Google
-  origin inside the app (the renderer's content security policy,
-  deferred above, would allow that one frame source, and the
-  no-cookie embed domain limits tracking), ads in the frame, and
+  origin inside the app (the renderer's content security policy
+  refuses every frame today, so it would have to allow that one
+  frame source, and the no-cookie embed domain limits tracking),
+  ads in the frame, and
   videos whose owners refuse embedding. And one open question sits
   in front of it: the packaged app serves its page from a custom
   `app://` origin, Chromium sends no Referer from a non-HTTP one,
@@ -1060,6 +1479,12 @@ is a convenience on top of that. The notifier covers installs that keep
 notifier asks only for full releases, and since every release so far is
 a pre-release, it announces none.
 
+Updating from inside the app is studied in
+[`proposals/in-app-updater.md`](proposals/in-app-updater.md), which
+recommends the app replace its own AppImage without this mechanism;
+what this entry covers is for AppImageUpdate and other third-party
+tools.
+
 Three things are worth knowing before starting:
 
 - `electron/scripts/repack-appimage.mjs` builds the final AppImage
@@ -1070,13 +1495,65 @@ Three things are worth knowing before starting:
 - Every release is published as a pre-release, and the `latest` tag of
   the usual `gh-releases-zsync|JoaoPucci|ani-gui|latest|…` string goes
   through GitHub's latest-release lookup, which skips pre-releases.
-  Whatever string is embedded has to be confirmed to find a
-  pre-release.
+  The format also defines `latest-pre` and `latest-all`, and upstream
+  AppImageUpdate reads them from the releases list, but it takes the
+  newest release and fails when that one has no matching AppImage, so
+  a release without an AppImage would stall updates until the next
+  one that has one.
 - The `.zsync` file comes from `zsyncmake`, which the release build
   does not provision: nothing in the packaging scripts fetches it, the
   way the repack fetches the runtime. Requiring it to be installed on
   the machine that builds is a system change (`AGENTS.md` §11), so the
   alternative is for the build to fetch a copy into the repository too.
+
+## What the in-app updater leaves out
+
+[`proposals/in-app-updater.md`](proposals/in-app-updater.md) plans a
+first version that downloads updates in the app and installs them for
+the AppImage and the Windows installer. It leaves out, on purpose:
+
+- **A silent Windows install.** The first version starts the
+  installer with its own window, which explains itself, asks for UAC
+  when the install is per-machine, and reports its own failures. A
+  silent install trades all three away, so it waits until the window
+  has been used across a few releases.
+- **An apt repository for the `.deb`.** The way `.deb` users expect
+  updates, but a project of its own: a signing key, hosting that can
+  serve packages over 100 MiB (GitHub Pages cannot), and a one-time
+  root setup on the user's side. The app only offers to download the
+  `.deb` meanwhile.
+- **Authenticode signing of the Windows installer.** The updater's own
+  signature check does not need it; browser downloads would benefit.
+  The cheap services want either an individual developer in the
+  United States or Canada (Azure Artifact Signing) or binaries built
+  "from source code in a verifiable way" (SignPath Foundation), which
+  in practice means CI, so it waits for releases to take their files
+  from the Packages workflow (which builds them in CI and signs
+  nothing) or a change in those terms.
+
+## Studying a frontend written in Rust
+
+The maintainer wants a study of rewriting the frontend as a native
+Rust interface: drawn by a Rust toolkit, with no web engine, not the
+same web interface moved into another shell. Today the interface is
+SvelteKit in an Electron shell, and `AGENTS.md` §14 keeps rendering
+in the renderer's own stack, and says the Rust default never moves
+rendering into Rust, "whether behind a request to the backend or
+compiled to WebAssembly". That rule holds until the study is decided;
+revisiting it is the study's job.
+
+It waited because it rewrites the whole interface, far beyond any one
+change, and because a Rust interface is new to the stack, which is the
+maintainer's decision after an investigation.
+
+It is more than a change of language. With no web engine there is no
+Electron and no hls.js, so playback needs a native player embedded in
+the window on both platforms, likely the largest unknown. The
+Paraglide translations (§6), packaging on both platforms (§15) and the
+frontend layers of the test pyramid all change with it. A shell around
+the system webview is not the alternative it looks like: the app ran
+on Tauri until it moved to Electron, because the Linux webview could
+not keep up drawing the interface.
 
 ## Housekeeping
 
@@ -1088,4 +1565,49 @@ Three things are worth knowing before starting:
   backend's `tracing_subscriber::fmt()` writes to the default stream
   only. Either wire a file appender to the helper or remove it; a
   file sink would also give packaged desktop launches, which have no
-  terminal, somewhere to leave a trace.
+  terminal, somewhere to leave a trace, and it is what detaching a
+  terminal launch waits for (the next entry).
+- **Detaching a terminal launch instead of relaying its output.**
+  Started from a terminal, the Linux launcher keeps the app as its
+  child and relays its output to the terminal through pipes
+  (`electron/lib/linux-launcher.cjs`), so the app never holds the
+  terminal and a closed one cannot abort it as it exits. The
+  alternative is to detach the app from the terminal by default, as
+  VS Code's `code` command does, with an opt-in to stay attached (a
+  flag, or `ANI_GUI_DEV=1`). It waits for the log file in the entry
+  above: detached, a launch's output has nowhere to go until there is
+  one.
+- **Three pieces of the change-show flow's logic stay in the renderer
+  for now.** `AGENTS.md` §14 puts the app's decisions about its data in
+  the Rust backend, and the flow's rules moved there, but three pieces
+  that sit in its grey area did not: what a player session's plays go
+  out as and whether trackers hear of them after a pick
+  (`frontend/src/lib/play/session-show.ts`), the Sub or Dub a picked
+  show takes from the one watched in
+  (`frontend/src/lib/history/carry-audio.ts`), and the notes of this
+  run's guessed plays that bound what a revisited guessed URL may ask
+  (`frontend/src/lib/history/guess-plays.ts`). They are worth
+  reconsidering for the backend. The maintainer chose to wait because
+  each is tied to something the renderer owns by design — the tracker
+  sending, the per-show Sub or Dub storage, notes that last one run
+  of the app — so moving one means moving that too, a refactor larger
+  than the change that found them.
+- **Runs on the dev profile have no icon of their own.** `pnpm dev`
+  (in `electron/`) and a packaged build started with `ANI_GUI_DEV=1`
+  both run as `ani-gui-dev` (`APP_NAME` in `electron/main.js`), and
+  where a dev run shows an icon it is the installed app's, so the two
+  are not told apart at a glance. The wanted icon is the app's own
+  with its two colours swapped, cream for near-black and near-black
+  for cream. The maintainer chose to leave it.
+
+  GNOME on Wayland ignores the icon a window sets and takes the icon
+  of the desktop entry matching the window's app ID (`APP_NAME`), so
+  there the dev icon shows only if an `ani-gui-dev` desktop entry
+  exists (without one a dev run there shows GNOME's generic icon).
+  Making one, for instance a hidden (`NoDisplay=true`) entry written
+  by `pnpm dev`, writes outside the repository, under
+  `~/.local/share/applications/` (`AGENTS.md` §11). Recent KDE Plasma
+  on Wayland, and X11, use the icon the window sets. A packaged build
+  sets a window icon only from a file electron-builder's `build.files`
+  allowlist packages, so a dev icon for packaged test builds has to be
+  added there too.

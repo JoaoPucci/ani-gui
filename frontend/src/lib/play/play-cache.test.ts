@@ -9,12 +9,13 @@ import {
 	makeKey
 } from './play-cache';
 
+import { sessionAnswer } from '$lib/testing/wire-answers';
 function fakeResp(seed: string): CreateSessionResponse {
-	return {
+	return sessionAnswer({
 		session_id: seed,
 		media_url: `http://x/s/${seed}/master.m3u8`,
 		media_kind: 'hls'
-	};
+	});
 }
 
 /** A `fire` that doesn't emit progress — equivalent to the legacy
@@ -31,26 +32,60 @@ afterEach(() => {
 
 describe('makeKey', () => {
 	it('is stable for the same inputs', () => {
-		expect(makeKey('show-1', 1, 'sub', 'best')).toBe(makeKey('show-1', 1, 'sub', 'best'));
+		expect(makeKey('show-1', 1, 'sub')).toBe(makeKey('show-1', 1, 'sub'));
 	});
 
 	it('differs across each axis', () => {
-		const base = makeKey('show-1', 1, 'sub', 'best');
-		expect(makeKey('show-2', 1, 'sub', 'best')).not.toBe(base);
-		expect(makeKey('show-1', 2, 'sub', 'best')).not.toBe(base);
-		expect(makeKey('show-1', 1, 'dub', 'best')).not.toBe(base);
-		expect(makeKey('show-1', 1, 'sub', '1080')).not.toBe(base);
+		const base = makeKey('show-1', 1, 'sub');
+		expect(makeKey('show-2', 1, 'sub')).not.toBe(base);
+		expect(makeKey('show-1', 2, 'sub')).not.toBe(base);
+		expect(makeKey('show-1', 1, 'dub')).not.toBe(base);
+	});
+
+	it("keeps a session no card asked for from serving a card's play", () => {
+		// A card's play is answered for its line (`line_kept`): a session
+		// another caller fired never answered that.
+		const card = makeKey('show-1', 1, 'sub', undefined, undefined, undefined, 'hianime:x-1');
+		expect(makeKey('show-1', 1, 'sub')).not.toBe(card);
+		expect(makeKey('show-1', 1, 'sub', undefined, undefined, undefined, 'hianime:x-2')).not.toBe(
+			card
+		);
 	});
 
 	it('keeps a session warmed for one version from serving another', () => {
 		// A show the provider lists twice plays a different listing per
 		// version: a warm for the uncensored copy must never answer a
 		// click for the standard one, nor one naming no version.
-		const named = makeKey('show-1', 1, 'sub', 'best', 'uncensored');
-		expect(makeKey('show-1', 1, 'sub', 'best', 'standard')).not.toBe(named);
-		expect(makeKey('show-1', 1, 'sub', 'best')).not.toBe(named);
-		expect(makeKey('show-1', 1, 'sub', 'best', 'standard')).toBe(
-			makeKey('show-1', 1, 'sub', 'best', 'standard')
+		const named = makeKey('show-1', 1, 'sub', 'uncensored');
+		expect(makeKey('show-1', 1, 'sub', 'standard')).not.toBe(named);
+		expect(makeKey('show-1', 1, 'sub')).not.toBe(named);
+		expect(makeKey('show-1', 1, 'sub', 'standard')).toBe(makeKey('show-1', 1, 'sub', 'standard'));
+	});
+
+	it("keeps a guessed card's session apart from every other caller's", () => {
+		// A guessed card's play asks whether it landed on that card's own
+		// listing; a session another caller fired never answered that, and
+		// another card's session answered it for that card.
+		const plain = makeKey('show-1', 1, 'sub');
+		const guessed = makeKey('show-1', 1, 'sub', undefined, 'hianime:show-1');
+		expect(guessed).not.toBe(plain);
+		expect(makeKey('show-1', 1, 'sub', undefined, 'hianime:other-2')).not.toBe(guessed);
+		expect(makeKey('show-1', 1, 'sub', undefined, 'hianime:show-1')).toBe(guessed);
+		expect(makeKey('show-1', 1, 'sub', 'standard', 'hianime:show-1')).not.toBe(guessed);
+	});
+
+	it('keeps a session warmed for one captions choice from serving another', () => {
+		// The backend keeps the tracks a listing past its cap has room
+		// for by the choice: a session cut for one need not carry the
+		// language another names.
+		const plain = makeKey('show-1', 1, 'sub');
+		const vi = makeKey('show-1', 1, 'sub', undefined, undefined, 'vi');
+		expect(vi).not.toBe(plain);
+		expect(makeKey('show-1', 1, 'sub', undefined, undefined, 'es-419')).not.toBe(vi);
+		expect(makeKey('show-1', 1, 'sub', undefined, undefined, 'off')).not.toBe(vi);
+		expect(makeKey('show-1', 1, 'sub', undefined, undefined, 'vi')).toBe(vi);
+		expect(makeKey('show-1', 1, 'sub', 'standard', 'hianime:show-1', 'vi')).not.toBe(
+			makeKey('show-1', 1, 'sub', 'standard', 'hianime:show-1', 'es-419')
 		);
 	});
 
@@ -60,8 +95,8 @@ describe('makeKey', () => {
 			signals.push(signal);
 			return new Promise<CreateSessionResponse>(() => {});
 		};
-		void getOrFire(makeKey('show-1', 1, 'sub', 'best', 'standard'), hold).catch(() => {});
-		void getOrFire(makeKey('show-1', 1, 'sub', 'best', 'uncensored'), hold).catch(() => {});
+		void getOrFire(makeKey('show-1', 1, 'sub', 'standard'), hold).catch(() => {});
+		void getOrFire(makeKey('show-1', 1, 'sub', 'uncensored'), hold).catch(() => {});
 		await Promise.resolve();
 		await Promise.resolve();
 		clearForShow('show-1');
@@ -73,7 +108,7 @@ describe('makeKey', () => {
 describe('getOrFire', () => {
 	it('returns the same in-flight promise for repeated calls', async () => {
 		const fire = vi.fn(plainFire(fakeResp('a')));
-		const k = makeKey('show-1', 1, 'sub', 'best');
+		const k = makeKey('show-1', 1, 'sub');
 
 		const p1 = getOrFire(k, fire);
 		const p2 = getOrFire(k, fire);
@@ -85,7 +120,7 @@ describe('getOrFire', () => {
 
 	it('caches a successful resolution so a later call returns instantly', async () => {
 		const fire = vi.fn(plainFire(fakeResp('a')));
-		const k = makeKey('show-1', 1, 'sub', 'best');
+		const k = makeKey('show-1', 1, 'sub');
 
 		const first = await getOrFire(k, fire);
 		const second = await getOrFire(k, fire);
@@ -104,12 +139,12 @@ describe('getOrFire', () => {
 		const never = () => new Promise<CreateSessionResponse>(() => {});
 		// Saturate the concurrency cap so the prefetch entry queues
 		// without starting.
-		void getOrFire(makeKey('sat1', 1, 'sub', 'best'), never);
-		void getOrFire(makeKey('sat2', 1, 'sub', 'best'), never);
-		const key = makeKey('show', 3, 'sub', 'best');
+		void getOrFire(makeKey('sat1', 1, 'sub'), never);
+		void getOrFire(makeKey('sat2', 1, 'sub'), never);
+		const key = makeKey('show', 3, 'sub');
 		const prefetchFire = vi.fn(never);
 		void getOrFire(key, prefetchFire);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const resolved = await getOrFire(key, foregroundFire, () => {});
 		expect(resolved.session_id).toBe('fg');
 		expect(foregroundFire).toHaveBeenCalledTimes(1);
@@ -122,7 +157,7 @@ describe('getOrFire', () => {
 		// as Background, a breaker refusal fails that promise — the
 		// click must transparently refire once with its own foreground
 		// closure instead of surfacing Network for a user action.
-		const key = makeKey('show', 4, 'sub', 'best');
+		const key = makeKey('show', 4, 'sub');
 		let rejectPrefetch: (e: Error) => void = () => {};
 		const prefetchFire = vi.fn(
 			() =>
@@ -132,7 +167,7 @@ describe('getOrFire', () => {
 		);
 		void getOrFire(key, prefetchFire).catch(() => {});
 		expect(prefetchFire).toHaveBeenCalledTimes(1);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const clicked = getOrFire(key, foregroundFire, () => {});
 		rejectPrefetch(new Error('gate refused'));
 		await expect(clicked).resolves.toMatchObject({ session_id: 'fg' });
@@ -146,7 +181,7 @@ describe('getOrFire', () => {
 		// — it aborts the shared background request (keeping it running
 		// would double the provider traffic for the same episode) and fires
 		// fresh with its own Interactive closure right away.
-		const key = makeKey('show', 5, 'sub', 'best');
+		const key = makeKey('show', 5, 'sub');
 		let bgAborted = false;
 		const prefetchFire = vi.fn(
 			(_emit: (p: PlayProgress) => void, signal: AbortSignal) =>
@@ -158,7 +193,7 @@ describe('getOrFire', () => {
 		);
 		void getOrFire(key, prefetchFire).catch(() => {});
 		expect(prefetchFire).toHaveBeenCalledTimes(1);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const clicked = getOrFire(key, foregroundFire, () => {});
 		expect(foregroundFire).toHaveBeenCalledTimes(1);
 		expect(bgAborted).toBe(true);
@@ -169,10 +204,10 @@ describe('getOrFire', () => {
 		// Once the prefetch has fulfilled there is nothing to wait
 		// behind — the cached session IS the payoff of warming. A click
 		// must get it instantly, not burn a fresh resolve.
-		const key = makeKey('show', 6, 'sub', 'best');
+		const key = makeKey('show', 6, 'sub');
 		const prefetchFire = vi.fn(plainFire(fakeResp('warmed')));
 		await getOrFire(key, prefetchFire);
-		const foregroundFire = vi.fn(async () => ({ session_id: 'fg' }) as CreateSessionResponse);
+		const foregroundFire = vi.fn(async () => fakeResp('fg'));
 		const clicked = await getOrFire(key, foregroundFire, () => {});
 		expect(clicked.session_id).toBe('warmed');
 		expect(foregroundFire).not.toHaveBeenCalled();
@@ -183,7 +218,7 @@ describe('getOrFire', () => {
 		// refire is a normal cache entry, so unmount aborts it like any
 		// other — the request must not outlive the page, and nothing
 		// resurrects it afterwards.
-		const key = makeKey('gone', 1, 'sub', 'best');
+		const key = makeKey('gone', 1, 'sub');
 		const prefetchFire = vi.fn(
 			(_emit: (p: PlayProgress) => void, signal: AbortSignal) =>
 				new Promise<CreateSessionResponse>((_, reject) => {
@@ -208,7 +243,7 @@ describe('getOrFire', () => {
 			.fn<(emit: (p: PlayProgress) => void) => Promise<CreateSessionResponse>>()
 			.mockRejectedValueOnce(new Error('boom'))
 			.mockResolvedValueOnce(fakeResp('ok'));
-		const k = makeKey('show-1', 1, 'sub', 'best');
+		const k = makeKey('show-1', 1, 'sub');
 
 		await expect(getOrFire(k, fire)).rejects.toThrow('boom');
 		const recovered = await getOrFire(k, fire);
@@ -221,8 +256,8 @@ describe('getOrFire', () => {
 		const fireA = vi.fn(plainFire(fakeResp('a')));
 		const fireB = vi.fn(plainFire(fakeResp('b')));
 
-		const a = await getOrFire(makeKey('show-1', 1, 'sub', 'best'), fireA);
-		const b = await getOrFire(makeKey('show-1', 2, 'sub', 'best'), fireB);
+		const a = await getOrFire(makeKey('show-1', 1, 'sub'), fireA);
+		const b = await getOrFire(makeKey('show-1', 2, 'sub'), fireB);
 
 		expect(a.session_id).toBe('a');
 		expect(b.session_id).toBe('b');
@@ -231,7 +266,7 @@ describe('getOrFire', () => {
 	});
 
 	it('broadcasts progress events to subscribers in arrival order', async () => {
-		const k = makeKey('show-1', 1, 'sub', 'best');
+		const k = makeKey('show-1', 1, 'sub');
 		let emitFn: ((p: PlayProgress) => void) | null = null;
 		const fire = vi.fn(
 			(emit: (p: PlayProgress) => void) =>
@@ -264,7 +299,7 @@ describe('getOrFire', () => {
 	});
 
 	it('replays the most recent event to a late subscriber', async () => {
-		const k = makeKey('show-1', 1, 'sub', 'best');
+		const k = makeKey('show-1', 1, 'sub');
 		let emitFn: ((p: PlayProgress) => void) | null = null;
 		const fire = vi.fn(
 			(emit: (p: PlayProgress) => void) =>
@@ -315,10 +350,10 @@ describe('PREFETCH_CONCURRENCY semaphore', () => {
 				});
 			});
 
-		const p1 = getOrFire(makeKey('s', 1, 'sub', 'best'), fire('a'));
-		const p2 = getOrFire(makeKey('s', 2, 'sub', 'best'), fire('b'));
-		const p3 = getOrFire(makeKey('s', 3, 'sub', 'best'), fire('c'));
-		const p4 = getOrFire(makeKey('s', 4, 'sub', 'best'), fire('d'));
+		const p1 = getOrFire(makeKey('s', 1, 'sub'), fire('a'));
+		const p2 = getOrFire(makeKey('s', 2, 'sub'), fire('b'));
+		const p3 = getOrFire(makeKey('s', 3, 'sub'), fire('c'));
+		const p4 = getOrFire(makeKey('s', 4, 'sub'), fire('d'));
 
 		// Yield enough microtasks for the first two to enter their fire()
 		// bodies; the last two should still be waiting on the queue.
@@ -362,21 +397,21 @@ describe('priority subscriber promotion', () => {
 			});
 
 		// Two prefetches saturate the cap.
-		void getOrFire(makeKey('s', 1, 'sub', 'best'), fire('a'));
-		void getOrFire(makeKey('s', 2, 'sub', 'best'), fire('b'));
+		void getOrFire(makeKey('s', 1, 'sub'), fire('a'));
+		void getOrFire(makeKey('s', 2, 'sub'), fire('b'));
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(releasers).toHaveLength(2);
 
 		// Third prefetch — queues, doesn't run.
-		void getOrFire(makeKey('s', 3, 'sub', 'best'), fire('c'));
+		void getOrFire(makeKey('s', 3, 'sub'), fire('c'));
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(releasers).toHaveLength(2);
 
 		// User clicks ep 3 → attach an onProgress subscriber. The cache
 		// should detect this is a click and start the queued fire now.
-		void getOrFire(makeKey('s', 3, 'sub', 'best'), fire('c'), () => {});
+		void getOrFire(makeKey('s', 3, 'sub'), fire('c'), () => {});
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(releasers).toHaveLength(3); // ep 3 is running
@@ -388,7 +423,7 @@ describe('priority subscriber promotion', () => {
 	it('is a no-op when the entry has already started running', async () => {
 		// A click on an actively-running entry should not double-fire.
 		const fire = vi.fn(plainFire(fakeResp('a')));
-		const k = makeKey('show', 1, 'sub', 'best');
+		const k = makeKey('show', 1, 'sub');
 		const promise = getOrFire(k, fire);
 		await promise; // entry now resolved
 		void getOrFire(k, fire, () => {}); // subscribe later
@@ -413,7 +448,7 @@ describe('clearForShow — abort in-flight', () => {
 			});
 		};
 
-		const k = makeKey('show-x', 1, 'sub', 'best');
+		const k = makeKey('show-x', 1, 'sub');
 		const promise = getOrFire(k, fire);
 		await Promise.resolve();
 		expect(receivedSignal).not.toBeNull();
@@ -441,9 +476,9 @@ describe('clearForShow — abort queued', () => {
 					signal.addEventListener('abort', () => reject(new Error('aborted')));
 				});
 			};
-		const p1 = getOrFire(makeKey('gone', 1, 'sub', 'best'), fire('a'));
-		const p2 = getOrFire(makeKey('gone', 2, 'sub', 'best'), fire('b'));
-		const p3 = getOrFire(makeKey('gone', 3, 'sub', 'best'), fire('c'));
+		const p1 = getOrFire(makeKey('gone', 1, 'sub'), fire('a'));
+		const p2 = getOrFire(makeKey('gone', 2, 'sub'), fire('b'));
+		const p3 = getOrFire(makeKey('gone', 3, 'sub'), fire('c'));
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(started).toEqual(['a', 'b']);
@@ -471,10 +506,10 @@ describe('clearForShow — abort queued', () => {
 					signal.addEventListener('abort', () => reject(new Error('aborted')));
 				});
 			};
-		const a = getOrFire(makeKey('kept', 1, 'sub', 'best'), fire('a'));
-		const b = getOrFire(makeKey('kept', 2, 'sub', 'best'), fire('b'));
-		const gone = getOrFire(makeKey('gone', 1, 'sub', 'best'), fire('gone'));
-		const c = getOrFire(makeKey('kept', 3, 'sub', 'best'), fire('c'));
+		const a = getOrFire(makeKey('kept', 1, 'sub'), fire('a'));
+		const b = getOrFire(makeKey('kept', 2, 'sub'), fire('b'));
+		const gone = getOrFire(makeKey('gone', 1, 'sub'), fire('gone'));
+		const c = getOrFire(makeKey('kept', 3, 'sub'), fire('c'));
 		await Promise.resolve();
 		await Promise.resolve();
 		clearForShow('gone');
@@ -508,9 +543,9 @@ describe('clearBackgroundForShow', () => {
 		const running = heldFire();
 		const alsoRunning = heldFire();
 		const queued = heldFire();
-		const a = getOrFire(makeKey('show-1', 1, 'sub', 'best'), running.fire);
-		const b = getOrFire(makeKey('show-1', 2, 'sub', 'best'), alsoRunning.fire);
-		const c = getOrFire(makeKey('show-1', 3, 'sub', 'best'), queued.fire);
+		const a = getOrFire(makeKey('show-1', 1, 'sub'), running.fire);
+		const b = getOrFire(makeKey('show-1', 2, 'sub'), alsoRunning.fire);
+		const c = getOrFire(makeKey('show-1', 3, 'sub'), queued.fire);
 		for (const p of [a, b, c]) p.catch(() => {});
 		await Promise.resolve();
 		clearBackgroundForShow('show-1');
@@ -520,7 +555,7 @@ describe('clearBackgroundForShow', () => {
 		// The queued one never ran.
 		expect(queued.seen.signal).toBeUndefined();
 		const again = vi.fn(() => Promise.resolve(fakeResp('fresh')));
-		await getOrFire(makeKey('show-1', 1, 'sub', 'best'), again);
+		await getOrFire(makeKey('show-1', 1, 'sub'), again);
 		expect(again).toHaveBeenCalledTimes(1);
 	});
 
@@ -528,16 +563,16 @@ describe('clearBackgroundForShow', () => {
 		const click = heldFire();
 		const other = heldFire();
 		const answered = vi.fn(() => Promise.resolve(fakeResp('done')));
-		await getOrFire(makeKey('show-1', 5, 'sub', 'best'), answered);
-		const p = getOrFire(makeKey('show-1', 1, 'sub', 'best'), click.fire, () => {});
-		const q = getOrFire(makeKey('show-2', 1, 'sub', 'best'), other.fire);
+		await getOrFire(makeKey('show-1', 5, 'sub'), answered);
+		const p = getOrFire(makeKey('show-1', 1, 'sub'), click.fire, () => {});
+		const q = getOrFire(makeKey('show-2', 1, 'sub'), other.fire);
 		for (const x of [p, q]) x.catch(() => {});
 		await Promise.resolve();
 		clearBackgroundForShow('show-1');
 		expect(click.seen.signal?.aborted).toBe(false);
 		expect(other.seen.signal?.aborted).toBe(false);
 		const reuse = vi.fn(() => Promise.resolve(fakeResp('again')));
-		expect(await getOrFire(makeKey('show-1', 5, 'sub', 'best'), reuse)).toEqual(fakeResp('done'));
+		expect(await getOrFire(makeKey('show-1', 5, 'sub'), reuse)).toEqual(fakeResp('done'));
 		expect(reuse).not.toHaveBeenCalled();
 	});
 });
@@ -563,9 +598,9 @@ describe('clearBackgroundForOtherVersions', () => {
 		const unversioned = heldFire();
 		const uncensored = heldFire();
 		const queued = heldFire();
-		const a = getOrFire(makeKey('show-1', 1, 'sub', 'best'), unversioned.fire);
-		const b = getOrFire(makeKey('show-1', 2, 'sub', 'best', 'uncensored'), uncensored.fire);
-		const c = getOrFire(makeKey('show-1', 3, 'sub', 'best'), queued.fire);
+		const a = getOrFire(makeKey('show-1', 1, 'sub'), unversioned.fire);
+		const b = getOrFire(makeKey('show-1', 2, 'sub', 'uncensored'), uncensored.fire);
+		const c = getOrFire(makeKey('show-1', 3, 'sub'), queued.fire);
 		for (const p of [a, b, c]) p.catch(() => {});
 		await Promise.resolve();
 		clearBackgroundForOtherVersions('show-1', 'standard');
@@ -574,7 +609,7 @@ describe('clearBackgroundForOtherVersions', () => {
 		await new Promise((r) => setTimeout(r, 0));
 		expect(queued.seen.signal).toBeUndefined();
 		const again = vi.fn(() => Promise.resolve(fakeResp('fresh')));
-		await getOrFire(makeKey('show-1', 1, 'sub', 'best'), again);
+		await getOrFire(makeKey('show-1', 1, 'sub'), again);
 		expect(again).toHaveBeenCalledTimes(1);
 	});
 
@@ -583,9 +618,9 @@ describe('clearBackgroundForOtherVersions', () => {
 		const click = heldFire();
 		const other = heldFire();
 		// The two warms take both prefetch slots; the click cuts past.
-		const r = getOrFire(makeKey('show-2', 1, 'sub', 'best'), other.fire);
-		const p = getOrFire(makeKey('show-1', 1, 'sub', 'best', 'standard'), chosen.fire);
-		const q = getOrFire(makeKey('show-1', 2, 'sub', 'best'), click.fire, () => {});
+		const r = getOrFire(makeKey('show-2', 1, 'sub'), other.fire);
+		const p = getOrFire(makeKey('show-1', 1, 'sub', 'standard'), chosen.fire);
+		const q = getOrFire(makeKey('show-1', 2, 'sub'), click.fire, () => {});
 		for (const x of [p, q, r]) x.catch(() => {});
 		await Promise.resolve();
 		clearBackgroundForOtherVersions('show-1', 'standard');
@@ -597,10 +632,51 @@ describe('clearBackgroundForOtherVersions', () => {
 	it('reads no version as the choice of the default copy', async () => {
 		const unversioned = heldFire();
 		const standard = heldFire();
-		const a = getOrFire(makeKey('show-1', 1, 'sub', 'best'), unversioned.fire);
-		const b = getOrFire(makeKey('show-1', 2, 'sub', 'best', 'standard'), standard.fire);
+		const a = getOrFire(makeKey('show-1', 1, 'sub'), unversioned.fire);
+		const b = getOrFire(makeKey('show-1', 2, 'sub', 'standard'), standard.fire);
 		for (const p of [a, b]) p.catch(() => {});
 		await Promise.resolve();
+		clearBackgroundForOtherVersions('show-1', undefined);
+		expect(unversioned.seen.signal?.aborted).toBe(false);
+		expect(standard.seen.signal?.aborted).toBe(true);
+	});
+
+	it('sweeps warms named for a captions choice by their version too', async () => {
+		// The choice goes before the version, which stays the key's last
+		// axis.
+		const standard = heldFire();
+		const uncensored = heldFire();
+		const a = getOrFire(makeKey('show-1', 1, 'sub', 'standard', undefined, 'vi'), standard.fire);
+		const b = getOrFire(
+			makeKey('show-1', 2, 'sub', 'uncensored', undefined, 'vi'),
+			uncensored.fire
+		);
+		for (const p of [a, b]) p.catch(() => {});
+		await Promise.resolve();
+		clearBackgroundForOtherVersions('show-1', 'standard');
+		expect(standard.seen.signal?.aborted).toBe(false);
+		expect(uncensored.seen.signal?.aborted).toBe(true);
+	});
+
+	it("sweeps a guessed card's warms by their version too", async () => {
+		// A guessed card's keys carry its row before the version, which
+		// stays the key's last axis.
+		const row = 'hianime:show-1|odd';
+		const standard = heldFire();
+		const uncensored = heldFire();
+		const unversioned = heldFire();
+		const a = getOrFire(makeKey('show-1', 1, 'sub', 'standard', row), standard.fire);
+		const b = getOrFire(makeKey('show-1', 2, 'sub', 'uncensored', row), uncensored.fire);
+		for (const p of [a, b]) p.catch(() => {});
+		await Promise.resolve();
+		clearBackgroundForOtherVersions('show-1', 'standard');
+		expect(standard.seen.signal?.aborted).toBe(false);
+		expect(uncensored.seen.signal?.aborted).toBe(true);
+		const c = getOrFire(makeKey('show-1', 3, 'sub', undefined, row), unversioned.fire);
+		c.catch(() => {});
+		// The swept warm's prefetch slot passes to this one.
+		await new Promise((r) => setTimeout(r, 0));
+		expect(unversioned.seen.signal?.aborted).toBe(false);
 		clearBackgroundForOtherVersions('show-1', undefined);
 		expect(unversioned.seen.signal?.aborted).toBe(false);
 		expect(standard.seen.signal?.aborted).toBe(true);
@@ -610,14 +686,14 @@ describe('clearBackgroundForOtherVersions', () => {
 describe('clearForShow', () => {
 	it('drops every entry whose key starts with the given show id', async () => {
 		const fire = vi.fn(plainFire(fakeResp('x')));
-		await getOrFire(makeKey('show-1', 1, 'sub', 'best'), fire);
-		await getOrFire(makeKey('show-1', 2, 'sub', 'best'), fire);
-		await getOrFire(makeKey('show-2', 1, 'sub', 'best'), fire);
+		await getOrFire(makeKey('show-1', 1, 'sub'), fire);
+		await getOrFire(makeKey('show-1', 2, 'sub'), fire);
+		await getOrFire(makeKey('show-2', 1, 'sub'), fire);
 
 		clearForShow('show-1');
 
-		await getOrFire(makeKey('show-1', 1, 'sub', 'best'), fire);
-		await getOrFire(makeKey('show-2', 1, 'sub', 'best'), fire);
+		await getOrFire(makeKey('show-1', 1, 'sub'), fire);
+		await getOrFire(makeKey('show-2', 1, 'sub'), fire);
 
 		expect(fire).toHaveBeenCalledTimes(4);
 	});

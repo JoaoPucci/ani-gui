@@ -4,12 +4,14 @@
 use super::*;
 
 /// Boot the real `build` path against a staged environment: a
-/// tempdir plays HOME + every XDG root, and the resource dir
-/// carries the `bin/` the packages stage. Unix-only, because the
-/// coverage gate this protects runs on Linux.
-#[cfg(unix)]
+/// tempdir is the profile root (`config::paths::TEST_PROFILE_ROOT_ENV`),
+/// and the resource dir carries the `bin/` the packages stage. The
+/// root holds on every platform, Windows' known-folder lookup
+/// included, so the boot — which creates the cache, migrates it and
+/// runs the sweeps — never reaches the machine's own profile.
 #[tokio::test]
 async fn build_assembles_state_from_a_staged_environment() {
+    use crate::config::paths::TEST_PROFILE_ROOT_ENV;
     let _guard = crate::config::paths::TEST_ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -17,21 +19,8 @@ async fn build_assembles_state_from_a_staged_environment() {
     let resource = td.path().join("resources");
     std::fs::create_dir_all(resource.join("bin")).expect("mkdir resources/bin");
 
-    let saved: Vec<(String, Option<String>)> = [
-        "HOME",
-        "XDG_CACHE_HOME",
-        "XDG_CONFIG_HOME",
-        "XDG_STATE_HOME",
-        "XDG_DATA_HOME",
-    ]
-    .into_iter()
-    .map(|k| (k.to_string(), std::env::var(k).ok()))
-    .collect();
-    std::env::set_var("HOME", td.path());
-    std::env::set_var("XDG_CACHE_HOME", td.path().join("cache"));
-    std::env::set_var("XDG_CONFIG_HOME", td.path().join("config"));
-    std::env::set_var("XDG_STATE_HOME", td.path().join("state"));
-    std::env::set_var("XDG_DATA_HOME", td.path().join("data"));
+    let saved = std::env::var_os(TEST_PROFILE_ROOT_ENV);
+    std::env::set_var(TEST_PROFILE_ROOT_ENV, td.path());
 
     let built = AppState::build(
         reqwest::Client::new(),
@@ -39,13 +28,11 @@ async fn build_assembles_state_from_a_staged_environment() {
         Some(resource),
     );
 
-    // Restore before asserting so a failure can't leak the fake
-    // env into whichever env-locked test runs next.
-    for (k, v) in saved {
-        match v {
-            Some(v) => std::env::set_var(&k, v),
-            None => std::env::remove_var(&k),
-        }
+    // Restore before asserting so a failure can't leak the root into
+    // whichever env-locked test runs next.
+    match saved {
+        Some(v) => std::env::set_var(TEST_PROFILE_ROOT_ENV, v),
+        None => std::env::remove_var(TEST_PROFILE_ROOT_ENV),
     }
 
     let state = built.expect("build succeeds against the staged env");
@@ -56,6 +43,12 @@ async fn build_assembles_state_from_a_staged_environment() {
     assert!(state.state_dir.starts_with(&root));
     assert!(state.image_cache_dir.is_dir(), "image cache dir created");
     assert!(state.bundled_bin.is_some(), "resource bin dir picked up");
+    // The flags store waits for the launch refresh the binary
+    // spawns rather than claiming to have settled.
+    assert!(
+        !state.flags.is_settled(),
+        "flags wait for the launch refresh"
+    );
 
     // Boot sweeps the script copy an earlier version would have
     // left in the cache root. This staged env never had one, so
@@ -66,8 +59,9 @@ async fn build_assembles_state_from_a_staged_environment() {
     );
 }
 
-fn fake_state() -> AppState {
-    AppState {
+fn fake_state() -> crate::scratch::Scratch<AppState> {
+    let dirs = crate::scratch::dir();
+    let state = AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -76,18 +70,20 @@ fn fake_state() -> AppState {
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
-        history_path: PathBuf::from("/tmp/ani-gui/history"),
+        history_path: dirs.history(),
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: MalRefreshState::new(),
         account_write_locks: AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
-    }
+        flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+    };
+    dirs.hold(state)
 }
 
 #[test]
@@ -95,10 +91,13 @@ fn proxy_state_view_shares_session_table_with_app_state() {
     let app = fake_state();
     let proxy = app.proxy_state();
     // Inserting via one view is visible from the other (same Arc<DashMap>).
-    let id = proxy.sessions.insert(crate::proxy::StreamSession::new(
-        url::Url::parse("https://example.com/m.m3u8").unwrap(),
-        "https://allmanga.to",
-    ));
+    let id = proxy
+        .sessions
+        .insert(crate::proxy::StreamSession::new_with_kind(
+            url::Url::parse("https://example.com/m.m3u8").unwrap(),
+            crate::proxy::MediaKind::Hls,
+            "https://allmanga.to",
+        ));
     assert!(app.sessions.get(&id).is_some());
 }
 
@@ -148,8 +147,13 @@ fn the_windows_build_carries_its_own_c_runtime() {
     // MSVC only, matching the cargo config it verifies: a GNU
     // toolchain links against msvcrt.dll, which Windows ships,
     // and keeps its default linkage.
+    //
+    // The linkage is fixed when the test binary is built; it is read
+    // through black_box so the check stays a test that fails at run
+    // time rather than a constant a lint rejects.
+    let crt_static = std::hint::black_box(cfg!(target_feature = "crt-static"));
     assert!(
-        cfg!(target_feature = "crt-static"),
+        crt_static,
         "the CRT is linked dynamically; a clean Windows has no vcruntime140.dll"
     );
 }

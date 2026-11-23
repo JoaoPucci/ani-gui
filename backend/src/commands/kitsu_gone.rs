@@ -35,7 +35,7 @@ pub(crate) use served::{publish_served, served_from_cache, served_now_then};
 const GONE_TTL_SECS: u64 = 365 * 24 * 60 * 60;
 
 /// The key every mark starts with.
-pub(crate) const GONE_PREFIX: &str = "kitsu:dead:";
+pub(crate) const GONE_PREFIX: &str = crate::cache::families::KITSU_GONE;
 
 fn gone_key(id: &str) -> String {
     format!("{GONE_PREFIX}{id}")

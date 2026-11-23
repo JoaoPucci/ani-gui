@@ -1,0 +1,48 @@
+{
+ "data": [
+  {
+   "id": "7914",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Extra Edition",
+    "titles": {
+     "en": "Sword Art Online: Extra Edition",
+     "en_jp": "Sword Art Online: Extra Edition",
+     "en_us": "Sword Art Online: Extra Edition",
+     "ja_jp": "ソードアート・オンライン Extra Edition"
+    },
+    "abbreviatedTitles": [
+     "S.A.O: Extra Edition",
+     "SAO: Extra Edition"
+    ],
+    "slug": "sword-art-online-extra-edition",
+    "startDate": "2013-12-31",
+    "endDate": "2013-12-31",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8196",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sword Art Online: Sword Art Offline - Extra Edition",
+    "titles": {
+     "en_jp": "Sword Art Online: Sword Art Offline - Extra Edition",
+     "ja_jp": "そーどあーと・おふらいん Extra Edition"
+    },
+    "abbreviatedTitles": [
+     "SAO Special",
+     "S.A.O Special"
+    ],
+    "slug": "sword-art-online-sword-art-offline-extra-edition",
+    "startDate": "2014-04-23",
+    "endDate": "2014-04-23",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  }
+ ]
+}

@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
-use super::{in_background, share_for_tests, Pace, ANILIST};
+use super::{in_background, share_for_tests, Ask, Pace, Purpose, ANILIST};
 use crate::account::provider::{EntryUpdate, ProviderMediaId, Tokens, UserListProvider};
 use crate::error::AniError;
 use crate::meta::anilist::{mal_id_for_media_id, post_graphql_public, trending};
@@ -102,12 +102,15 @@ fn tokens() -> Tokens {
     }
 }
 
+/// The label the gate's tests send under.
+const TRENDING: Ask = Ask::unkeyed(Purpose::Trending);
+
 fn client() -> reqwest::Client {
     reqwest::Client::new()
 }
 
 async fn public(uri: &str) -> crate::error::Result<bytes::Bytes> {
-    post_graphql_public(&client(), uri, &serde_json::json!({})).await
+    post_graphql_public(&client(), uri, &serde_json::json!({}), TRENDING).await
 }
 
 fn assert_rate_limited<T: std::fmt::Debug>(got: &crate::error::Result<T>) {
@@ -401,4 +404,105 @@ async fn a_429_without_a_wait_holds_anilist_back_for_its_documented_minute() {
         matches!(held, Err(AniError::RateLimited { retry_after_secs: Some(s), .. }) if (59..=60).contains(&s)),
         "{held:?}"
     );
+}
+
+#[tokio::test]
+async fn a_shared_gate_tells_a_test_what_it_let_go_and_who_waits() {
+    // What a test reads the order of sending from: the class of each
+    // request let go, in order, and how many wait for their turn — a
+    // waiter dropped before its turn stops counting and is never let go.
+    let server = serve(Limited::new(100, Duration::from_secs(60), 60)).await;
+    let gate = share_for_tests(
+        &server.uri(),
+        Pace {
+            min_gap: Duration::from_secs(30),
+            background_wait: Duration::from_secs(60),
+            ..ANILIST
+        },
+    );
+    let uri = server.uri();
+    in_background(public(&uri)).await.expect("background");
+    let queued = crate::held::until("the next request waits", || gate.waiting() == 1);
+    tokio::select! {
+        _ = in_background(public(&uri)) => panic!("sent inside the gap"),
+        () = queued => {}
+    }
+    assert_eq!(gate.waiting(), 0, "the dropped request still counted");
+    assert_eq!(gate.let_go(), vec![super::Class::Background]);
+}
+
+/// Everything a scoped subscriber wrote, at debug and above.
+#[derive(Clone, Default)]
+struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
+    type Writer = Self;
+    fn make_writer(&'a self) -> Self {
+        self.clone()
+    }
+}
+
+#[test]
+fn every_request_sent_logs_its_class_and_how_full_the_window_is() {
+    // The allowance split is measured from these lines: one per request
+    // that left, with its class and the window's count including it.
+    let captured = Captured::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_ansi(false)
+        .with_writer(captured.clone())
+        .finish();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    // With one dispatcher alive, tracing asks only the registering
+    // thread's own default whether a callsite is wanted: another test's
+    // thread registering the line first would mark it unwanted for
+    // good. A second dispatcher, kept alive, makes every registration
+    // ask all of them, this test's included.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    tracing::subscriber::with_default(subscriber, || {
+        // A callsite registered before this subscriber existed: ask
+        // again with it in.
+        tracing::callsite::rebuild_interest_cache();
+        runtime.block_on(async {
+            let server = serve(Limited::new(100, Duration::from_secs(60), 60)).await;
+            let _shared = share_for_tests(
+                &server.uri(),
+                Pace {
+                    min_gap: Duration::ZERO,
+                    ..ANILIST
+                },
+            );
+            in_background(public(&server.uri()))
+                .await
+                .expect("background");
+            public(&server.uri()).await.expect("interactive");
+        });
+    });
+    let out = String::from_utf8(captured.0.lock().unwrap().clone()).expect("utf8");
+    let lines: Vec<&str> = out
+        .lines()
+        .filter(|l| l.contains("anilist request sent"))
+        .collect();
+    assert_eq!(lines.len(), 2, "{out}");
+    assert!(lines[0].contains(" INFO "), "{}", lines[0]);
+    assert!(lines[0].contains("purpose=trending"), "{}", lines[0]);
+    assert!(lines[0].contains("class=Background"), "{}", lines[0]);
+    assert!(lines[0].contains("in_window=1"), "{}", lines[0]);
+    assert!(lines[0].contains("capacity=25"), "{}", lines[0]);
+    assert!(lines[0].contains("background_capacity=20"), "{}", lines[0]);
+    assert!(lines[1].contains("class=Interactive"), "{}", lines[1]);
+    assert!(lines[1].contains("in_window=2"), "{}", lines[1]);
 }

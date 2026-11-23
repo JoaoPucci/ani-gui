@@ -1,0 +1,64 @@
+{
+ "data": [
+  {
+   "id": "46874",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "SPY×FAMILY CODE: White",
+    "titles": {
+     "en": "SPY x FAMILY - CODE: White",
+     "en_jp": "SPY×FAMILY CODE: White",
+     "ja_jp": "SPY×FAMILY CODE: White"
+    },
+    "abbreviatedTitles": [],
+    "slug": "spy-x-family-code-white",
+    "startDate": "2023-12-22",
+    "endDate": "2023-12-22",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "51163",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Spy x Family Movie: Code: White Manner Movie",
+    "titles": {
+     "en_jp": "Spy x Family Movie: Code: White Manner Movie",
+     "ja_jp": "『劇場版 SPY×FAMILY CODE: White』映画マナー講座"
+    },
+    "abbreviatedTitles": [
+     "Spy x Family Movie: Code: White Eizou Manner Kouza",
+     "Spy x Family Movie: Code: White Movie Etiquette Course"
+    ],
+    "slug": "spy-x-family-movie-code-white-manner-movie",
+    "startDate": "2023-07-28",
+    "endDate": "2023-07-28",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48477",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ayataka Spy x Family Movie Campaign Ayataka de Hotto Hitoiki",
+    "titles": {
+     "en_jp": "Ayataka Spy x Family Movie Campaign Ayataka de Hotto Hitoiki",
+     "ja_jp": "綾鷹・劇場版SPY×FAMILYキャンペーン　綾鷹でほっとひと息"
+    },
+    "abbreviatedTitles": [
+     "Ayataka Gekijouban Spy x Family CM"
+    ],
+    "slug": "ayataka-spy-x-family-movie-campaign-ayataka-de-hotto-hitoiki",
+    "startDate": "2024-01-29",
+    "endDate": "2024-01-29",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

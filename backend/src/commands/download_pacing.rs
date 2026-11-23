@@ -37,10 +37,11 @@ pub(crate) const FAST_FRAGMENTS: u32 = 16;
 /// set by the byte-rate limit beside it.
 pub(crate) const PACED_FRAGMENTS: u32 = 1;
 
-/// The sidecar phase's deadline while playback is live: the tracks
-/// take their tokens one at a time in turn with the player's, sharing one
-/// lane with every other download's, and a listing at the track cap
-/// needs the time.
+/// The sidecar phase's deadline while playback is live, for a listing
+/// of sixteen tracks: the tracks take their tokens one at a time in
+/// turn with the player's, sharing one lane with every other
+/// download's, and need the time. A longer listing adds to it
+/// ([`sidecar_phase_deadline`]).
 pub(crate) const SIDECAR_PHASE_DEADLINE_LIVE: Duration = Duration::from_secs(4 * 60);
 
 #[path = "download_pacing_sidecar.rs"]

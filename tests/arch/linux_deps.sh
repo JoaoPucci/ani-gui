@@ -8,8 +8,10 @@
 # that matter and says little about why: every play dies on the
 # provider's TLS interstitial without the impersonating transport, and
 # every download dies without a downloader. Bundling the small fast
-# ones removes that dependency on the user's environment; ffmpeg is
-# too large to stage, hence the `Recommends:`.
+# ones removes that dependency on the user's environment; ffmpeg Linux
+# takes from the distribution instead, hence the `Recommends:` (the
+# Windows installer, with no package manager to lean on, downloads it
+# at install time).
 #
 # This once described the script's dependencies — `dep_ch fzf`
 # aborting at startup, aria2c for downloads. Those went when the app
@@ -22,11 +24,15 @@
 # The Windows installer has the same shape
 # (`fetch-windows-deps.mjs` + NSIS bundle) and `windows_deps.sh` is
 # its counterpart, including an inventory comparison that holds the
-# two platforms to the same dependency set. One difference is worth
-# knowing: the e2e workflow runs `pnpm run dist`, so a Linux package
-# really is built in CI, while nothing builds the Windows installer.
-# On this side the configuration is checked and then exercised; on
-# that side only the configuration.
+# two platforms' declared lists to each other (staged, downloaded at
+# install time, or declared in `SYSTEM_DEPS`), not every program
+# either side runs. One difference is worth knowing: the e2e workflow
+# runs `pnpm run dist`, so a Linux package is built and launched in CI
+# on every relevant change, while the Windows installer is built only
+# when a pull request changes how a package is built or a run is
+# started by hand (packages.yml), and never run. On this side the
+# configuration is checked and then exercised; on that side it is
+# checked, and only sometimes built.
 #
 # Specifically:
 #   - `electron/scripts/fetch-linux-deps.mjs` must exist as the
@@ -34,10 +40,15 @@
 #   - `electron/package.json` must list `build-resources/linux/bin`
 #     under `build.linux.extraResources` so electron-builder copies
 #     the staged binaries into both AppImage and .deb payloads.
-#   - `build.deb.recommends` must include "ffmpeg".
-#   - `dist` / `dist:release` scripts must chain `fetch:linux-deps`
-#     so any invocation path (package, dist, e2e) gets the bin
-#     dir populated before electron-builder runs.
+#   - `build.deb.recommends` must include "ffmpeg", and every
+#     dependency `fetch-linux-deps.mjs` declares in `SYSTEM_DEPS` —
+#     the dependencies the Windows package stages or downloads that
+#     Linux takes from the distribution rather than staging.
+#   - every staged binary ships its licence text in the package.
+#   - `dist` / `dist:release` and the e2e suite's `package:e2e` must
+#     chain `fetch:linux-deps` so any invocation path (package, dist,
+#     package:e2e) gets the bin dir populated before electron-builder
+#     runs.
 #   - The Linux packages carry a backend built for
 #     `x86_64-unknown-linux-musl`, statically linked, and the scripts
 #     that package them build that one. A backend linked against the
@@ -45,8 +56,10 @@
 #     one — v0.14.1, built on a 2026 Ubuntu, asked for glibc 2.39 and
 #     failed on Ubuntu 22.04 and Debian 12 before the window had
 #     anything to show. The rest of the payload asks for 2.25 at most.
-#     The e2e workflow, which builds the Linux package, then runs the
-#     packaged backend's own check that it needs no system C library.
+#     The e2e workflow's release-shaped job, which builds the Linux
+#     package, then runs the packaged backend's own check that it needs
+#     no system C library. The e2e suite's package (`package:e2e`)
+#     builds its own backend first too, for the same target.
 
 set -eu
 
@@ -83,9 +96,11 @@ if ! grep -Pzo '"recommends"\s*:\s*\[[^]]*"ffmpeg"' "$PKG" >/dev/null 2>&1; then
 fi
 
 # 4. `dist` / `dist:release` scripts must chain `fetch:linux-deps` so
-#    callers that invoke dist directly (e2e workflow) still get the bin
-#    populated. The fetch-by-package pattern alone leaves a gap.
-for s in dist dist:release; do
+#    callers that invoke dist directly (the e2e workflow's
+#    release-shaped job) still get the bin populated, and so must
+#    `package:e2e`, which packages without `dist`. The fetch-by-package
+#    pattern alone leaves a gap.
+for s in dist dist:release package:e2e; do
     line=$(grep -E "\"$s\"" "$PKG" || true)
     case "$line" in
         *fetch:linux-deps*) ;;
@@ -136,7 +151,15 @@ fi
 
 # 7. Every script that packages for Linux builds that backend first:
 #    the `package` scripts, and `dist` / `dist:release`, which are run
-#    on their own as well (the e2e workflow runs `dist`). Asserted on
+#    on their own as well (the e2e workflow's release-shaped job runs
+#    `dist`); and the e2e suite's `package:e2e` builds its own, the
+#    same musl build with the test-run feature into target-e2e. Both
+#    e2e scripts, and `e2e`, which runs one, are pinned as exact text:
+#    `package:e2e` packages an unpacked tree only (`--linux dir`), since
+#    a target given there, or appended by its caller, would override the
+#    e2e configuration's and make an installable package carrying the
+#    test-run backend. tests/arch/test_run_key.sh
+#    holds which scripts may name them. Asserted on
 #    the parsed scripts as exact text: each one begins with the build
 #    followed by `&&`, so nothing runs before it and a failed build
 #    stops the packaging, and the build script is exactly the musl
@@ -148,9 +171,76 @@ const first = "pnpm run build:backend:linux && ";
 const bad = ["package", "package:release", "dist", "dist:release"]
   .filter((n) => typeof s[n] !== "string" || !s[n].startsWith(first));
 if (s["build:backend:linux"] !== build) bad.push("build:backend:linux");
+const e2e = "pnpm run build:backend:e2e && pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux dir --config electron-builder.e2e.cjs";
+if (s["package:e2e"] !== e2e) bad.push("package:e2e");
+// e2e runs it unchanged: arguments after a script name reach its last command.
+if (s.e2e !== "pnpm run package:e2e && playwright test") bad.push("e2e");
+if (s["build:backend:e2e"] !== build + " --features test-run-key --target-dir target-e2e") bad.push("build:backend:e2e");
 if (bad.length) { console.error(bad.join(" ")); process.exit(1); }
 ' "$REPO_ROOT/$PKG"; then
-    printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux is not exactly the musl build\n' "$PKG" >&2
+    printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux, build:backend:e2e, package:e2e or e2e is not exactly its pinned text\n' "$PKG" >&2
+    failed=1
+fi
+
+# 8. Whatever the fetcher declares it takes from the system instead of
+#    staging, the .deb must recommend. `windows_deps.sh` lets a Windows
+#    dependency go unstaged on Linux only through that declaration, so
+#    an entry here that no package names would excuse a dependency
+#    Linux does not provide at all. Both files are read with node — the
+#    module by import, package.json by its JSON parser. The leading
+#    `inventory` argument keeps the fetcher out of `process.argv[1]`,
+#    where its entry guard would take it for the program and run it.
+if ! node --input-type=module -e '
+const [fetcher, pkg] = process.argv.slice(2);
+const { SYSTEM_DEPS } = await import(fetcher);
+const { readFileSync } = await import("node:fs");
+const recommends = (JSON.parse(readFileSync(pkg, "utf8")).build.deb || {}).recommends || [];
+if (!Array.isArray(SYSTEM_DEPS)) { console.error("SYSTEM_DEPS is not exported as an array"); process.exit(1); }
+const bad = SYSTEM_DEPS.filter((d) => typeof d.dep !== "string" || !recommends.includes(d.dep));
+if (bad.length) { console.error(bad.map((d) => String(d.dep)).join(" ")); process.exit(1); }
+' inventory "$REPO_ROOT/$FETCH" "$REPO_ROOT/$PKG"; then
+    printf 'arch/linux_deps FAIL: %s SYSTEM_DEPS could not be read, or names a dependency (above) that build.deb.recommends in %s does not\n' "$FETCH" "$PKG" >&2
+    failed=1
+fi
+
+# 9. Every binary the Linux packages bundle ships with its licence
+#    text: `electron/build-resources/licenses/<dep>.txt`, non-empty,
+#    for every `dep` in the fetcher's DEPS, copied into the package by
+#    a `build.linux.extraResources` entry from `build-resources/licenses`
+#    to `licenses` whose filter, if it has one, names that file. The
+#    licences of what these binaries bundle require their notice to
+#    travel with every copy, and GPL object code needs its licence
+#    beside it. Read with node: DEPS by import, package.json by its
+#    JSON parser.
+#
+#    The filter is held to a constraint rather than evaluated: it may
+#    be absent (everything is copied), or a name or list of names with
+#    no `!` exclusion, and each licence file must be named in it
+#    literally. A glob that would in fact match therefore fails here,
+#    loudly; an exclusion is refused outright, since judging what it
+#    removes would mean re-implementing electron-builder's matcher,
+#    which the arch job has no node_modules to load. Not checked: that
+#    a file's text is the right licence.
+if ! node --input-type=module -e '
+const [fetcher, pkg, root] = process.argv.slice(2);
+const { DEPS } = await import(fetcher);
+const { readFileSync, statSync } = await import("node:fs");
+const extra = ((JSON.parse(readFileSync(pkg, "utf8")).build || {}).linux || {}).extraResources || [];
+const entry = extra.find((e) => typeof e === "object" && e.from === "build-resources/licenses" && e.to === "licenses");
+const bad = [];
+if (!entry) bad.push("no extraResources entry copies build-resources/licenses to licenses");
+const filter = entry && entry.filter !== undefined ? [].concat(entry.filter) : null;
+if (filter && filter.some((f) => typeof f !== "string" || f.startsWith("!"))) bad.push("the licenses filter has an exclusion or a non-string entry");
+for (const dep of new Set(DEPS.map((d) => d.dep))) {
+    const file = dep + ".txt";
+    let ok = false;
+    try { const st = statSync(root + "/electron/build-resources/licenses/" + file); ok = st.isFile() && st.size > 0; } catch {}
+    if (!ok) bad.push(file + " is missing, empty, or not a file");
+    if (filter && !filter.includes(file)) bad.push(file + " is not named in the filter");
+}
+if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
+' inventory "$REPO_ROOT/electron/scripts/fetch-linux-deps.mjs" "$REPO_ROOT/$PKG" "$REPO_ROOT"; then
+    printf 'arch/linux_deps FAIL: a bundled binary does not ship its licence text (above)\n' >&2
     failed=1
 fi
 

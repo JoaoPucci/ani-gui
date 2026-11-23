@@ -1,0 +1,45 @@
+{
+ "data": [
+  {
+   "id": "43886",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Jujutsu Kaisen New Year's Special",
+    "titles": {
+     "en": "Jujutsu Kaisen New Year's Special",
+     "en_jp": "Jujutsu Kaisen New Year's Special",
+     "ja_jp": "呪術廻戦"
+    },
+    "abbreviatedTitles": [
+     "Jujutsu Kaisen (TV) Recap",
+     "Sorcery Fight Recap"
+    ],
+    "slug": "jujutsu-kaisen-new-year-s-special",
+    "startDate": "2021-01-08",
+    "endDate": "2021-01-08",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46400",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Vivid Vice",
+    "titles": {
+     "en": "Vivid Vice",
+     "en_jp": "Vivid Vice",
+     "ja_jp": "VIVID VICE"
+    },
+    "abbreviatedTitles": [],
+    "slug": "vivid-vice",
+    "startDate": "2021-01-29",
+    "endDate": "2021-01-29",
+    "episodeCount": 1,
+    "subtype": "music",
+    "status": "finished"
+   }
+  }
+ ]
+}

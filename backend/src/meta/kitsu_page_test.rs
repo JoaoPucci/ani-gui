@@ -216,3 +216,149 @@ async fn a_ranked_search_sends_no_nameless_parameter() {
         assert!(!pair.starts_with('='), "nameless parameter in {query}");
     }
 }
+
+/// Kitsu's `filter[text]` reads a word that starts with `-` as one to
+/// exclude: the provider's "Re:ZERO -Starting Life in Another World-
+/// Season 4" answers Zoids Genesis alone, and the same title without
+/// that `-` answers Re:ZERO Season 4. The client sends the word.
+#[test]
+fn a_word_led_by_a_dash_is_sent_as_the_word() {
+    assert_eq!(
+        search_text("Re:ZERO -Starting Life in Another World- Season 4"),
+        "Re:ZERO Starting Life in Another World- Season 4"
+    );
+    assert_eq!(search_text("zero --kara"), "zero kara");
+    assert_eq!(search_text("-naruto"), "naruto");
+}
+
+/// Kitsu reads a `-` that punctuation leads as an exclusion too:
+/// "naruto:-shippuden" and "naruto (-shippuden)" answer Naruto without
+/// Shippuden, and "Re:ZERO (-Starting Life in Another World-) Season 4"
+/// answers Zoids Genesis. Only a letter or digit before the dash makes
+/// it text; every dash no ASCII letter or digit precedes is sent as a
+/// gap.
+#[test]
+fn a_dash_no_letter_or_digit_leads_is_sent_as_a_gap() {
+    for (q, sent) in [
+        ("naruto:-shippuden", "naruto: shippuden"),
+        ("naruto (-shippuden)", "naruto ( shippuden)"),
+        ("naruto [-shippuden]", "naruto [ shippuden]"),
+        ("Re:ZERO.-Starting Life", "Re:ZERO. Starting Life"),
+        (
+            "Re:ZERO (-Starting Life in Another World-) Season 4",
+            "Re:ZERO ( Starting Life in Another World-) Season 4",
+        ),
+        ("naruto --shippuden", "naruto shippuden"),
+        ("naruto--shippuden", "naruto- shippuden"),
+    ] {
+        assert_eq!(search_text(q), sent, "{q}");
+    }
+}
+
+/// A dash after an ASCII letter or digit, or a dash other than `-`, is text
+/// to Kitsu, and reaches it as typed.
+#[test]
+fn a_dash_inside_or_after_a_word_is_left_alone() {
+    for q in [
+        "Re-Zero",
+        "naruto- shippuden",
+        "zero \u{2014}kara",
+        "zero \u{2212}kara",
+        "[Oshi no Ko]",
+    ] {
+        assert_eq!(search_text(q), q, "{q}");
+    }
+}
+
+/// A dash standing alone leads an empty word: Kitsu answers a lone `-`
+/// as it answers nothing at all, so it is not sent.
+#[test]
+fn a_lone_dash_is_not_sent() {
+    assert_eq!(
+        search_text("Bleach: Thousand-Year Blood War - The Calamity"),
+        "Bleach: Thousand-Year Blood War The Calamity"
+    );
+    assert_eq!(search_text("-"), "");
+}
+
+const REZERO_DASHED: &[u8] =
+    include_bytes!("../../../tests/fixtures/kitsu/search_rezero_season_4_dashed.json");
+const REZERO: &[u8] = include_bytes!("../../../tests/fixtures/kitsu/search_rezero_season_4.json");
+
+/// Recorded answers: Kitsu gives the provider's Re:ZERO Season 4 title
+/// Zoids Genesis as typed, and Re:ZERO Season 4 once the dash that
+/// led "Starting" is gone.
+#[tokio::test]
+async fn the_client_finds_re_zero_season_4_by_its_provider_title() {
+    let mock = MockServer::start().await;
+    for (text, recorded) in [
+        (
+            "Re:ZERO -Starting Life in Another World- Season 4",
+            REZERO_DASHED,
+        ),
+        ("Re:ZERO Starting Life in Another World- Season 4", REZERO),
+    ] {
+        Mock::given(method("GET"))
+            .and(path("/anime"))
+            .and(query_param("filter[text]", text))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(recorded.to_vec()),
+            )
+            .mount(&mock)
+            .await;
+    }
+    let client = KitsuClient::with_base(reqwest::Client::new(), mock.uri());
+    let hits = client
+        .search("Re:ZERO -Starting Life in Another World- Season 4", 20)
+        .await
+        .expect("ok");
+    let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
+    assert_eq!(ids, ["49746"]);
+}
+
+proptest! {
+    /// Every dash Kitsu is sent follows a letter or digit, every other
+    /// character of the query reaches it in order (dashes that follow
+    /// none become gaps), and sending the text again sends the same
+    /// text.
+    #[test]
+    fn no_dash_sent_is_an_exclusion(
+        query in "[A-Za-z0-9:!'()\\[\\]. \\t\\-]{0,40}",
+    ) {
+        let sent = search_text(&query);
+        let mut previous = None;
+        for c in sent.chars() {
+            if c == '-' {
+                prop_assert!(
+                    previous.is_some_and(|p: char| p.is_ascii_alphanumeric()),
+                    "{:?} sent as {:?}", query, sent
+                );
+            }
+            previous = Some(c);
+        }
+        let mut gapped = String::new();
+        let mut before = None;
+        for c in query.chars() {
+            let text = c != '-' || before.is_some_and(|p: char| p.is_ascii_alphanumeric());
+            gapped.push(if text { c } else { ' ' });
+            before = Some(c);
+        }
+        prop_assert_eq!(
+            sent.split_whitespace().collect::<Vec<_>>(),
+            gapped.split_whitespace().collect::<Vec<_>>()
+        );
+        prop_assert_eq!(search_text(&sent), sent.clone());
+    }
+
+    /// A query each dash of which follows a letter or digit is sent as
+    /// typed, up to the space between its words.
+    #[test]
+    fn a_query_without_an_exclusion_is_sent_as_typed(
+        words in prop::collection::vec("[A-Za-z0-9:!']([A-Za-z0-9]-|[A-Za-z0-9:!']){0,5}", 1..8),
+    ) {
+        let query = words.join(" ");
+        prop_assert_eq!(search_text(&query), query);
+    }
+}

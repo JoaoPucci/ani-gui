@@ -1,0 +1,88 @@
+{
+ "data": [
+  {
+   "id": "897",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½ OVA",
+    "titles": {
+     "en": "Ranma ½ OVA",
+     "en_jp": "Ranma ½ OVA",
+     "ja_jp": "らんま1/2 OVA"
+    },
+    "abbreviatedTitles": [
+     "Ranma 1/2 OVA"
+    ],
+    "slug": "ranma-ova",
+    "startDate": "1993-10-21",
+    "endDate": "1994-08-19",
+    "episodeCount": 6,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "901",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½ Super",
+    "titles": {
+     "en_jp": "Ranma ½ Super",
+     "ja_jp": "らんま１／２　ＳＵＰＥＲ"
+    },
+    "abbreviatedTitles": [
+     "Ranma ½ Super OVA",
+     "Ranma 1/2 Super"
+    ],
+    "slug": "ranma-super",
+    "startDate": "1995-09-21",
+    "endDate": "1996-01-19",
+    "episodeCount": 3,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4123",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Akumu! Shunmin Kou",
+    "titles": {
+     "en_jp": "Ranma ½: Akumu! Shunmin Kou",
+     "ja_jp": "らんま1/2 悪夢! 春眠香"
+    },
+    "abbreviatedTitles": [
+     "Ranma ½: Okumu! Shunmin Kou",
+     "Ranma ½: Nightmare! Incense of Spring Sleep",
+     "It's a Rumic World: Ranma ½"
+    ],
+    "slug": "ranma-nightmare-incense-of-spring-sleep",
+    "startDate": "2008-07-31",
+    "endDate": "2008-07-31",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "4681",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ranma ½: Nettou Uta Gassen",
+    "titles": {
+     "en": "Ranma 1/2: Hot Song Contest",
+     "en_jp": "Ranma ½: Nettou Uta Gassen",
+     "en_us": "Ranma 1/2: Hot Song Contest",
+     "ja_jp": "らんま１／２　熱闘歌合戦"
+    },
+    "abbreviatedTitles": [],
+    "slug": "ranma-nettou-uta-gassen",
+    "startDate": "1990-11-07",
+    "endDate": "1990-11-21",
+    "episodeCount": 2,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  }
+ ]
+}

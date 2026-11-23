@@ -1,0 +1,149 @@
+{
+ "data": [
+  {
+   "id": "45398",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "SPY×FAMILY",
+    "titles": {
+     "en": "SPY x FAMILY",
+     "en_jp": "SPY×FAMILY",
+     "ja_jp": "SPY×FAMILY"
+    },
+    "abbreviatedTitles": [
+     "SxF, 스파이 패밀리",
+     "SPY×FAMILY: WJ Special Extra Mission!!",
+     "间谍过家家"
+    ],
+    "slug": "spy-x-family",
+    "startDate": "2022-04-09",
+    "endDate": "2022-06-25",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "45619",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "SPY x FAMILY Part 2",
+    "titles": {
+     "en": "SPY x FAMILY Part 2",
+     "en_jp": "SPY x FAMILY Part 2",
+     "ja_jp": "SPY×FAMILY 2クール"
+    },
+    "abbreviatedTitles": [
+     "SxF",
+     "Spy x Family",
+     "스파이 패밀리",
+     "间谍过家家"
+    ],
+    "slug": "spy-x-family-part-2",
+    "startDate": "2022-10-01",
+    "endDate": "2022-12-24",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "51163",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Spy x Family Movie: Code: White Manner Movie",
+    "titles": {
+     "en_jp": "Spy x Family Movie: Code: White Manner Movie",
+     "ja_jp": "『劇場版 SPY×FAMILY CODE: White』映画マナー講座"
+    },
+    "abbreviatedTitles": [
+     "Spy x Family Movie: Code: White Eizou Manner Kouza",
+     "Spy x Family Movie: Code: White Movie Etiquette Course"
+    ],
+    "slug": "spy-x-family-movie-code-white-manner-movie",
+    "startDate": "2023-07-28",
+    "endDate": "2023-07-28",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46873",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "SPY×FAMILY Season 2",
+    "titles": {
+     "en": "SPY x FAMILY Season 2",
+     "en_jp": "SPY×FAMILY Season 2",
+     "ja_jp": "SPY×FAMILY Season 2"
+    },
+    "abbreviatedTitles": [],
+    "slug": "spy-x-family-season-2",
+    "startDate": "2023-10-07",
+    "endDate": "2023-12-23",
+    "episodeCount": 12,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "46874",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "SPY×FAMILY CODE: White",
+    "titles": {
+     "en": "SPY x FAMILY - CODE: White",
+     "en_jp": "SPY×FAMILY CODE: White",
+     "ja_jp": "SPY×FAMILY CODE: White"
+    },
+    "abbreviatedTitles": [],
+    "slug": "spy-x-family-code-white",
+    "startDate": "2023-12-22",
+    "endDate": "2023-12-22",
+    "episodeCount": 1,
+    "subtype": "movie",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48939",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "SPY×FAMILY Season 3",
+    "titles": {
+     "en": "SPY x FAMILY Season 3",
+     "en_jp": "SPY×FAMILY Season 3",
+     "ja_jp": "SPY×FAMILY Season 3"
+    },
+    "abbreviatedTitles": [],
+    "slug": "spy-x-family-season-3",
+    "startDate": "2025-10-04",
+    "endDate": "2025-12-27",
+    "episodeCount": 13,
+    "subtype": "TV",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "48477",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Ayataka Spy x Family Movie Campaign Ayataka de Hotto Hitoiki",
+    "titles": {
+     "en_jp": "Ayataka Spy x Family Movie Campaign Ayataka de Hotto Hitoiki",
+     "ja_jp": "綾鷹・劇場版SPY×FAMILYキャンペーン　綾鷹でほっとひと息"
+    },
+    "abbreviatedTitles": [
+     "Ayataka Gekijouban Spy x Family CM"
+    ],
+    "slug": "ayataka-spy-x-family-movie-campaign-ayataka-de-hotto-hitoiki",
+    "startDate": "2024-01-29",
+    "endDate": "2024-01-29",
+    "episodeCount": 1,
+    "subtype": "ONA",
+    "status": "finished"
+   }
+  }
+ ]
+}

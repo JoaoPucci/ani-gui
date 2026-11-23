@@ -8,7 +8,8 @@ import { airedCap, airedTargets, beyondPlayable, displayCap, minCap } from './ep
 const RELEASING: AiringStatus = {
 	aired: 2,
 	next_episode: 3,
-	next_airing_at: 1784215800
+	next_airing_at: 1784215800,
+	upcoming: []
 };
 
 describe('epAirState', () => {
@@ -28,13 +29,20 @@ describe('epAirState', () => {
 
 	it('never gates when airing data is unknown', () => {
 		expect(epAirState(12, null)).toEqual({ unaired: false });
-		expect(epAirState(12, { aired: null, next_episode: null, next_airing_at: null })).toEqual({
+		expect(
+			epAirState(12, { aired: null, next_episode: null, next_airing_at: null, upcoming: [] })
+		).toEqual({
 			unaired: false
 		});
 	});
 
 	it('gates everything for a not-yet-premiered show', () => {
-		const unreleased: AiringStatus = { aired: 0, next_episode: null, next_airing_at: null };
+		const unreleased: AiringStatus = {
+			aired: 0,
+			next_episode: null,
+			next_airing_at: null,
+			upcoming: []
+		};
 		expect(epAirState(1, unreleased)).toEqual({ unaired: true, airsAt: null });
 	});
 
@@ -86,7 +94,9 @@ describe('airedCap', () => {
 
 	it('passes the cap through on unknown airing data', () => {
 		expect(airedCap(12, null)).toBe(12);
-		expect(airedCap(12, { aired: null, next_episode: null, next_airing_at: null })).toBe(12);
+		expect(
+			airedCap(12, { aired: null, next_episode: null, next_airing_at: null, upcoming: [] })
+		).toBe(12);
 	});
 
 	it('uses the aired count when no cap is known', () => {
@@ -105,7 +115,9 @@ describe('airedCap', () => {
 		// Drives the primary CTA block: a
 		// searchable provider stub with nothing aired must not offer
 		// Play episode 1.
-		expect(airedCap(12, { aired: 0, next_episode: null, next_airing_at: null })).toBe(0);
+		expect(airedCap(12, { aired: 0, next_episode: null, next_airing_at: null, upcoming: [] })).toBe(
+			0
+		);
 	});
 });
 
@@ -118,15 +130,15 @@ describe('airedTargets', () => {
 
 	it('passes everything through on unknown airing data', () => {
 		expect(airedTargets([1, 2, 3], null)).toEqual([1, 2, 3]);
-		expect(airedTargets([5], { aired: null, next_episode: null, next_airing_at: null })).toEqual([
-			5
-		]);
+		expect(
+			airedTargets([5], { aired: null, next_episode: null, next_airing_at: null, upcoming: [] })
+		).toEqual([5]);
 	});
 
 	it('empties the list for a not-yet-premiered show', () => {
-		expect(airedTargets([1, 2], { aired: 0, next_episode: null, next_airing_at: null })).toEqual(
-			[]
-		);
+		expect(
+			airedTargets([1, 2], { aired: 0, next_episode: null, next_airing_at: null, upcoming: [] })
+		).toEqual([]);
 	});
 });
 
@@ -144,7 +156,9 @@ describe('displayCap', () => {
 		// anything — padded extras would render as interactive doomed
 		// tiles. Stick to the playable-first cap.
 		expect(displayCap(2, 12, null)).toBe(2);
-		expect(displayCap(2, 12, { aired: null, next_episode: null, next_airing_at: null })).toBe(2);
+		expect(
+			displayCap(2, 12, { aired: null, next_episode: null, next_airing_at: null, upcoming: [] })
+		).toBe(2);
 	});
 
 	it('keeps the provider ahead of a stale announced total', () => {

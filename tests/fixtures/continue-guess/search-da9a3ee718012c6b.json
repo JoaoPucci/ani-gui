@@ -1,0 +1,117 @@
+{
+ "data": [
+  {
+   "id": "42574",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!! (OVA)",
+    "titles": {
+     "en_jp": "Haikyuu!! (OVA)",
+     "ja_jp": "ハイキュー!!"
+    },
+    "abbreviatedTitles": [
+     "Haikyuu!! Puppet Animation",
+     "Haikyuu!! Stop-motion Animation",
+     "Haikyuu!!: Ningyou Anime"
+    ],
+    "slug": "haikyuu-ova",
+    "startDate": "2020-03-04",
+    "endDate": "2020-03-04",
+    "episodeCount": 10,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "42502",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!!: Riku vs Kuu",
+    "titles": {
+     "en_jp": "Haikyuu!!: Riku vs Kuu",
+     "ja_jp": "ハイキュー!! 陸VS空"
+    },
+    "abbreviatedTitles": [
+     "Haikyuu!! Jump Festa 2020 Special",
+     "Haikyuu!! OVA",
+     "Haikyuu!!: Land vs Sky",
+     "Haikyuu!!: The Volleyball Way",
+     "Haikyuu!!: Ball no Michi"
+    ],
+    "slug": "haikyuu-riku-vs-kuu",
+    "startDate": "2020-01-22",
+    "endDate": "2020-01-22",
+    "episodeCount": 2,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "41556",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!!: Tokushuu! Haru-kou Volley ni Kaketa Seishun",
+    "titles": {
+     "en": "Haikyuu!! Special Feature! The Spring Tournament of Their Youth",
+     "en_jp": "Haikyuu!!: Tokushuu! Haru-kou Volley ni Kaketa Seishun",
+     "ja_jp": "ハイキュー!! 特集！春高バレーに賭けた青春"
+    },
+    "abbreviatedTitles": [
+     "Haikyuu!!: Karasuno Koukou VS Shiratorizawa Gakuen Koukou OVA",
+     "Haikyuu!! OVA"
+    ],
+    "slug": "haikyuu-tokushuu-haru-kou-volley-ni-kaketa-seishun",
+    "startDate": "2017-08-04",
+    "endDate": "2017-08-04",
+    "episodeCount": 1,
+    "subtype": "special",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "8626",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!!: Lev Genzan!",
+    "titles": {
+     "en": "Haikyuu!!: Lev Appears",
+     "en_jp": "Haikyuu!!: Lev Genzan!",
+     "ja_jp": "ハイキュー!! リエーフ見参！"
+    },
+    "abbreviatedTitles": [
+     "Haikyuu!!: Lev Genzan!",
+     "Haikyuu!!: vs. Akaten",
+     "Haikyuu!!: Jump Festa 2014 Special",
+     "Haikyuu!!: Jump Festa 2015 Special",
+     "Haikyuu!! OVA",
+     "Haikyuu!! The Arrival of Haiba Lev"
+    ],
+    "slug": "haikyuu-lev-genzan",
+    "startDate": "2015-03-04",
+    "endDate": "2015-03-04",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  },
+  {
+   "id": "11374",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Haikyuu!!: vs. Akaten",
+    "titles": {
+     "en": "Haikyuu!!: vs. Failing Marks",
+     "en_jp": "Haikyuu!!: vs. Akaten",
+     "ja_jp": "ハイキュー!! VS赤点"
+    },
+    "abbreviatedTitles": [],
+    "slug": "haikyuu-vs-akaten",
+    "startDate": "2016-05-02",
+    "endDate": "2016-05-02",
+    "episodeCount": 1,
+    "subtype": "OVA",
+    "status": "finished"
+   }
+  }
+ ]
+}

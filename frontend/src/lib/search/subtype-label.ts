@@ -1,7 +1,8 @@
 /**
  * The label a Kitsu subtype (`TV`, `movie`, `special`, `OVA`, `ONA`,
  * `music`) is shown with: in the search type chips, on result cards,
- * in the topbar's live results and on the detail page's eyebrow. The
+ * in the topbar's live results and on the detail page's eyebrow
+ * (music, which search never answers, only on the eyebrow). The
  * known subtypes come from the message catalogue; one Kitsu adds later
  * shows as Kitsu spells it until it gets a message. A missing subtype
  * reads as TV, which is what Kitsu means by omitting it. Labels are
@@ -19,6 +20,9 @@ const LABEL_BY_SUBTYPE: Readonly<Record<string, () => string>> = {
 	ona: m.app_subtype_ona,
 	music: m.app_subtype_music
 };
+
+/** The subtypes with a label of their own, lower-cased. */
+export const LABELLED_SUBTYPES: readonly string[] = Object.keys(LABEL_BY_SUBTYPE);
 
 export function subtypeLabel(subtype: string | null | undefined): string {
 	const raw = subtype ?? 'TV';
