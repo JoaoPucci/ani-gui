@@ -1813,8 +1813,10 @@
 			detail ? { id: detail.id, status: detail.status, episodes: detail.episode_count } : null
 		)
 	);
-	// The counts behind `hasNext` belong to another show: the page,
-	// reused for a new one, still holds the detail it read at mount.
+	// The counts behind `hasNext` belong to another show: a page that
+	// sees its id change still holds the detail it read at mount. The
+	// route mounts a new page for another show (./+layout.svelte), but
+	// this guard predates that and still holds for any page that does.
 	const countsStale = $derived(detail !== null && detail.id !== id);
 	const nextOpen = $derived(stepOpen(hasNext, countsStale, upNextCard !== null));
 	let upNextDismissed = $state(false);
