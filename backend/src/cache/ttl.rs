@@ -20,6 +20,18 @@ pub const ANIME_DETAIL_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60); //
 /// is cheap.
 pub const EPISODES_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
 
+/// How long a row that follows a show's airing is kept: a finished
+/// show's for [`ANIME_DETAIL_TTL`] (7d), any other show's — airing, to
+/// come, or of a status nobody said — for a day.
+#[must_use]
+pub const fn show_row_ttl(finished: bool) -> Duration {
+    if finished {
+        ANIME_DETAIL_TTL
+    } else {
+        EPISODES_TTL
+    }
+}
+
 /// TTL for AniList `streamingEpisodes` lookups by MAL id, used to
 /// backfill per-episode thumbnails Kitsu doesn't carry. Aligned with
 /// [`EPISODES_TTL`] (1d) — Crunchyroll's per-episode metadata is
@@ -111,5 +123,12 @@ mod tests {
         assert!(DISCOVERY_TTL < EPISODES_TTL);
         assert!(EPISODES_TTL < ANIME_DETAIL_TTL);
         assert!(ANIME_DETAIL_TTL < TITLE_MATCH_TTL);
+    }
+
+    #[test]
+    fn a_finished_show_s_row_keeps_the_week_and_any_other_a_day() {
+        // Exhaustive: the input is a bool.
+        assert_eq!(show_row_ttl(true), ANIME_DETAIL_TTL);
+        assert_eq!(show_row_ttl(false), EPISODES_TTL);
     }
 }

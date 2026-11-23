@@ -44,15 +44,17 @@ fn cache_anilist_eps_thumbs(
     outcome: &std::result::Result<StreamingListing, ()>,
 ) {
     let key = anilist_eps_thumbs_key(kitsu_id);
-    let (listing, ttl) = match outcome {
-        Ok(l) => (l.clone(), ANILIST_STREAMING_EPS_TTL.as_secs()),
-        Err(()) => (
-            StreamingListing::default(),
-            ANILIST_STREAMING_EPS_NO_IDS_TTL.as_secs(),
-        ),
-    };
+    let listing = outcome.clone().unwrap_or_default();
     if let Ok(body) = serde_json::to_string(&listing) {
-        let _ = meta_cache_put(pool, &key, &body, ttl);
+        let _ = meta_cache_put(pool, &key, &body, listing_ttl(outcome));
+    }
+}
+
+/// How long the outcome of an AniList lookup is kept, in seconds.
+fn listing_ttl(outcome: &std::result::Result<StreamingListing, ()>) -> u64 {
+    match outcome {
+        Ok(_) => ANILIST_STREAMING_EPS_TTL.as_secs(),
+        Err(()) => ANILIST_STREAMING_EPS_NO_IDS_TTL.as_secs(),
     }
 }
 

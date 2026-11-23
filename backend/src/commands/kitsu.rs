@@ -1023,10 +1023,7 @@ pub(crate) fn anime_detail_key(id: &str) -> String {
 /// finishes, its count gets corrected — so only a finished show keeps
 /// the week; anything else, an unknown status included, a day.
 pub(crate) fn anime_detail_ttl(status: Option<&str>) -> u64 {
-    match status {
-        Some("finished") => ANIME_DETAIL_TTL.as_secs(),
-        _ => EPISODES_TTL.as_secs(),
-    }
+    crate::cache::ttl::show_row_ttl(status == Some("finished")).as_secs()
 }
 
 /// Seed [`kitsu_anime_detail`]'s cache with a ref some other lookup
