@@ -901,6 +901,6 @@ proptest::proptest! {
             (Ok(_), true) => 7 * DAY,
             (Ok(_), false) => DAY,
         };
-        proptest::prop_assert_eq!(listing_ttl(&outcome), want);
+        proptest::prop_assert_eq!(listing_ttl(&outcome, true), want);
     }
 }

@@ -47,7 +47,8 @@ fn cache_anilist_eps_thumbs(
     let key = anilist_eps_thumbs_key(kitsu_id);
     let listing = outcome.clone().unwrap_or_default();
     if let Ok(body) = serde_json::to_string(&listing) {
-        let _ = meta_cache_put(pool, &key, &body, listing_ttl(outcome));
+        let settled = crate::commands::show_settled::held_settled(pool, kitsu_id);
+        let _ = meta_cache_put(pool, &key, &body, listing_ttl(outcome, settled));
     }
 }
 
@@ -56,7 +57,7 @@ fn cache_anilist_eps_thumbs(
 /// ([`show_row_ttl`]): a finished show's stills, or
 /// its having none, do not change, so they keep the week; any other
 /// show's are asked again daily as its episodes air.
-fn listing_ttl(outcome: &std::result::Result<StreamingListing, ()>) -> u64 {
+fn listing_ttl(outcome: &std::result::Result<StreamingListing, ()>, _settled: bool) -> u64 {
     match outcome {
         Ok(listing) => show_row_ttl(listing.finished).as_secs(),
         Err(()) => ANILIST_STREAMING_EPS_NO_IDS_TTL.as_secs(),
