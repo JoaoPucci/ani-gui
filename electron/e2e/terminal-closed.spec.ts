@@ -51,7 +51,7 @@ const TERMINAL = path.join(__dirname, "fixtures", "terminal", "on-a-terminal.py"
 
 test.beforeAll(() => {
   if (!existsSync(packagedBinary)) {
-    throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package`);
+    throw new Error(`prereq missing: ${packagedBinary}\nrun: cd electron && pnpm run package:e2e`);
   }
   // The terminal fixture is a Python script.
   try {

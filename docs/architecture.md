@@ -333,7 +333,8 @@ candidates.
 ## Remote flags
 
 Remote flags are values a released build reads at launch from a file
-on GitHub, so a flag can change without shipping a release. The code is
+on GitHub, so a flag can change without shipping a release, and, from a
+signed file, a feature that ships off can be switched on. The code is
 in `backend/src/flags/`. How to edit the file is in
 [`development.md`](./development.md#remote-flags).
 
@@ -345,8 +346,9 @@ repository's `flags` branch:
 ```
 
 The backend reads it from
-`https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json`.
-The renderer never fetches it. `GET /api/flags` answers, once the
+`https://raw.githubusercontent.com/JoaoPucci/ani-gui/flags/flags.json`,
+and its detached signature from the same address with `.minisig`
+appended. The renderer never fetches either. `GET /api/flags` answers, once the
 launch's flags are decided, with their values and where they came from
 (`origin`: `file`, `cache`, `defaults`, or `test` in a test run).
 
@@ -361,10 +363,14 @@ no entry at all) and when there is no usable file. Flags the build does
 not declare are ignored. The value resolution returns is the
 declaration's own, never one copied from the file.
 
-**This build declares no flag, and has no kind to declare one with.**
-`flags::FlagKind` has no variant outside the tests, so `DECLARED` can
-only be empty, and the unsigned file can change nothing. A kind arrives
-with the change that verifies the file (below).
+**One kind: a rollout, which only a signed file turns on.** A flag is
+declared as a `flags::FlagKind::Rollout`: a feature that ships off. Any
+file may send `false` for it. `true` turns the feature on, and counts
+only in a file whose signature verifies (see "What a signature adds"
+below); from any other file it is dropped, and the flag stays off. A
+release declares no flag yet, so even a signed file changes nothing
+(only a test-run build declares one, the probe the end-to-end suite
+drives).
 
 **Read through the declaration, on only for `true`.** Consumers read a
 flag through its declaration (`Resolved::enabled`), never through a name
@@ -372,8 +378,8 @@ typed out again, so a misspelt or undeclared flag reads off. The
 renderer reads one through `flagOn(name)` (`frontend/src/lib/flags.ts`),
 which is on only when the window was opened with exactly `true` for it:
 a window opened without flags, a backend that never answered and a flag
-the set does not hold all read off. Whether a flag's other values are
-safe for the feature it gates is not something a type can see, so each
+the set does not hold all read off. Whether a feature is safe to turn
+on from a signed file is not something a type can see, so each
 declaration states its case in `safe_because`, and a test refuses a
 declaration that leaves it empty.
 
@@ -385,12 +391,36 @@ the flags with that value in force. A test over `DECLARED` fails while
 any value of a declared flag has no case, or a case names a flag or
 value no longer declared.
 
-**Why the file is not signed.** With no flag declared, no value the file
-sends can take effect, so someone who rewrote the file in transit, or
-got write access to the branch, could change nothing. A flag kind must
-not be added until the file is verified. The verifier to adopt then is
-the minisign signature check proposed for the in-app updater (#342) and
-the notification center (#351).
+**What a signature adds.** Each attempt at the file also asks for
+`flags.json.minisig`, at the same time, from the same branch and host.
+Once the file has arrived the signature gets at most 750 ms more; one
+that is later, missing, over 4 KiB or not a signature counts as none,
+and costs the turn-on, never the flags. The launch's two-second cap
+counts the signature's wait too, so a file that arrives late in the cap
+beside a slower signature can miss it; it is then cached for the next
+launch, as any late file is. The backend verifies the file's
+exact bytes with minisign (Ed25519 over BLAKE2b-512, the prehashed form
+only) against the public keys compiled into the build
+(`flags::signature::TRUSTED_KEYS`); any of them will do, so a new key
+can ship a release before the maintainer signs with it. A verified file
+is used whole. Any other file loses every `true` and keeps the rest,
+which can only leave features off: so someone who rewrote the file in
+transit, or got write access to the branch without the signing key,
+can switch nothing on that the maintainer has not signed before (an
+older signed pair, below). That is also why the flags still apply while
+signing is not set up, or when a signature is stale: an unsigned edit
+can still turn a feature off. What is cached is the admitted document
+(see "The last good copy" below). The shipped build trusts no key yet,
+so no file turns anything on until a release adds one. Signing,
+trusting and rotating a key are in [`development.md`](./development.md#signing-the-flags-file).
+
+What a signature does not cover: the cached copy is the user's own disk
+and is read back without checking again, so a feature a verified file
+turned on stays on for up to the cache's seven days on a machine that
+cannot reach the file, including after the signature is withdrawn; and
+an older signed pair of file and signature, republished, verifies
+again. A feature meant to go off again is set to `false`, which any
+file may do.
 
 **Decided once per launch, behind the splash.** The flags are decided
 once, within two seconds of the backend starting its refresh (just
@@ -586,23 +616,41 @@ decide them otherwise. A copy dated in the
 future (a clock set back) counts as too old. The cached copy goes
 through the same resolution as a fetched file, so a cache written by
 another build, or edited by hand, still resolves only to values this
-build declares. Why seven days: every value a document can produce is
-one its flag's declaration allows, so a cached copy resolves only to
-what this build accepts. Its age only limits how long a value the
-maintainer has since changed stays in force on a machine that cannot
-reach GitHub. A week covers a stretch of launches without the network,
-such as a trip, a captive portal or a blocked CDN, so a flag keeps its
-value through it. And even on a machine that never reaches the file
-again, a changed value clears within the week.
+build declares. The cache marks an entry verified when its document
+holds a `true`, which only a verified file keeps through admission. An
+entry without the mark is admitted again when it is read, as an
+unsigned file. That covers the caches the first remote flags release
+wrote, which kept the file as fetched with nothing checked: they cannot
+turn a feature on, and their other flags are kept. Why seven days:
+every value a document can produce is one its flag's declaration
+allows, and a cached copy turns a feature on only if the maintainer
+signed that. Its age only limits how long a value the maintainer has
+since changed (a feature turned off again) stays in force on a machine
+that cannot reach GitHub. A week covers a stretch of launches without
+the network, such as a trip, a captive portal or a blocked CDN, so a
+flag keeps its value through it. And even on a machine that never
+reaches the file again, a changed value clears within the week.
 
 **Test runs bring their own flags.** A test run is a launch with
 `ANI_GUI_UNATTENDED=1`, which the end-to-end launch helper and the
 backend's integration tests always set. A test run's backend never
 fetches the live file, so a flipped flag or a slow or rate-limited CDN
 cannot change a test's result. It takes its flags from the file
-`ANI_GUI_TEST_FLAGS_FILE` names, resolved like the live one, or the
-defaults when that names none. `ANI_GUI_TEST_FLAGS_FILE` means nothing
-without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
+`ANI_GUI_TEST_FLAGS_FILE` names, admitted and resolved like the live
+one (a `true` in it counts only when a `.minisig` beside it verifies
+under the build's keys), or the defaults when that names none. A
+backend built with the `test-run-key` cargo feature, which only test
+builds enable, also trusts a test run's file under a fixture key whose
+secret is public, and declares a probe flag that gates nothing; the
+live file is never trusted under that key. The end-to-end suite runs a
+package whose backend has the feature, so it can run every flag off and
+on (`electron/e2e/flags/`). No release script enables it
+(`tests/arch/test_run_key.sh`, both platforms), and the e2e workflow
+builds the release-shaped Linux package, and the Windows backend as a
+Windows release builds it, in jobs of their own and checks that
+neither backend contains the key. The Packages workflow, which builds
+the release files, makes the same check on each package's backend.
+`ANI_GUI_TEST_FLAGS_FILE` means nothing without `ANI_GUI_UNATTENDED=1`. `backend/tests/flags_launch.rs` proves
 it by watching the network: a test run never asks for
 raw.githubusercontent.com, and a normal launch does. Development runs
 (`pnpm dev`) are normal launches and read the live file.
@@ -638,7 +686,7 @@ While it plays, the engine keeps about 30 seconds of already-played video behind
 
 Each episode's position is kept in the renderer's local storage (`ani-gui.watch-positions`, the 200 most recent episodes): the episode is marked started, at zero, when it is chosen — the detail page's Play button or tiles, the Continue card, the player's episode switch, before the resolve that records the watch — and again when its stream attaches, either time unless a point is already kept for it. Its position is written as it plays, when it pauses and when its stream is replaced or the page leaves. Opening the episode again loads it fresh and seeks there once its metadata is in, unless a stale-stream recovery's position is pending for it, which is fresher. A position under 15 seconds in is kept as the started mark, so the episode reopens from its start; a position within the last 90 seconds, or an episode played to its end, is finished and forgotten. An ended episode stays forgotten when its stream is replaced or the page leaves, whatever its length and however short; only playing it again on the same stream keeps its position once more. A point in the first seconds is never judged finished, however short the stream, and a started mark opens without waiting for the stream's length. A point saved while the stream's length was not yet known cannot be judged then; the next visit checks it once the stream reports a known length — at its metadata, or, when the length is still unknown then, at the first change that brings one — and forgets one that falls in the last 90 seconds instead of seeking to it. Nothing drops the wait: the engine's own seeks are not the viewer, the player holds the stream while it waits (below), and once the hold's bound has revealed the stream the player's seek controls still need a known length, so nothing the viewer does through them reaches it — the resume lands when the length arrives. Until then no position is written for the stream, so leaving keeps the point; a stream whose length never becomes known writes no position, though one that plays to its end still forgets the point, as any ended episode does. Until a visit judges it, such a point still makes its episode the Continue target.
 
-An episode opened at a point — a kept point past zero, or a recovery's — does not show its stream's first frame in the player. From the moment the stream attaches, the player keeps its loading treatment: the picture is hidden behind the spinner, the controls are hidden and inert, Chromium's own controls bar is off, the play and seek shortcuts and a click on the picture do nothing, and auto-skip waits. The element's autoplay is off for the while, and anything else that starts playback, such as a media key, is paused again: the resume wins. The picture is revealed, fading in at the point, once the resume seek has landed within two seconds of it and frames are playing there; when autoplay is refused, it is revealed paused once the frame at the point is in. Hiding the picture is not enough on its own, because picture-in-picture and a `<video>` that is itself fullscreen show the element, not the page: so an hls stream played through hls.js also starts at the point. The engine begins loading at the fragment that holds the point rather than at the first fragment, so nothing before that fragment is fetched, and none of it can be shown, in the page or anywhere else the element is shown; the engine moves the playhead to the point as soon as that fragment is buffered. An mp4 stream has no such start: the element plays it from its start until the seek lands, so picture-in-picture can still show its first frame (see `docs/deferred-work.md`). A point that turns out to be in the last 90 seconds is forgotten and the stream plays from its start: an hls stream, which the engine started at the point, is sought back to its start and revealed once that seek lands, and an mp4 stream, already at its start, is revealed there at once. The hold is bounded: the wait for the seek to be issued, and once it is, the wait for it to land and play, each last at most fifteen seconds — each waits on one fragment, the first the stream loads or the one at the point, and fifteen seconds is how long the engine lets a fragment take before it counts the load as timed out. When a wait runs out the picture is revealed anyway and plays from where it is; the resume is not given up, so a seek still to come is still made when its metadata or length arrives, and the point is still not written over until then. A started mark, or no point at all, opens the stream as it always did.
+An episode opened at a point — a kept point past zero, or a recovery's — does not show its stream's first frame in the player. From the moment the stream attaches, the player keeps its loading treatment: the picture is hidden behind the start veil, the controls are hidden and inert, Chromium's own controls bar is off, the play and seek shortcuts and a click on the picture do nothing, and auto-skip waits. The element's autoplay is off for the while, and anything else that starts playback, such as a media key, is paused again: the resume wins. The picture is revealed, fading in at the point, once the resume seek has landed within two seconds of it and frames are playing there; when autoplay is refused, it is revealed paused once the frame at the point is in. Hiding the picture is not enough on its own, because picture-in-picture and a `<video>` that is itself fullscreen show the element, not the page: so an hls stream played through hls.js also starts at the point. The engine begins loading at the fragment that holds the point rather than at the first fragment, so nothing before that fragment is fetched, and none of it can be shown, in the page or anywhere else the element is shown; the engine moves the playhead to the point as soon as that fragment is buffered. An mp4 stream has no such start: the element plays it from its start until the seek lands, so picture-in-picture can still show its first frame (see `docs/deferred-work.md`). A point that turns out to be in the last 90 seconds is forgotten and the stream plays from its start: an hls stream, which the engine started at the point, is sought back to its start and revealed once that seek lands, and an mp4 stream, already at its start, is revealed there at once. The hold is bounded: the wait for the seek to be issued, and once it is, the wait for it to land and play, each last at most fifteen seconds — each waits on one fragment, the first the stream loads or the one at the point, and fifteen seconds is how long the engine lets a fragment take before it counts the load as timed out. When a wait runs out the picture is revealed anyway and plays from where it is; the resume is not given up, so a seek still to come is still made when its metadata or length arrives, and the point is still not written over until then. A started mark, or no point at all, opens the stream as it always did.
 
 An episode's watched mark is written when it starts, so the last watched episode is the one the viewer was in when they left. When that episode has a kept position — the started mark included — the Continue Watching card and the detail page's Play button go back to it — the card shows its number, and the button reads "Continue · Episode N" (or "Continue" for a movie) rather than Replay; once it is finished, or with nothing kept for it (pushed out by the 200-episode cap, or storage refused), they go on to the next episode as before. An episode whose stream fails to load every time stays the Continue target: it is the one the viewer chose, and it is marked started as its stream attaches. Only the last watched episode is asked about: a position kept for an older one does not pull Continue back. Removing a show's Continue card forgets its kept positions — under the Kitsu id its history row records, whether or not Kitsu still serves that entry, and under the entry the card was shown as, or, for a card whose match never resolved, the show id → Kitsu id mapping a play stamps, read before the removal deletes it (it expires thirty days after the show's last play and can be refused or dropped as wrong); a show known by none of these keeps them. A show another remaining history row is still a card of keeps them too. That row's show is the card it is — the entry the home page resolved and shows for it, since a card's plays key positions by that entry — or, for a row not yet resolved, the Kitsu id it records unless Kitsu's detail read answers that entry gone (a 404 or 410), then its stamped mapping. This follows the card, not the detail page's resume lookup (`history_by_kitsu`), which reads an entry as gone from the cached mark and never names a row that recorded no id by its title match. The positions are dealt with after the card is gone: a slow Kitsu read does not hold the removal, and what it forgets is only what was kept when the rows were gone — a position the user writes or rewrites meanwhile, playing the removed show again, stays, as does a recovery point captured meanwhile; an episode only picked meanwhile loses its old point all the same and stays started, at zero. Every show keeps them when a remaining row's show cannot be told — its match unresolved and Kitsu's read of the id it records answering neither way, or no standing recorded id and no readable stamped mapping. Those rules find positions by show, and a card's match can be a guess a later load corrects, leaving the positions its plays kept under the guessed show on no show the card names. So a session a Continue card opened carries the card's history row — its provider show id — in its URL (`row`, beside `guess`, kept on every episode switch), and each position it writes, the started marks included, records that row as a third element; the latest write decides it, so a later play of the episode from the detail page, which carries no row, takes the position back to the show rules. Once the deletes succeed, removing the card forgets every position recorded for a removed row unless its show is one a remaining row is a card of, and none while a remaining row's show cannot be told — the show rules' exceptions, told the same way and at the same time. That exception matters here: a card's play resolves by its match's title, so a guessed card's play can land on another provider show and record its watch under that row, which may then be the card of the show played. No remaining row has a removed row's id, since a delete takes every row of it; a group delete that fails partway forgets nothing, and its removed rows' recorded positions are then reachable only through the show rules. Positions kept before rows were recorded carry none and follow the show rules alone. Clearing the history forgets them all. Forgetting a show's positions, a removed row's, or all of them, also drops a pending stale-stream recovery point for that show, which otherwise waits in memory for the episode's next attach.
 
