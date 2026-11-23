@@ -12,22 +12,30 @@
  * Layout and paint are the subject, so this runs in the packaged app's
  * Chromium with forced colours emulated (the theme's colours, not only
  * the media query: the test checks a box shadow is dropped). For each
- * state it takes a picture of the control in one state, changes the
- * state, and takes another: at least a 4 by 4 patch's worth of pixels
- * must differ plainly between the two. A fill or a bar is
- * pictured with it shown and with it hidden, which must differ as well.
- * Nothing else changes between the two pictures: the mouse rests in
- * the window's corner, nothing has focus, and the control's words are
- * left out (the theme colours text itself, and a state must not rest
- * on that).
+ * state it pictures the control in one state, changes the state, and
+ * pictures it again: at least a 4 by 4 patch's worth of pixels must
+ * differ plainly between the two, and the two pictures must be the same
+ * size. A button or a rail link is pictured by the band along its edge,
+ * away from its words, which the theme colours itself (past its outer
+ * two pixels, where a separator's shade changes, for a button). A fill,
+ * a track or a bar is pictured shown and hidden, which must differ as
+ * well. Nothing else changes between the two pictures: the mouse rests
+ * in the window's corner and nothing has focus, but in the topbar's
+ * results (whose field keeps focus) and the player (whose controls stay
+ * up under the mouse, and whose volume shows while its field has
+ * focus).
  *
- * What it covers: the settings switches and segmented controls, a
- * show's Sub/Dub control, the rail's current page, the download bar's
- * and the download list's progress, the search's progress bar, and the
- * player's timeline and volume fill. A state shown by
- * text as well (a switch's On/Off label) is still pictured without that
- * text: the control itself must show it. Every API request is stubbed,
- * but for the player test's play and stream (see real-play.ts).
+ * What it covers: Home's hero pager, the rail's current page and its
+ * version link, the settings switches and segmented controls, a show's
+ * Sub/Dub control, the download dialog's modes, the download bar's and
+ * the download list's progress, the topbar's picked result, the search
+ * page's sort and type chips, the search's progress bar, and the
+ * player's timeline and volume fills and tracks. A state shown by text
+ * as well (a switch's On/Off label) is still pictured without that
+ * text: the control itself must show it. Keyboard focus in this theme
+ * is not checked here (focus-rings.spec.ts). Every API request is
+ * stubbed, but for the player test's play and stream (see
+ * real-play.ts).
  */
 import { type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { expect, test } from './policy-guard';
@@ -154,9 +162,9 @@ async function still(page: Page) {
  *  past its outer two pixels (a hairline separator's shade is not a
  *  state): a control's words sit in its middle, and the theme colours
  *  text itself, so a state must show around them. */
-function pixelsApart(page: Page, a: Buffer, b: Buffer, band?: number): Promise<number> {
+function pixelsApart(page: Page, a: Buffer, b: Buffer, band?: number, skip = 2): Promise<number> {
 	return page.evaluate(
-		async ([a64, b64, edge]) => {
+		async ([a64, b64, edge, inner]) => {
 			const load = async (s: string) => {
 				const img = new Image();
 				img.src = `data:image/png;base64,${s}`;
@@ -169,14 +177,15 @@ function pixelsApart(page: Page, a: Buffer, b: Buffer, band?: number): Promise<n
 				return { data: ctx.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height };
 			};
 			const [{ data: x, w, h }, { data: y }] = await Promise.all([load(a64), load(b64)]);
-			if (x.length !== y.length) return Number.POSITIVE_INFINITY;
+			// Pictures of different sizes say nothing about a state.
+			if (x.length !== y.length) return -1;
 			let n = 0;
 			for (let i = 0; i < x.length; i += 4) {
 				if (edge !== null) {
 					const px = (i / 4) % w;
 					const py = Math.floor(i / 4 / w);
 					const d = Math.min(px, py, w - 1 - px, h - 1 - py);
-					if (d < 2 || d >= edge) continue;
+					if (d < inner || d >= edge) continue;
 				}
 				const d =
 					Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2]);
@@ -184,7 +193,7 @@ function pixelsApart(page: Page, a: Buffer, b: Buffer, band?: number): Promise<n
 			}
 			return n;
 		},
-		[a.toString('base64'), b.toString('base64'), band ?? null] as const
+		[a.toString('base64'), b.toString('base64'), band ?? null, skip] as const
 	);
 }
 
@@ -198,20 +207,36 @@ async function shows(
 	target: Locator,
 	what: string,
 	change: () => Promise<void>,
-	band?: number
+	band?: number,
+	{ skip = 2, keepFocus = false }: { skip?: number; keepFocus?: boolean } = {}
 ) {
-	await still(page);
+	const settle = async () => {
+		if (keepFocus) {
+			await page.mouse.move(1, 1);
+			await page.evaluate(
+				() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+			);
+		} else await still(page);
+	};
+	await settle();
 	const before = await target.screenshot();
 	await change();
-	await still(page);
+	await settle();
 	const after = await target.screenshot();
 	const slug = what.replace(/[^a-z0-9]+/gi, '-');
 	fs.writeFileSync(test.info().outputPath(`${slug}-before.png`), before);
 	fs.writeFileSync(test.info().outputPath(`${slug}-after.png`), after);
 	expect
-		.soft(await pixelsApart(page, before, after, band), `${what} shows in a forced-colours theme`)
+		.soft(
+			await pixelsApart(page, before, after, band, skip),
+			`${what} shows in a forced-colours theme`
+		)
 		.toBeGreaterThanOrEqual(SEEN);
 }
+
+/** A pattern matching `label` and nothing more. */
+const exactly = (label: string) =>
+	new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`);
 
 /** Hides or shows an element without moving anything. */
 const hidden = (target: Locator, hide: boolean) =>
@@ -239,6 +264,33 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		await forcedColours(page);
 		await expect(page.getByText(/top rated/i).first()).toBeVisible({ timeout: 15_000 });
 
+		// Home's hero pager, with three shows to feature: it shows at all,
+		// and which show is on.
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			if (p !== '/api/kitsu/trending-anilist') return r.fallback();
+			const three = [0, 1, 2].map((i) => ({ ...trending[0], id: `${trending[0].id}${i}` }));
+			return answer(r, {
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify(three)
+			});
+		});
+		const homeUrl = page.url();
+		await page.goto('about:blank');
+		await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
+		await forcedColours(page);
+		const pager = page.locator('.hero-pager');
+		await expect(pager).toBeVisible({ timeout: 15_000 });
+		await shows(page, pager, "the hero's pager", async () => {
+			for (const track of await pager.locator('.hero-pager-track').all()) {
+				await hidden(track, true);
+			}
+		});
+		for (const track of await pager.locator('.hero-pager-track').all()) await hidden(track, false);
+		const second = pager.locator('.hero-pager-dot').nth(1);
+		await shows(page, second, "the hero pager's current show", () => second.click());
+
 		// The rail: the Settings link, on Home and then on Settings.
 		const settingsLink = page.locator('a.nav-link[href$="/settings"]');
 		await shows(
@@ -252,8 +304,25 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 					timeout: 15_000
 				});
 			},
-			6
+			6,
+			{ skip: 0 }
 		);
+
+		// The version link at the rail's foot, on Settings and on About.
+		const foot = page.locator('a.rail-foot');
+		await shows(
+			page,
+			foot,
+			"the rail's version link, current",
+			async () => {
+				await foot.click();
+				await expect.poll(() => page.url()).toContain('/about');
+			},
+			6,
+			{ skip: 0 }
+		);
+		await settingsLink.click();
+		await expect(page.locator('select.select-input').first()).toBeVisible({ timeout: 15_000 });
 
 		// Each switch, off and on. Its On/Off label is left out of the
 		// picture: the switch itself must show it. A button or a rail link
@@ -280,7 +349,7 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			// may change with the choice and is not the control's state.
 			const next = group.locator('.seg-btn:not(.active):not(:disabled)').first();
 			const label = (await next.textContent())?.trim() ?? '';
-			const button = group.locator('.seg-btn', { hasText: label }).first();
+			const button = group.locator('.seg-btn', { hasText: exactly(label) }).first();
 			await shows(
 				page,
 				button,
@@ -299,7 +368,7 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		const other = audio.locator('.seg-btn:not(.active):not(:disabled)').first();
 		if (await other.count()) {
 			const label = (await other.textContent())?.trim() ?? '';
-			const button = audio.locator('.seg-btn', { hasText: label }).first();
+			const button = audio.locator('.seg-btn', { hasText: exactly(label) }).first();
 			await shows(
 				page,
 				button,
@@ -350,6 +419,12 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			.getByRole('button', { name: message('detail', 'download_button'), exact: true })
 			.click();
 		const dialog = page.getByRole('dialog');
+		// The dialog's mode buttons: Range chosen.
+		const range = dialog.locator('.dl-mode-btn', {
+			hasText: exactly(message('download', 'mode_range'))
+		});
+		await expect(range).toBeVisible();
+		await shows(page, range, "the download dialog's Range mode, chosen", () => range.click(), 6);
 		await dialog.getByRole('button', { name: message('download', 'button_confirm') }).click();
 		const bar = page.locator('.dl-bar-progress');
 		await expect(bar).toBeVisible({ timeout: 15_000 });
@@ -366,18 +441,62 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		);
 		await page.keyboard.press('Escape');
 
-		// The search's progress bar, while a search is out.
-		await page.route('**/api/kitsu/search/page', () => {
-			// Held: the search stays in flight.
+		// The topbar's live results: the row the arrow keys pick.
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const hits = topRated.map((s, i) => ({ ...s, id: `${s.id}${i}` }));
+			if (p === '/api/kitsu/search') {
+				return answer(r, {
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify(hits)
+				});
+			}
+			if (p === '/api/kitsu/search/page') {
+				return answer(r, {
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({ hits, next_offset: null })
+				});
+			}
+			return r.fallback();
 		});
 		const field = page.locator('input[type="search"]').first();
 		await field.fill('fullmetal');
+		const firstHit = page.locator('.topbar-hit').first();
+		await expect(firstHit).toBeVisible({ timeout: 15_000 });
+		await shows(page, firstHit, "the topbar's picked result", () => field.press('ArrowDown'), 6, {
+			keepFocus: true
+		});
+		await field.press('Escape');
+
+		// The search page's sort and type chips: one chosen.
+		await field.fill('fullmetal');
+		await field.press('Enter');
+		await expect.poll(() => page.url()).toContain('/search');
+		// Found by its words, so the pictures follow the same chip.
+		const unsorted = page.locator('.chips[role="radiogroup"] .chip[aria-checked="false"]').first();
+		await expect(unsorted).toBeVisible({ timeout: 15_000 });
+		const sortLabel = (await unsorted.textContent())?.trim() ?? '';
+		const sort = page.locator('.chips[role="radiogroup"] .chip', { hasText: exactly(sortLabel) });
+		await shows(page, sort, 'a search sort, chosen', () => sort.click(), 6);
+		const typeChip = page.locator('.chips[role="group"] .chip:not(.chip-clear)').first();
+		await shows(page, typeChip, 'a search type filter, chosen', () => typeChip.click(), 6);
+
+		// The search's progress bar, while a search is out.
+		const hold = '**/api/kitsu/search/page';
+		await page.route(hold, () => {
+			// Held: the search stays in flight.
+		});
+		await page.locator('a.brand').click();
+		await field.fill('bebop');
 		await field.press('Enter');
 		const searching = page.locator('.search-progress');
 		await expect(searching).toBeVisible({ timeout: 15_000 });
 		await shows(page, searching, "the search's progress bar", () =>
 			hidden(searching.locator('.search-progress-bar'), true)
 		);
+		await page.unroute(hold);
 		await cdp.detach().catch(() => {});
 	} finally {
 		await stopApp(app);
@@ -454,22 +573,26 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 				if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 			};
 			await keepUp();
+			// Pictured without moving the mouse away, which would hide the
+			// controls: a part hidden, then shown.
+			const apart = async (frame: Locator, part: Locator, what: string) => {
+				const before = await frame.screenshot();
+				await hidden(part, true);
+				await page.evaluate(
+					() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+				);
+				const after = await frame.screenshot();
+				expect
+					.soft(await pixelsApart(page, before, after), `${what} shows in a forced-colours theme`)
+					.toBeGreaterThanOrEqual(SEEN);
+			};
 			const fill = page.locator('.pc-scrubber-fill');
 			await expect(fill).toBeVisible();
-			// Pictured without moving the mouse away, which would hide the
-			// controls: the fill hidden, then shown.
-			const before = await scrubber.screenshot();
-			await hidden(fill, true);
-			await page.evaluate(
-				() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-			);
-			const after = await scrubber.screenshot();
-			expect
-				.soft(
-					await pixelsApart(page, before, after),
-					"the timeline's fill shows in a forced-colours theme"
-				)
-				.toBeGreaterThanOrEqual(SEEN);
+			await apart(scrubber, fill, "the timeline's fill");
+			// The track the fill runs along, with the fill hidden: the length
+			// of the episode, against which the fill reads.
+			await apart(scrubber, page.locator('.pc-scrubber-track'), "the timeline's track");
+			await hidden(page.locator('.pc-scrubber-track'), false);
 			await hidden(fill, false);
 
 			// The volume, revealed by its field's focus.
@@ -477,18 +600,8 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 			await page.locator('.pc-volume-slider input').focus();
 			const vFill = page.locator('.pc-volume-fill');
 			await expect(vFill).toBeVisible();
-			const vBefore = await volume.screenshot();
-			await hidden(vFill, true);
-			await page.evaluate(
-				() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-			);
-			const vAfter = await volume.screenshot();
-			expect
-				.soft(
-					await pixelsApart(page, vBefore, vAfter),
-					"the volume's fill shows in a forced-colours theme"
-				)
-				.toBeGreaterThanOrEqual(SEEN);
+			await apart(volume, vFill, "the volume's fill");
+			await apart(volume, page.locator('.pc-volume-track'), "the volume's track");
 		} finally {
 			await stopApp(app);
 		}
