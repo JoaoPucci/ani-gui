@@ -15,8 +15,8 @@ use super::strip_view::{franchise_summary, FranchiseSummary, StripKind};
 use super::{Franchise, HistoryRow, Progress, WatchEntry, WatchOrder, WatchRun};
 
 // What follows a finale (the player's card, Home's hand-offs) lives in
-// the sibling `wire_next` module so this file stays under the CRAP
-// high-risk bar; it reads entries through this module's `Reading`.
+// the `next` submodule (`wire_next.rs`) so this file stays under the
+// CRAP high-risk bar; it reads entries through this module's `Reading`.
 #[path = "wire_next.rs"]
 mod next;
 pub use next::{rail_view, up_next_view, NextWire, RailRequest, RailView, UpNextView, UpNextWire};

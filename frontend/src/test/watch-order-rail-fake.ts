@@ -1,5 +1,5 @@
 // A fake of the backend's Continue rail (`POST /api/watch-order/rail`,
-// backend/src/watch_order/wire.rs `rail_view`), for the acceptance
+// backend/src/watch_order/wire_next.rs `rail_view`), for the acceptance
 // tests: Home reads its rail again whenever what it has read changes,
 // so the requests a scenario sends depend on timing, and no record of
 // answers could hold them all. The fake answers as the backend does;

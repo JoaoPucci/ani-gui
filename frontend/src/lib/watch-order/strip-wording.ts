@@ -8,6 +8,11 @@
  * "Prequel" would be false, so the strip says "Released
  * before"/"Released after" there. A side story's parents are its
  * parents in either order.
+ *
+ * It also decides what an empty column says: that the story starts
+ * there, that it ends there, or that a side story ends there. A
+ * franchise read in part says nothing there, since entries may be
+ * missing.
  */
 import type { StripWire, WatchOrder } from '$lib/api';
 
