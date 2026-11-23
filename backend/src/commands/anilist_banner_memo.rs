@@ -31,15 +31,29 @@ fn warmed_key(kitsu_id: &str) -> String {
 /// Remember what a Continue strip's warm found for a show's banner: the
 /// banner, or `None` where AniList's media has none. Kept apart from the
 /// trending memo: it is read only where the show's detail has no cover
-/// of its own ([`warmed`]), so a show Kitsu has a cover for shows no
-/// AniList banner it did not before.
+/// of its own, and only once ([`take_warmed`]) — the detail row then
+/// carries it for the row's own lifetime, as it carries an answer it
+/// asked for itself. Kept a day at most, as an airing show's detail is.
 pub(crate) fn remember_warmed(pool: &SqlitePool, kitsu_id: &str, banner: Option<&str>) {
     let _ = meta_cache_put(
         pool,
         &warmed_key(kitsu_id),
         banner.unwrap_or(""),
-        ANILIST_BANNER_TTL.as_secs(),
+        WARMED_TTL.as_secs(),
     );
+}
+
+/// How long a warm's banner answer waits for the detail read to take it.
+const WARMED_TTL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// [`warmed`], forgotten once read: the detail read that takes it keeps
+/// it in its own row.
+pub(crate) fn take_warmed(pool: &SqlitePool, kitsu_id: &str) -> Option<Option<String>> {
+    let found = warmed(pool, kitsu_id);
+    if found.is_some() {
+        let _ = meta_cache_delete(pool, &warmed_key(kitsu_id));
+    }
+    found
 }
 
 /// What a strip's warm found for a show's banner: `Some(None)` where

@@ -32,8 +32,10 @@ impl Sent {
 }
 
 /// Await `request` — the `sent` request of a `kind` lane, carrying `ids`
-/// ids — and log its line once it is answered. A single lookup that asks
-/// again by AniList id is one line.
+/// ids — and log its line once it is answered, or turned away unsent by
+/// the gate (its status the rate-limit key). `ms` counts from when the
+/// lane handed it to the gate, its wait for a turn included. A single
+/// lookup that asks again by AniList id is one line.
 pub(crate) async fn logged<T, F: Future<Output = Result<T>>>(
     kind: &'static str,
     sent: Sent,

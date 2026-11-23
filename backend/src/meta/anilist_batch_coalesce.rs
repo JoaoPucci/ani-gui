@@ -79,8 +79,10 @@ tokio::task_local! {
 
 /// Run `f` with every lookup it starts waiting for its lane's window,
 /// the one that opens a lane included, so lookups started together go
-/// as one batch. For a warm no card's look waits on: a card's own
-/// lookup, outside this, still opens its lane and goes at once.
+/// as one batch. For a warm sent before the cards ask: a card's own
+/// lookup, outside this, still opens its lane and goes at once, and one
+/// that arrives while a gathered lane is open rides its batch, up to the
+/// window later than it would have gone alone.
 pub(crate) async fn gathered<F: std::future::Future>(f: F) -> F::Output {
     GATHER.scope(true, f).await
 }

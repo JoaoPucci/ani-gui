@@ -1186,9 +1186,11 @@ async fn anime_detail_read(
         // with that one request; only an unlisted show asks AniList.
         // A Continue strip's warm may have asked AniList for it too,
         // and kept the answer, banner or none.
+        // Taken once: the detail row keeps it from here, for the row's
+        // own lifetime, as it keeps an answer it asked for itself.
         let remembered = super::anilist_banner_memo::remembered(&state.cache_pool, id)
             .map(Some)
-            .or_else(|| super::anilist_banner_memo::warmed(&state.cache_pool, id));
+            .or_else(|| super::anilist_banner_memo::take_warmed(&state.cache_pool, id));
         let banner = match remembered {
             Some(found) => found,
             None => anilist_banner_for(state, id, anilist_base)
@@ -1244,22 +1246,8 @@ async fn anilist_banner_for(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Result<Option<String>> {
-    let ids = super::external_ids::external_ids_for(state, kitsu_id).await?;
-    // Details of a strip's shows read at once share AniList's requests,
-    // per app state and endpoint, as the thumbnail fills do.
-    let lane = super::strip_warm::fill_lane(state, anilist_base);
-    let want = crate::meta::anilist_batch::Want {
-        mal: ids.mal,
-        anilist: ids.anilist,
-    };
-    // The detail renders without it: a background fill.
-    crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_coalesced(
-        &state.meta_http,
-        &lane,
-        want,
-        anilist_base,
-    ))
-    .await
+    // Shared with a strip warm asking for the same show's banner.
+    super::anilist_banner_fill::banner_for_show(state, kitsu_id, anilist_base).await
 }
 
 #[cfg(test)]

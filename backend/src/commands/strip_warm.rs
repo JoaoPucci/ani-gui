@@ -10,14 +10,18 @@
 //! then starts every show's lookups in the same moment, gathered
 //! (`meta::anilist_batch::gathered`), so each kind goes as one batch. A
 //! card's own
-//! lookup that comes while the warm's is out shares it (the thumbnail
-//! lookup's per-show sharing), or finds its answer cached.
+//! lookup that comes while the warm's is out shares it (stills and
+//! banners are both shared per show), or finds its answer cached; one
+//! that arrives while a warm's lane is open rides its page, up to the
+//! window later than it would have gone alone. A card whose own lookup
+//! comes before the warm's — the warm waits for every show's mappings —
+//! goes alone, and the warm's lookup for that show shares it.
 //!
 //! Every lookup counts as a background fill, as the cards' do, and the
 //! warm caches only what they would: the thumbnail listing under its
 //! row, and AniList's answer for a show's banner — the banner, or that
 //! it has none — where the detail read looks for it when Kitsu has no
-//! cover (`anilist_banner_memo::warmed`). A
+//! cover (`anilist_banner_memo::take_warmed`), once. A
 //! warm whose caller has gone is dropped with it.
 
 use crate::app::AppState;
@@ -57,7 +61,7 @@ pub(crate) async fn warm_strip(state: &AppState, kitsu_ids: &[String], anilist_b
     )
     .await;
     // Gathered: the warm's lookups go as one page per kind, none sent
-    // ahead alone — no card's look waits on the warm itself.
+    // ahead alone. A card's own lookup still opens a lane at once.
     let stills = futures_util::future::join_all(ids.iter().map(|id| {
         crate::commands::anilist_eps_thumbs::thumbs_for_show_with_anilist_base(
             state,
@@ -81,21 +85,9 @@ async fn warm_banner(state: &AppState, kitsu_id: &str, anilist_base: Option<&str
     {
         return;
     }
-    let Ok(ids) = crate::commands::external_ids::external_ids_for(state, kitsu_id).await else {
-        return;
-    };
-    if ids.mal.is_none() && ids.anilist.is_none() {
-        return;
-    }
-    let want = crate::meta::anilist_batch::Want {
-        mal: ids.mal,
-        anilist: ids.anilist,
-    };
-    let lane = fill_lane(state, anilist_base);
-    let banner = crate::meta::anilist_gate::in_background(
-        crate::meta::anilist_media::banner_coalesced(&state.meta_http, &lane, want, anilist_base),
-    )
-    .await;
+    // Shared with a card's detail read asking for the same banner.
+    let banner =
+        crate::commands::anilist_banner_fill::banner_for_show(state, kitsu_id, anilist_base).await;
     // An answer is kept, banner or none; no answer, nothing.
     if let Ok(found) = banner {
         crate::commands::anilist_banner_memo::remember_warmed(
