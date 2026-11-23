@@ -101,7 +101,7 @@ fn a_banner_page_reads_each_node_s_banner() {
     assert_eq!(
         several,
         vec![3],
-        "a banner that is not a URL is asked singly"
+        "a banner that is not a string is asked singly"
     );
 }
 

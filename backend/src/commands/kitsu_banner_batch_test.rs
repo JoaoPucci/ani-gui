@@ -88,8 +88,9 @@ async fn serve(respond: impl wiremock::Respond + 'static, http: &str) -> wiremoc
     server
 }
 
-/// Read every show's detail at once, as the strip's cards do; their
-/// mappings first, so the lookups reach AniList in the order given.
+/// Read every show's detail at once, as the strip's cards do, their
+/// mappings read first. Each read still asks Kitsu for the detail before
+/// its banner, so the order the lookups reach AniList in is not fixed.
 async fn read_all(state: &AppState, ids: &[String], base: &str) -> Vec<KitsuAnimeRef> {
     for id in ids {
         let _ = crate::commands::external_ids::external_ids_for(state, id).await;
@@ -139,10 +140,16 @@ async fn a_strip_of_ten_coverless_shows_reads_its_banners_in_two_requests() {
         let kept: KitsuAnimeRef = serde_json::from_str(&row).expect("a detail");
         assert_eq!(banner_of(&kept), m.banner(), "kitsu {id}");
     }
-    assert_eq!(
-        asked_of(&anilist).await,
-        vec![Asked::ByMal(1), Asked::PageByMal((2..=10).collect())]
-    );
+    // Each detail read asks Kitsu for the detail before its banner, so
+    // whichever answer lands first opens the lane: that one goes alone,
+    // and the other nine share one page.
+    let asked = asked_of(&anilist).await;
+    let [Asked::ByMal(first), Asked::PageByMal(page)] = asked.as_slice() else {
+        panic!("the first alone, then one page: {asked:?}");
+    };
+    let mut all: Vec<u32> = page.iter().copied().chain([*first]).collect();
+    all.sort_unstable();
+    assert_eq!(all, (1..=10).collect::<Vec<_>>(), "{asked:?}");
 }
 
 #[tokio::test]
@@ -170,7 +177,7 @@ async fn a_strip_refused_by_anilist_keeps_none_of_its_details() {
         );
     }
     let asked = asked_of(&anilist).await;
-    assert!(matches!(asked.first(), Some(Asked::ByMal(1))), "{asked:?}");
+    assert!(matches!(asked.first(), Some(Asked::ByMal(_))), "{asked:?}");
     assert!(asked.len() <= 3, "{asked:?}");
 }
 
