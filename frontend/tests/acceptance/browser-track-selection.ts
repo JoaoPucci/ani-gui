@@ -47,7 +47,8 @@
 //
 // happy-dom builds a new TextTrackList on every read of `textTracks`,
 // so a listener on one never hears anything. Here each video keeps one
-// list, which reads the video's tracks afresh, and the browser fires
+// list, which reads the video's tracks afresh — in Chromium's order,
+// the `<track>` elements' first — and the browser fires
 // `change` on it a task after any change to a joined track's mode —
 // the script's or the selection's — as Chromium does.
 
@@ -56,6 +57,27 @@ interface Installed {
 }
 
 let paints: (video: Node) => boolean = () => false;
+let made: (
+	video: HTMLMediaElement,
+	kind: string,
+	label: string,
+	lang: string
+) => TextTrack = () => {
+	throw new Error('the browser model is not installed');
+};
+
+/** A track made with `addTextTrack`, as hls.js makes one per playlist
+ *  rendition: it starts disabled, and the browser fires `change` on
+ *  the video's list a task after its mode changes, as for a `<track>`
+ *  element's. The browser's own selection leaves it alone. */
+export function addMadeTrack(
+	video: HTMLMediaElement,
+	kind: string,
+	label: string,
+	lang: string
+): TextTrack {
+	return made(video, kind, label, lang);
+}
 
 type LoadOrder = 'selection-first' | 'load-first';
 let loadOrder: LoadOrder = 'selection-first';
@@ -88,7 +110,17 @@ export function installBrowserTrackSelection(): Installed {
 		let list = lists.get(video);
 		if (!list) {
 			const events = new EventTarget();
-			const fresh = () => freshList!.call(video) as TextTrackList;
+			// Chromium lists the `<track>` elements' tracks first, in tree
+			// order, then those made with `addTextTrack`; happy-dom lists
+			// the made ones first.
+			const fresh = () => {
+				const all = Array.from(freshList!.call(video) as TextTrackList);
+				const own = joined(video).map((t) => t.track);
+				const ordered = [...own, ...all.filter((t) => !own.includes(t))];
+				return Object.assign(ordered, {
+					getTrackById: (id: string) => ordered.find((t) => t.id === id) ?? null
+				});
+			};
 			list = new Proxy(events, {
 				get(target, prop) {
 					if (
@@ -172,6 +204,22 @@ export function installBrowserTrackSelection(): Installed {
 		setTimeout(() => el.dispatchEvent(new Event('load')), 0);
 	}
 
+	made = (video, kind, label, lang) => {
+		const track = video.addTextTrack(kind as TextTrackKind, label, lang);
+		let mode: TextTrackMode = 'disabled';
+		Object.defineProperty(track, 'mode', {
+			configurable: true,
+			get: () => mode,
+			set: (next: TextTrackMode) => {
+				if (next !== 'showing' && next !== 'hidden' && next !== 'disabled') return;
+				if (next === mode) return;
+				mode = next;
+				scheduleChange(video);
+			}
+		});
+		return track;
+	};
+
 	paints = (video: Node) =>
 		flagUp.get(video) === true && joined(video).some((t) => t.track.mode === 'showing');
 
@@ -248,6 +296,9 @@ export function installBrowserTrackSelection(): Installed {
 	return {
 		uninstall() {
 			paints = () => false;
+			made = () => {
+				throw new Error('the browser model is not installed');
+			};
 			loadOrder = 'selection-first';
 			if (listDescriptor)
 				Object.defineProperty(HTMLMediaElement.prototype, 'textTracks', listDescriptor);
