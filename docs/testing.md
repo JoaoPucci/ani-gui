@@ -371,7 +371,7 @@ Every PR runs all gating workflows; merge blocks until they're green:
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |
-| `packages.yml` | every PR; the builds run only when the PR touches `electron/package.json`, `electron/build-resources/**`, `electron/scripts/fetch-{windows,linux}-deps.mjs`, `electron/scripts/repack-appimage.mjs`, `electron/lib/{dep-staging,linux-launcher,appimage-tree,sandbox-probe}.cjs`, an `electron/electron-builder.*` config, an `.npmrc` (root or `electron/`), `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, `backend/.cargo/**`, `rust-toolchain.toml`, `.github/actions/{pnpm,apt}-install/`, its filter, `tools/appimage-catalog-check.sh` or the workflow — decided by `tools/packages-filter.sh`, which `tests/bash/arch/packages_filter.bats` runs, from the PR's own changes since it branched; also started by hand | not yet; its `packages-build` job, which passes when the builds and the AppImage start-up check passed or were not needed, is the check to require |
+| `packages.yml` | every PR; the builds run only when the PR touches `electron/package.json`, `electron/build-resources/**`, `electron/scripts/fetch-{windows,linux}-deps.mjs`, `electron/scripts/repack-appimage.mjs`, `electron/lib/{dep-staging,linux-launcher,appimage-tree,sandbox-probe}.cjs`, an `electron/electron-builder.*` config, an `.npmrc` (root or `electron/`), `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, `backend/.cargo/**`, `rust-toolchain.toml`, `.github/actions/{pnpm,apt}-install/`, its filter, `tools/appimage-catalog-check.sh` or the workflow — decided by `tools/packages-filter.sh`, which `tests/bash/arch/packages_filter.bats` runs, from the PR's own changes since it branched; also started by hand | yes, its `packages-build` job, which passes when the builds and the AppImage start-up check passed or were not needed |
 
 ### Packages built in CI
 
@@ -401,11 +401,11 @@ v0.14.1's did, fails here rather than in the catalog.
 On a pull request it publishes no package: the AppImage goes to the
 start-up check as a one-day artifact named `catalog-check-appimage`,
 and nothing else is uploaded. Its `packages-build` job always
-reports, so it is the one name for the master ruleset to require: a
+reports, so it is the one name the master ruleset requires: a
 required name from a workflow-level path filter would wait forever on
-every pull request the filter skipped. Once it is required, a Windows
-runner that GitHub cancels fails that job and blocks the merge until
-the run is re-run, as with the macOS leg of `rust.yml`.
+every pull request the filter skipped. A Windows runner that GitHub
+cancels fails that job and blocks the merge until the run is re-run,
+as with the macOS leg of `rust.yml`.
 
 Started by hand it uploads the packages. They are unsigned, as the
 hand-built release packages are. Beyond the AppImage's start-up check
