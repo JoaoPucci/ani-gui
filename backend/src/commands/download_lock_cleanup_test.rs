@@ -15,6 +15,7 @@
 
 use super::download::{acquire_instance_lock, target_lock_path};
 use super::download_lock_deadline_test::Deadline;
+use super::download_lock_log_test::{interest_from_every_thread, Captured};
 
 fn long_deadline() -> tokio::time::Instant {
     tokio::time::Instant::now() + std::time::Duration::from_secs(30)
@@ -156,45 +157,64 @@ async fn a_waiter_whose_file_was_removed_ends_up_holding_the_path() {
 /// The randomized companion to the staged race above: removal on
 /// release without the check after locking lets two holders overlap
 /// within a few rounds.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn contenders_removing_the_lock_never_hold_it_together() {
+///
+/// Run with the lock's log captured from every thread, so a contender
+/// refused on a platform this cannot be run on locally names the step
+/// and the system's code in the failure.
+#[test]
+fn contenders_removing_the_lock_never_hold_it_together() {
     let _deadline = Deadline::arm();
     use std::sync::atomic::{AtomicUsize, Ordering};
+    let captured = Captured::default();
+    let _every = interest_from_every_thread();
+    let runtime = captured.runtime(4);
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Busy Show Episode 1.mp4");
     let inside = std::sync::Arc::new(AtomicUsize::new(0));
     let overlaps = std::sync::Arc::new(AtomicUsize::new(0));
 
-    let mut tasks = Vec::new();
-    for _ in 0..4 {
-        let target = target.clone();
-        let inside = inside.clone();
-        let overlaps = overlaps.clone();
-        tasks.push(tokio::spawn(async move {
-            for _ in 0..25 {
-                let held = acquire_instance_lock(&target, long_deadline())
-                    .await
-                    .expect("a lock within the deadline");
-                if inside.fetch_add(1, Ordering::SeqCst) != 0 {
-                    overlaps.fetch_add(1, Ordering::SeqCst);
+    let refusals: Vec<String> = runtime.block_on(async {
+        let mut tasks = Vec::new();
+        for _ in 0..4 {
+            let target = target.clone();
+            let inside = inside.clone();
+            let overlaps = overlaps.clone();
+            tasks.push(tokio::spawn(async move {
+                for _ in 0..25 {
+                    let held = acquire_instance_lock(&target, long_deadline()).await?;
+                    if inside.fetch_add(1, Ordering::SeqCst) != 0 {
+                        overlaps.fetch_add(1, Ordering::SeqCst);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+                    inside.fetch_sub(1, Ordering::SeqCst);
+                    drop(held);
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-                inside.fetch_sub(1, Ordering::SeqCst);
-                drop(held);
+                Ok::<(), crate::error::AniError>(())
+            }));
+        }
+        let mut refusals = Vec::new();
+        for task in tasks {
+            if let Err(e) = task.await.expect("contender") {
+                refusals.push(format!("{e:?}"));
             }
-        }));
-    }
-    for task in tasks {
-        task.await.expect("contender");
-    }
+        }
+        refusals
+    });
+    assert!(
+        refusals.is_empty(),
+        "every contender gets the lock within the deadline, refused: {refusals:?}; the lock's log:\n{}",
+        captured.text()
+    );
 
     assert_eq!(overlaps.load(Ordering::SeqCst), 0, "two holders overlapped");
     let lock_path = target_lock_path(&target).expect("a lock path");
-    assert!(
-        gone_soon(&lock_path).await,
-        "the last holder removes the file"
-    );
-    assert!(gone_soon(lock_path.parent().expect("lock dir")).await);
+    runtime.block_on(async {
+        assert!(
+            gone_soon(&lock_path).await,
+            "the last holder removes the file"
+        );
+        assert!(gone_soon(lock_path.parent().expect("lock dir")).await);
+    });
 }
 
 /// Lock files earlier versions left behind are removed when a download

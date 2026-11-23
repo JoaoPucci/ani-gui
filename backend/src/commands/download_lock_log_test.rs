@@ -1,4 +1,6 @@
-//! What the download lock logs, captured for a test to read.
+//! What the download lock logs, captured for a test to read — including
+//! from the runtime's worker and blocking-pool threads, where every try
+//! at the lock runs.
 
 /// Everything the capturing subscriber wrote.
 #[derive(Clone, Default)]
@@ -20,6 +22,21 @@ impl Captured {
                 .with_writer(self.clone())
                 .finish(),
         )
+    }
+
+    /// A multi-threaded runtime whose every thread, the blocking pool's
+    /// included, writes its events here.
+    pub(crate) fn runtime(&self, workers: usize) -> tokio::runtime::Runtime {
+        let dispatch = self.dispatch();
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(workers)
+            .enable_all()
+            .on_thread_start(move || {
+                // For the thread's whole life: the guard is kept.
+                std::mem::forget(tracing::dispatcher::set_default(&dispatch));
+            })
+            .build()
+            .expect("runtime")
     }
 }
 
