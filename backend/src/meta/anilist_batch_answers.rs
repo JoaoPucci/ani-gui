@@ -13,8 +13,12 @@ use crate::meta::anilist_pages::{whole_pages, Page, PAGE_CAP};
 /// What the pages of one id space said about each key asked.
 pub(super) struct Answers<T> {
     found: HashMap<u32, T>,
-    /// Keys only a single lookup can settle.
+    /// Keys only a single lookup can settle, AniList having shown it
+    /// records media for them.
     single: HashSet<u32>,
+    /// Keys whose page could not be read: a single lookup settles each
+    /// show naming them, with nothing known about the key.
+    unread: HashSet<u32>,
     failed: HashMap<u32, AniError>,
 }
 
@@ -23,6 +27,7 @@ impl<T> Default for Answers<T> {
         Self {
             found: HashMap::new(),
             single: HashSet::new(),
+            unread: HashSet::new(),
             failed: HashMap::new(),
         }
     }
@@ -32,7 +37,12 @@ impl<T> Default for Answers<T> {
 pub(super) enum Got<T> {
     Listing(T),
     Failed(AniError),
+    /// AniList records media for the key: one single lookup by it
+    /// answers every show naming it.
     Single,
+    /// The page could not be read: each show naming the key is asked by
+    /// its own single lookup.
+    Unread,
     /// The page answered without it.
     Absent,
 }
@@ -47,6 +57,9 @@ impl<T: Clone> Answers<T> {
         }
         if self.single.contains(&key) {
             return Got::Single;
+        }
+        if self.unread.contains(&key) {
+            return Got::Unread;
         }
         Got::Absent
     }
@@ -84,36 +97,73 @@ where
             // it failed for: each is asked by its single lookup, as
             // before batching. Any other failure is that of every show
             // it covered.
-            Err(AniError::ParseFailed { .. }) => out.single.extend(chunk.iter().copied()),
+            Err(AniError::ParseFailed { .. }) => out.unread.extend(chunk.iter().copied()),
             Err(e) => out.failed.extend(chunk.iter().map(|k| (*k, e.clone()))),
         }
     }
     out
 }
 
-/// The single lookup for the key `key` of `space` names, made with
-/// `want`, asked once however many shows need it. A key reaches here
-/// only when AniList records media for it — several, more than a page
-/// holds, or one whose node could not be read — or when its page could
-/// not be read at all. In the first cases the lookup by it finds a
-/// media and never falls back to the AniList id beside it, so every
-/// show naming the key reads the same answer; in the last, shows naming
-/// one MAL id with different AniList ids beside it share the first
-/// one's answer, as they would whenever AniList knows the MAL id.
-pub(super) async fn single_once<T: Clone, S, SF>(
-    singles: &mut HashMap<(Space, u32), Result<T>>,
-    single: &mut S,
-    key: (Space, u32),
-    want: Want,
-) -> Result<T>
-where
-    S: FnMut(Want) -> SF,
-    SF: Future<Output = Result<T>>,
-{
-    if let Some(done) = singles.get(&key) {
-        return done.clone();
+/// Which single lookup answers a show: one per key AniList records
+/// media for, however many shows name it — the lookup by it finds a
+/// media and never falls back to the AniList id beside it — and one per
+/// show where its page could not be read, since nothing then shows
+/// AniList knows the key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum Settles {
+    Key(Space, u32),
+    Show(Want),
+}
+
+/// The single lookups a batch falls back to, each with the shows it
+/// answers.
+pub(super) struct Singles {
+    lookups: Vec<(Want, Vec<usize>)>,
+    by: HashMap<Settles, usize>,
+}
+
+impl Singles {
+    pub(super) fn new() -> Self {
+        Self {
+            lookups: Vec::new(),
+            by: HashMap::new(),
+        }
     }
-    let got = single(want).await;
-    singles.insert(key, got.clone());
-    got
+
+    /// Show `index` is answered by the single lookup `settles` names,
+    /// made with `want` when it is the first show to need it.
+    pub(super) fn add(&mut self, settles: Settles, want: Want, index: usize) {
+        let at = *self.by.entry(settles).or_insert_with(|| {
+            self.lookups.push((want, Vec::new()));
+            self.lookups.len() - 1
+        });
+        self.lookups[at].1.push(index);
+    }
+
+    /// Run every lookup at once — the gate paces them — and hand each
+    /// answer to its shows as it comes in.
+    pub(super) async fn run<T, S, SF>(
+        self,
+        mut single: S,
+        on_answer: &mut impl FnMut(usize, Result<T>),
+    ) where
+        T: Clone,
+        S: FnMut(Want) -> SF,
+        SF: Future<Output = Result<T>>,
+    {
+        use futures_util::stream::{FuturesUnordered, StreamExt};
+        let mut out: FuturesUnordered<_> = self
+            .lookups
+            .into_iter()
+            .map(|(want, shows)| {
+                let lookup = single(want);
+                async move { (shows, lookup.await) }
+            })
+            .collect();
+        while let Some((shows, answer)) = out.next().await {
+            for index in shows {
+                on_answer(index, answer.clone());
+            }
+        }
+    }
 }

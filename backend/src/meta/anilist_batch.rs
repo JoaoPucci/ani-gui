@@ -21,7 +21,7 @@ use crate::meta::anilist_pages::Page;
 
 #[path = "anilist_batch_answers.rs"]
 mod answers;
-use answers::{answers, single_once, Got};
+use answers::{answers, Got, Settles, Singles};
 #[path = "anilist_batch_coalesce.rs"]
 mod coalesce;
 #[cfg(test)]
@@ -101,6 +101,24 @@ pub(crate) async fn batch<K: Kind>(
     .await
 }
 
+/// [`batch`], handing each show's answer to `on_answer` as soon as it is
+/// known ([`resolve_each`]).
+pub(crate) async fn batch_each<K: Kind>(
+    client: &reqwest::Client,
+    wants: &[Want],
+    base_override: Option<&str>,
+    on_answer: impl FnMut(usize, Result<K::Out>),
+) {
+    let url = base_override.unwrap_or(ANILIST_API);
+    resolve_each(
+        wants,
+        |space, ids| ask_page::<K>(client, url, space, ids),
+        |want| K::single(client, want, base_override),
+        on_answer,
+    )
+    .await;
+}
+
 async fn ask_page<K: Kind>(
     client: &reqwest::Client,
     url: &str,
@@ -121,8 +139,8 @@ async fn ask_page<K: Kind>(
 /// without reads `T::default()`, as its single lookup reads absence.
 pub(crate) async fn resolve<T: Clone + Default, P, PF, S, SF>(
     wants: &[Want],
-    mut ask: P,
-    mut single: S,
+    ask: P,
+    single: S,
 ) -> Vec<Result<T>>
 where
     P: FnMut(Space, Vec<u32>) -> PF,
@@ -131,7 +149,28 @@ where
     SF: Future<Output = Result<T>>,
 {
     let mut out: Vec<Option<Result<T>>> = vec![None; wants.len()];
-    let mut singles: HashMap<(Space, u32), Result<T>> = HashMap::new();
+    resolve_each(wants, ask, single, |i, answer| out[i] = Some(answer)).await;
+    out.into_iter()
+        .map(|o| o.unwrap_or_else(|| Ok(T::default())))
+        .collect()
+}
+
+/// [`resolve`], handing each show's answer to `on_answer` (by its index
+/// in `wants`) as soon as it is known: the shows a page answered as the
+/// page comes in, those a single lookup answers as that lookup does, so
+/// no show waits on another's lookup.
+pub(crate) async fn resolve_each<T: Clone + Default, P, PF, S, SF>(
+    wants: &[Want],
+    mut ask: P,
+    single: S,
+    mut on_answer: impl FnMut(usize, Result<T>),
+) where
+    P: FnMut(Space, Vec<u32>) -> PF,
+    PF: Future<Output = Result<Page<Keyed<T>>>>,
+    S: FnMut(Want) -> SF,
+    SF: Future<Output = Result<T>>,
+{
+    let mut singles = Singles::new();
     let mal_keys: Vec<u32> = wants
         .iter()
         .filter_map(|w| w.mal)
@@ -147,19 +186,16 @@ where
             Some(mal) => by_mal.get(mal),
             None => Got::Absent,
         };
-        out[i] = match (got, w.anilist) {
-            (Got::Listing(l), _) => Some(Ok(l)),
-            (Got::Failed(e), _) => Some(Err(e)),
+        match (got, w.anilist) {
+            (Got::Listing(l), _) => on_answer(i, Ok(l)),
+            (Got::Failed(e), _) => on_answer(i, Err(e)),
             (Got::Single, _) => {
-                let key = (Space::Mal, w.mal.unwrap_or_default());
-                Some(single_once(&mut singles, &mut single, key, *w).await)
+                singles.add(Settles::Key(Space::Mal, w.mal.unwrap_or_default()), *w, i);
             }
-            (Got::Absent, Some(_)) => {
-                by_id_wanted.push(i);
-                None
-            }
-            (Got::Absent, None) => Some(Ok(T::default())),
-        };
+            (Got::Unread, _) => singles.add(Settles::Show(*w), *w, i),
+            (Got::Absent, Some(_)) => by_id_wanted.push(i),
+            (Got::Absent, None) => on_answer(i, Ok(T::default())),
+        }
     }
     let id_keys: Vec<u32> = by_id_wanted
         .iter()
@@ -170,20 +206,16 @@ where
     let by_id = answers(Space::AniList, &id_keys, &mut ask).await;
     for i in by_id_wanted {
         let Some(id) = wants[i].anilist else { continue };
-        out[i] = Some(match by_id.get(id) {
-            Got::Listing(l) => Ok(l),
-            Got::Failed(e) => Err(e),
-            Got::Single => {
-                let want = Want {
-                    mal: None,
-                    anilist: Some(id),
-                };
-                single_once(&mut singles, &mut single, (Space::AniList, id), want).await
-            }
-            Got::Absent => Ok(T::default()),
-        });
+        let want = Want {
+            mal: None,
+            anilist: Some(id),
+        };
+        match by_id.get(id) {
+            Got::Listing(l) => on_answer(i, Ok(l)),
+            Got::Failed(e) => on_answer(i, Err(e)),
+            Got::Single | Got::Unread => singles.add(Settles::Key(Space::AniList, id), want, i),
+            Got::Absent => on_answer(i, Ok(T::default())),
+        }
     }
-    out.into_iter()
-        .map(|o| o.unwrap_or_else(|| Ok(T::default())))
-        .collect()
+    singles.run(single, &mut on_answer).await;
 }

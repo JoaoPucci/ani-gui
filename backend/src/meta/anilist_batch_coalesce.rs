@@ -1,27 +1,31 @@
 //! Lookups of one [`Kind`] that miss the cache together share AniList's
 //! requests.
 //!
-//! Home's Continue Watching strip asks for each card's episodes as the
-//! card's show resolves, one route call per card, and each call fills
-//! its stills from AniList on a cache miss. Each used to send its own
-//! `Media` query, so a cold strip of ten shows spent ten requests of
-//! AniList's allowance in one burst, and the gate held about half of
-//! them back. Here a lookup joins a lane instead: the first opens it and,
-//! every [`WINDOW`] while it has lookups, what it gathered goes out as
-//! one batch ([`super::batch`]) in a task of its own;
-//! a lookup arriving while a batch is out goes in the next window's,
-//! without waiting for the first to answer. A batch holding one lookup
-//! sends the single query it always sent.
+//! Home's Continue Watching strip reads each card's episodes and detail
+//! as the card's show resolves, one route call per card, and each call
+//! fills the card's stills, or a coverless show's banner, from AniList
+//! on a cache miss. Each used to send its own `Media` query, so a strip
+//! of ten shows spent ten requests of AniList's allowance in one burst,
+//! and the gate held about half of them back.
 //!
-//! Lanes are kept apart by the caller's key (its app state and AniList
-//! endpoint) and by the gate class the lookups count as, so a retry of a
-//! held-back fill is never sent as a background request, or the other
-//! way round. A caller that stops waiting — the episode route gives the
-//! fill a budget — does not take the others' answers with it; a caller
-//! gone before its batch was gathered is left out of it, and a batch
-//! every caller has left is dropped, out of the gate's queue if it is
-//! still waiting for its turn. What each caller does with its answer —
-//! caching it, or queueing a retry — stays in its own task.
+//! Here a lookup joins a lane instead. One that finds no lane open opens
+//! one and goes out at once, alone, with the single query it always
+//! sent: what a card's look waits on is never held for a window. Lookups
+//! arriving while the lane is open gather, and every [`WINDOW`] what the
+//! lane gathered goes out as one batch ([`super::batch_each`]) in a task
+//! of its own, without waiting for the batch before it; a window that
+//! gathers nothing closes the lane. Each caller is answered as soon as
+//! its own answer is in.
+//!
+//! Lanes are kept apart by kind, by the caller's key (its app state and
+//! AniList endpoint) and by the gate class the lookups count as, so a
+//! retry of a held-back fill is never sent as a background request, or
+//! the other way round. A caller that stops waiting — the episode route
+//! gives its fill a budget — does not take the others' answers with it;
+//! a caller gone before its batch was gathered is left out of it, and a
+//! batch no caller waits on any more is dropped, out of the gate's queue
+//! if it is still waiting for its turn. What each caller does with its
+//! answer — caching it, or queueing a retry — stays in its own task.
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -30,14 +34,15 @@ use std::time::Duration;
 
 use tokio::sync::oneshot;
 
-use super::{batch, Kind, Want};
+use super::{batch_each, Kind, Want};
 use crate::error::{AniError, Result};
 use crate::meta::anilist_gate::{current_class, in_class, Class};
 
 /// How long a lane gathers lookups before its batch goes out: under the
-/// gate's least gap between two requests (250 ms), so the request a
-/// gathered lookup rides in leaves no later than its own would have,
-/// the lane's first having just been sent.
+/// gate's least gap between two requests (250 ms), so the MAL-id page a
+/// gathered lookup rides in leaves no later than its own request would
+/// have, the lane's first having just been sent. A show asked on the
+/// AniList-id page waits for the MAL page's answer first.
 pub(crate) const WINDOW: Duration = Duration::from_millis(100);
 
 type Reply<T> = oneshot::Sender<Result<T>>;
@@ -99,6 +104,9 @@ pub(crate) async fn coalesced<K: Kind>(
         }
     };
     if let Some(reply) = first {
+        // Made before the driver is spawned, so a runtime that ends before
+        // the driver first runs still closes the lane.
+        let closing = Closing::<K>(Some(lane.clone()), PhantomData);
         let base = base_override.map(str::to_owned);
         tokio::spawn(in_class(
             class,
@@ -111,7 +119,7 @@ pub(crate) async fn coalesced<K: Kind>(
             class,
             kind: PhantomData,
         };
-        tokio::spawn(in_class(class, driver.run()));
+        tokio::spawn(in_class(class, driver.run(closing)));
     }
     answer.await.unwrap_or(Err(AniError::Network))
 }
@@ -129,8 +137,7 @@ impl<K: Kind> Driver<K> {
     /// Each window, hand what the lane gathered to a task of its own and
     /// go on gathering: a lookup arriving while a batch is out goes in
     /// the next window's batch, not after the first one answers.
-    async fn run(self) {
-        let mut guard = Closing::<K>(Some(self.lane.clone()), PhantomData);
+    async fn run(self, mut guard: Closing<K>) {
         loop {
             tokio::time::sleep(WINDOW).await;
             let Some(batch) = self.take() else {
@@ -163,38 +170,63 @@ impl<K: Kind> Driver<K> {
     }
 }
 
-/// Send one batch and answer each caller. Once every caller has stopped
-/// waiting the batch is dropped — out of the gate's queue if it is still
-/// waiting for its turn — rather than sent for nobody.
+/// Send one batch, answering each caller as soon as its own answer is in
+/// — a caller that stops waiting keeps what was answered before it left.
+/// Once no caller waits any more the batch is dropped, out of the gate's
+/// queue if it is still waiting for its turn, rather than sent for
+/// nobody.
 async fn deliver<K: Kind>(
     client: reqwest::Client,
     base: Option<String>,
     wants: Vec<Want>,
-    mut replies: Vec<Reply<K::Out>>,
+    replies: Vec<Reply<K::Out>>,
 ) {
-    let answers = tokio::select! {
-        answers = send::<K>(&client, base.as_deref(), &wants) => answers,
-        () = all_closed(&mut replies) => return,
+    let replies = Mutex::new(replies.into_iter().map(Some).collect::<Vec<_>>());
+    let answer = |index: usize, answer: Result<K::Out>| {
+        let reply = replies
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_mut(index)
+            .and_then(Option::take);
+        if let Some(reply) = reply {
+            let _ = reply.send(answer);
+        }
     };
-    for (reply, answer) in replies.into_iter().zip(answers) {
-        let _ = reply.send(answer);
+    tokio::select! {
+        () = send::<K>(&client, base.as_deref(), &wants, answer) => {}
+        () = all_closed(&replies) => {}
     }
 }
 
-/// Resolves once no caller of the batch is waiting any more.
-async fn all_closed<T>(replies: &mut [Reply<T>]) {
-    futures_util::future::join_all(replies.iter_mut().map(oneshot::Sender::closed)).await;
+/// How often a batch checks whether any caller still waits on it.
+const CLOSED_POLL: Duration = Duration::from_millis(20);
+
+/// Resolves once no caller still waits on an answer from the batch.
+async fn all_closed<T>(replies: &Mutex<Vec<Option<Reply<T>>>>) {
+    loop {
+        let waiting = replies
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .flatten()
+            .any(|reply| !reply.is_closed());
+        if !waiting {
+            return;
+        }
+        tokio::time::sleep(CLOSED_POLL).await;
+    }
 }
 
 async fn send<K: Kind>(
     client: &reqwest::Client,
     base: Option<&str>,
     wants: &[Want],
-) -> Vec<Result<K::Out>> {
+    mut answer: impl FnMut(usize, Result<K::Out>),
+) {
     match wants {
-        [] => Vec::new(),
-        [one] => vec![K::single(client, *one, base).await],
-        _ => batch::<K>(client, wants, base).await,
+        [] => {}
+        [one] => answer(0, K::single(client, *one, base).await),
+        _ => batch_each::<K>(client, wants, base, answer).await,
     }
 }
 
