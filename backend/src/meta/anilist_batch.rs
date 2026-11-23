@@ -27,6 +27,8 @@ mod coalesce;
 #[cfg(test)]
 pub(crate) use coalesce::WINDOW;
 pub(crate) use coalesce::{coalesced, Lanes};
+#[path = "anilist_batch_log.rs"]
+mod log;
 #[path = "anilist_batch_page.rs"]
 mod page;
 pub(crate) use page::parse_page;
