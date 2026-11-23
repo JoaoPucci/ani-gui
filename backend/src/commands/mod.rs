@@ -55,6 +55,9 @@ mod download_lock_cleanup_tests;
 #[path = "download_lock_deadline_test.rs"]
 pub(crate) mod download_lock_deadline_test;
 #[cfg(test)]
+#[path = "download_lock_log_test.rs"]
+pub(crate) mod download_lock_log_test;
+#[cfg(test)]
 #[path = "download_lock_prop_test.rs"]
 mod download_lock_prop_tests;
 mod download_pacing;

@@ -1,7 +1,8 @@
 //! Opening the lock file while other downloads remove its directory.
 
-use super::{open_creating_with, os};
+use super::{attempt, open_creating_with, os, Attempt};
 use crate::commands::download_lock_deadline_test::Deadline;
+use crate::commands::download_lock_log_test::{interest_from_every_thread, Captured};
 
 /// What creating a directory reports when it found the directory there
 /// and a releasing download removed it before the check that it is one:
@@ -71,5 +72,37 @@ fn a_file_at_the_directory_name_is_still_refused() {
             "an obstruction is not a removal in progress: {e:?}"
         ),
         Ok(_) => panic!("a file is in the directory's way"),
+    }
+}
+
+/// A try that refuses the lock says why in the log: which step, the
+/// error's kind and the system's own code.
+///
+/// A refusal reaches the caller as a bare I/O error, and the download
+/// then runs without the lock. Without the cause, a refusal seen only
+/// on another platform's CI could not be told apart from any other.
+#[test]
+fn a_refused_try_logs_its_cause() {
+    let _deadline = Deadline::arm();
+    let dest = tempfile::tempdir().expect("dest");
+    let dir = dest.path().join(".ani-gui-locks");
+    std::fs::write(&dir, b"").expect("stage an obstruction");
+    let path = dir.join("Logged Show Episode 1.mp4");
+    let captured = Captured::default();
+    let _every = interest_from_every_thread();
+    let got = tracing::dispatcher::with_default(&captured.dispatch(), || attempt(&path, None));
+    assert!(matches!(got, Attempt::Failed), "an obstruction refuses");
+    let log = captured.text();
+    let code = std::fs::create_dir(&dir)
+        .expect_err("still obstructed")
+        .raw_os_error()
+        .expect("a system code");
+    for part in [
+        "download lock refused",
+        "step=\"open\"",
+        "AlreadyExists",
+        &format!("code={code}"),
+    ] {
+        assert!(log.contains(part), "the log must carry {part}: {log}");
     }
 }
