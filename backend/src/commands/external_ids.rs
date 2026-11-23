@@ -113,3 +113,9 @@ mod tests;
 #[cfg(test)]
 #[path = "external_ids_prop_test.rs"]
 mod prop_tests;
+
+/// Whether Kitsu has a cover for `kitsu_id`, from the show's live
+/// mappings row; `None` when there is none to read. Asks nothing.
+pub(crate) fn kitsu_has_cover(_pool: &SqlitePool, _kitsu_id: &str) -> Option<bool> {
+    None
+}

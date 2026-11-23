@@ -21,6 +21,14 @@ struct Kitsu;
 
 impl wiremock::Respond for Kitsu {
     fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+        kitsu_answer(request, &[])
+    }
+}
+
+/// Kitsu's answer to `request`, with a cover for the shows whose MAL id
+/// `covered` holds.
+fn kitsu_answer(request: &wiremock::Request, covered: &[u32]) -> wiremock::ResponseTemplate {
+    {
         let id = request.url.path().trim_start_matches("/anime/").to_owned();
         let Some(mal) = id.strip_prefix("80").and_then(|m| m.parse::<u32>().ok()) else {
             return wiremock::ResponseTemplate::new(404);
@@ -45,6 +53,11 @@ impl wiremock::Respond for Kitsu {
             detail["data"]["attributes"]["coverImage"] = serde_json::Value::Null;
             detail
         };
+        let mut body = body;
+        if covered.contains(&mal) {
+            body["data"]["attributes"]["coverImage"] =
+                serde_json::json!({ "original": format!("https://media.kitsu.app/{id}.jpg") });
+        }
         wiremock::ResponseTemplate::new(200)
             .insert_header("content-type", "application/vnd.api+json")
             .set_body_json(body)
@@ -453,4 +466,72 @@ impl wiremock::Respond for HeldBanners {
         }
         self.1.respond(request)
     }
+}
+
+/// [`Kitsu`], with a cover for the shows whose MAL id `covered` holds:
+/// in its mappings answer and in its detail alike.
+struct CoveredKitsu {
+    covered: Vec<u32>,
+}
+
+impl wiremock::Respond for CoveredKitsu {
+    fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+        kitsu_answer(request, &self.covered)
+    }
+}
+
+#[tokio::test]
+async fn a_warm_asks_no_banner_for_a_show_kitsu_has_a_cover_for() {
+    // Seven of the strip's ten shows have a Kitsu cover, and their
+    // details never ask for a banner: the warm's banner page carries
+    // the other three alone. Its stills still cover all ten.
+    let (ids, fake) = strip();
+    let kitsu = serve(
+        CoveredKitsu {
+            covered: (1..=7).collect(),
+        },
+        "GET",
+    )
+    .await;
+    let anilist = serve(fake, "POST").await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    warm_strip(&state, &ids, Some(&anilist.uri())).await;
+    assert_eq!(
+        asked_for_banners(&anilist).await,
+        vec![crate::meta::anilist_streaming_eps_fake_test::Asked::PageByMal(vec![8, 9, 10])]
+    );
+    assert_eq!(
+        asked_for_stills(&anilist).await,
+        vec![crate::meta::anilist_streaming_eps_fake_test::Asked::PageByMal((1..=10).collect())]
+    );
+}
+
+#[tokio::test]
+async fn a_warm_of_shows_kitsu_has_covers_for_asks_no_banner_at_all() {
+    let (ids, fake) = strip();
+    let kitsu = serve(
+        CoveredKitsu {
+            covered: (1..=10).collect(),
+        },
+        "GET",
+    )
+    .await;
+    let anilist = serve(fake, "POST").await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    warm_strip(&state, &ids, Some(&anilist.uri())).await;
+    assert_eq!(asked_for_banners(&anilist).await, vec![]);
+    // A covered show's card reads its Kitsu cover, and asks no banner of
+    // its own either.
+    let detail = crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(
+        &state,
+        &ids[0],
+        Some(&anilist.uri()),
+    )
+    .await
+    .expect("a detail");
+    assert_eq!(
+        detail.cover_image.and_then(|c| c.original).as_deref(),
+        Some("https://media.kitsu.app/801.jpg")
+    );
+    assert_eq!(asked_for_banners(&anilist).await, vec![]);
 }
