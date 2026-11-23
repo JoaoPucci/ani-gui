@@ -184,3 +184,7 @@ mod progress_tests;
 #[cfg(test)]
 #[path = "franchise_page_test.rs"]
 mod franchise_page_tests;
+
+#[cfg(test)]
+#[path = "parity_test.rs"]
+mod parity_tests;
