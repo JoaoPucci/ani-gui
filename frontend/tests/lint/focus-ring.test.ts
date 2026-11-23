@@ -7,16 +7,21 @@
 // rule that styles a focused element (`:focus-visible` in the last
 // compound of its selector, directly or inside `:is()`, `:where()` or
 // Svelte's `:global()`) and draws an outline must also set `box-shadow`
-// in the same rule, to a value that is not the app's ring (`--ring` or
-// `--ring-inset`).
+// in the same rule, to a value that does not name the app's ring (its
+// text does not contain `--ring`).
 //
 // The rule is conservative: a control whose own resting rule sets a
 // shadow already outranks the app's ring, and is held to it anyway, so
 // a shadow added under the mouse cannot bring a second ring back.
 //
-// Held by parsers: postcss reads every stylesheet under `src/` and
-// every component's `<style>` (found by Svelte's compiler), and
-// Svelte's CSS parser reads each selector.
+// Held by parsers and syntactic constraints, never by reading what a
+// value means: postcss reads every stylesheet under `src/` and every
+// component's `<style>` (found by Svelte's compiler), and Svelte's CSS
+// parser reads each selector. Declaration values are compared as
+// text: an `outline` or `outline-style` written as anything but
+// `none` or `0` counts as drawing an outline, whatever it would draw
+// (a `transparent` outline, one with no line style, `inherit`), and a
+// `box-shadow` counts unless its text contains `--ring`.
 //
 // What it does not see, deliberately:
 //
@@ -24,11 +29,8 @@
 //   on the element it styles (`:focus`, `:focus-within`, a descendant
 //   of a focused element), a shadow the control sets in another rule,
 //   and styles set from script or an inline style.
-// - An outline value it cannot read: one built from a custom property
-//   counts as drawing; `inherit`, `initial` and `unset` count as not
-//   drawing. A shorthand with no line style, a zero width or a
-//   `transparent` colour draws nothing visible, and is not held.
-// - A shadow's value other than naming the app's ring.
+// - A shadow that sets the app's ring again through another custom
+//   property, or by writing its value out.
 //
 // Whether a control shows its ring once and whole on screen is the
 // Electron e2e's (`electron/e2e/focus-rings.spec.ts`).
@@ -51,33 +53,10 @@ const files = (readdirSync(SRC, { recursive: true }) as string[])
 const components = files.filter((path) => path.endsWith('.svelte'));
 const stylesheets = files.filter((path) => path.endsWith('.css'));
 
-const LINE_STYLES = new Set([
-	'auto',
-	'solid',
-	'dotted',
-	'dashed',
-	'double',
-	'groove',
-	'ridge',
-	'inset',
-	'outset'
-]);
-const NOT_DRAWN = new Set(['none', 'inherit', 'initial', 'unset']);
-
-/** Whether an `outline` or `outline-style` value draws a visible line. */
-function draws(prop: string, value: string): boolean {
-	const tokens: string[] = [
-		...(value
-			.trim()
-			.toLowerCase()
-			.match(/[\w-]+\([^)]*\)|\S+/g) ?? [])
-	];
-	if (tokens.some((t) => t.startsWith('var('))) return true;
-	if (prop === 'outline-style') return !NOT_DRAWN.has(tokens[0] ?? 'none');
-	if (!tokens.some((t) => LINE_STYLES.has(t))) return false;
-	if (tokens.some((t) => /^-?[\d.]+[a-z%]*$/.test(t) && Number.parseFloat(t) === 0)) return false;
-	return !tokens.includes('transparent');
-}
+/** The two values that turn an outline off, as written. Anything else
+ *  written for `outline` or `outline-style` counts as drawing one: the
+ *  check compares the value's text, it does not read what it means. */
+const OFF = new Set(['none', '0']);
 
 type Simple = { type: string; name?: string; args?: { children: Complex[] } | null };
 type Complex = { children: { selectors: Simple[] }[] };
@@ -118,12 +97,9 @@ function offenders(path: string, text: string, css: string, offset: number): str
 		let shadow = false;
 		rule.each((node) => {
 			if (node.type !== 'decl') return;
-			if (
-				(node.prop === 'outline' || node.prop === 'outline-style') &&
-				draws(node.prop, node.value)
-			)
+			if ((node.prop === 'outline' || node.prop === 'outline-style') && !OFF.has(node.value.trim()))
 				outline = true;
-			if (node.prop === 'box-shadow' && !/var\(\s*--ring\b/.test(node.value)) shadow = true;
+			if (node.prop === 'box-shadow' && !node.value.includes('--ring')) shadow = true;
 		});
 		if (outline && !shadow) {
 			const at = offset + (rule.source?.start?.offset ?? 0);
@@ -180,7 +156,11 @@ describe('focus rings: one per control', () => {
 			"the app's ring set again",
 			'.x:focus-visible { outline: 2px solid red; box-shadow: var(--ring); }'
 		],
-		['a custom outline', '.x:focus-visible { outline: var(--focus-line); }']
+		['a custom outline', '.x:focus-visible { outline: var(--focus-line); }'],
+		['an escaped line style', '.x:focus-visible { outline: 2px so\\6cid red; }'],
+		['an outline with no line style', '.x:focus-visible { outline: 2px red; }'],
+		['a transparent outline', '.x:focus-visible { outline: 2px solid transparent; }'],
+		['an inherited outline', '.x:focus-visible { outline: inherit; }']
 	])('fails on %s with the ring left in place', (_name, css) => {
 		expect(sheetOf(css)).toHaveLength(1);
 	});
@@ -194,9 +174,6 @@ describe('focus rings: one per control', () => {
 		['no outline', '.x:focus-visible { outline: none; }'],
 		['a zero outline', '.x:focus-visible { outline: 0; }'],
 		['no focus at all', '.x:hover { outline: 2px solid red; }'],
-		['an outline with no line style', '.x:focus-visible { outline: 2px red; }'],
-		['a transparent outline', '.x:focus-visible { outline: 2px solid transparent; }'],
-		['an inherited outline', '.x:focus-visible { outline: inherit; }'],
 		['focus on another element', '.x:not(:focus-visible) { outline: 2px solid red; }'],
 		['a focused ancestor', '.x:focus-visible .icon { outline: 2px solid red; }'],
 		['a focused child', '.x:has(:focus-visible) { outline: 2px solid red; }']
