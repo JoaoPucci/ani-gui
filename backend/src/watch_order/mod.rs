@@ -24,6 +24,7 @@ pub mod franchise_link;
 pub mod franchise_page;
 pub mod graph;
 pub mod handoff;
+pub mod js_text;
 mod no_clear_place;
 pub mod page_model;
 pub mod place;

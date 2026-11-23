@@ -3,11 +3,21 @@
 
 use std::cmp::Ordering;
 
+use super::js_text::js_number;
 use super::WatchEntry;
 
-/// An id as a number, for the tie-break (Kitsu ids are numeric).
-fn id_number(id: &str) -> f64 {
-    id.parse().unwrap_or(f64::NAN)
+/// Two ids' tie-break: by their numbers as `Number(id)` reads them
+/// (Kitsu ids are numbers), two with one number tying as they did
+/// there. An id that is not one sorts after every id that is, and among
+/// its kind by its text, so the order stays total.
+fn by_id(a: &str, b: &str) -> Ordering {
+    let (x, y) = (js_number(a), js_number(b));
+    match (x.is_nan(), y.is_nan()) {
+        (false, false) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
+        (false, true) => Ordering::Less,
+        (true, false) => Ordering::Greater,
+        (true, true) => a.cmp(b),
+    }
 }
 
 /// Start date ascending, unknown last, then Kitsu id.
@@ -19,9 +29,7 @@ pub fn by_start(a: &WatchEntry, b: &WatchEntry) -> Ordering {
         (Some(_), None) => return Ordering::Less,
         _ => {}
     }
-    id_number(&a.id)
-        .partial_cmp(&id_number(&b.id))
-        .unwrap_or(Ordering::Equal)
+    by_id(&a.id, &b.id)
 }
 
 /// `list` sorted by [`by_start`] (a stable sort, as the renderer's was).

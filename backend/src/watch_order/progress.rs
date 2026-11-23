@@ -14,7 +14,7 @@ use super::{EntryProgress, HistoryRow, Progress, WatchEntry};
 /// positive episode.
 #[must_use]
 pub fn history_episode(raw: &str) -> Option<f64> {
-    let rest = raw.trim_start();
+    let rest = raw.trim_start_matches(super::js_text::is_js_space);
     let whole = rest.bytes().take_while(u8::is_ascii_digit).count();
     if whole == 0 {
         return None;
