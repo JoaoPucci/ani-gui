@@ -12,7 +12,7 @@ use std::cell::RefCell;
 
 use super::*;
 use crate::meta::anilist_pages::by_key;
-use crate::meta::anilist_streaming_eps_fake::{Asked, FakeAniList, FakeMedia};
+use crate::meta::anilist_streaming_eps_fake_test::{Asked, FakeAniList, FakeMedia};
 use proptest::prelude::*;
 
 /// Media with AniList ids `1..=n`, each recording a MAL id drawn from a

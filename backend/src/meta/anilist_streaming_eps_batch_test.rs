@@ -3,7 +3,7 @@
 //! each show reads the listing its own single lookup would have.
 
 use super::*;
-use crate::meta::anilist_streaming_eps_fake::{asked_of, Asked, FakeAniList, FakeMedia};
+use crate::meta::anilist_streaming_eps_fake_test::{asked_of, Asked, FakeAniList, FakeMedia};
 
 fn media(id: u32, mal: Option<u32>) -> FakeMedia {
     FakeMedia { id, mal, listed: 2 }

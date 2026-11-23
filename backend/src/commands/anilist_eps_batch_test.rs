@@ -4,7 +4,7 @@
 //! its own cached answer.
 
 use super::*;
-use crate::meta::anilist_streaming_eps_fake::{asked_of, Asked, FakeAniList, FakeMedia};
+use crate::meta::anilist_streaming_eps_fake_test::{asked_of, Asked, FakeAniList, FakeMedia};
 
 /// Kitsu answering `/anime/:id?include=mappings` for each show in
 /// `shows`: (kitsu id, its sites).

@@ -13,7 +13,7 @@ pub mod anilist_media;
 pub(crate) mod anilist_pages;
 pub mod anilist_streaming_eps;
 #[cfg(test)]
-pub(crate) mod anilist_streaming_eps_fake;
+pub(crate) mod anilist_streaming_eps_fake_test;
 pub mod anilist_user;
 pub mod aniskip;
 pub mod github;
