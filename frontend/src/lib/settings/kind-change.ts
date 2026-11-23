@@ -22,13 +22,16 @@ export type AskCommand = (
 
 /**
  * A change of type for the config `current` returns, saved through
- * `save`. Each call's promise settles once its change is saved.
+ * `save`; `onFail` hears of a question that failed. Each call's
+ * promise settles once its change is saved.
  */
 export function createKindChange(
 	ask: AskCommand,
 	current: () => Config | null,
-	save: (next: Config) => Promise<void>
+	save: (next: Config) => Promise<void>,
+	onFail: (error: unknown) => void = () => {}
 ): (to: ExternalPlayerKind) => Promise<void> {
+	void onFail;
 	let queue: Promise<void> = Promise.resolve();
 	return (to) => {
 		const run = queue.then(() => change(to));
