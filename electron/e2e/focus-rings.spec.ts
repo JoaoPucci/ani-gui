@@ -60,7 +60,8 @@
  * Of what clips, it models an ancestor's overflow and the window, not an
  * ancestor's rounded corners, clip-path or mask. Where the window cannot
  * be maximized (CI's Xvfb has no window manager), the maximized pass is
- * noted on the test and not walked.
+ * noted on the test and not walked. It walks with reduced motion on, so
+ * a row glides to a card only on the path it does not take.
  *
  * Where a ring lies is computed from its outline and its shadows'
  * spread around the element's box, and a `::before` chip's box from its
@@ -233,8 +234,8 @@ interface Stop {
 	/** Its own box: an inset ring is drawn inside it. */
 	box: Box;
 	/** For a ring drawn inside the box: how wide it is, and how far its
-	 *  outermost band's colour is from what it is drawn on (0 to 1020,
-	 *  summed over RGBA). */
+	 *  outermost band's colour is from what it is drawn on (0 to 765,
+	 *  summed over RGB). */
 	inset: { width: number; contrast: number } | null;
 	/** The box of an absolutely placed `::before` rule (the active rail
 	 *  link's), when there is one and no chip is centred on the control. */
@@ -344,14 +345,22 @@ function readStop(page: Page): Promise<Stop | null> {
 			ctx.fillRect(0, 0, 1, 1);
 			return [...ctx.getImageData(0, 0, 1, 1).data];
 		};
-		/** The colour an element is painted on: its own background, or
-		 *  the nearest one behind it. */
+		/** The colour an element is painted on, as RGB: its own background
+		 *  and those behind it, composited until one is opaque. A
+		 *  see-through fill is blended over what it sits on. */
 		const ground = (start: HTMLElement) => {
+			const layers: number[][] = [];
 			for (let a: HTMLElement | null = start; a; a = a.parentElement) {
 				const c = rgba(getComputedStyle(a).backgroundColor);
-				if (c[3] > 0) return c;
+				if (c[3] > 0) layers.push(c);
+				if (c[3] === 255) break;
 			}
-			return rgba(getComputedStyle(document.body).backgroundColor);
+			let rgb = [0, 0, 0];
+			for (const c of layers.reverse()) {
+				const alpha = c[3] / 255;
+				rgb = rgb.map((v, i) => c[i] * alpha + v * (1 - alpha));
+			}
+			return rgb;
 		};
 
 		const cs = getComputedStyle(el);
@@ -392,7 +401,7 @@ function readStop(page: Page): Promise<Stop | null> {
 			const on = ground(el);
 			inset = {
 				width: Math.max(...insets.map((s) => s.spread)),
-				contrast: edge.reduce((sum, v, i) => sum + Math.abs(v - on[i]), 0)
+				contrast: on.reduce((sum, v, i) => sum + Math.abs(edge[i] - v), 0)
 			};
 		}
 
