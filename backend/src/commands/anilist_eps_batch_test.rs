@@ -5,7 +5,9 @@
 //! its own cached answer.
 
 use super::*;
-use crate::meta::anilist_streaming_eps_fake_test::{asked_of, Asked, FakeAniList, FakeMedia};
+use crate::meta::anilist_streaming_eps_fake_test::{
+    asked_in_any_order, asked_of, sorted, Asked, FakeAniList, FakeMedia,
+};
 
 /// Kitsu answering `/anime/:id?include=mappings` for each show in
 /// `shows`: (kitsu id, its sites).
@@ -98,8 +100,8 @@ async fn a_strip_of_ten_shows_fills_with_the_first_card_alone_and_one_request_fo
         );
     }
     assert_eq!(
-        asked_of(&anilist).await,
-        vec![Asked::ByMal(1), Asked::PageByMal((2..=10).collect())]
+        asked_in_any_order(&anilist).await,
+        sorted(vec![Asked::ByMal(1), Asked::PageByMal((2..=10).collect())])
     );
 }
 
@@ -169,13 +171,27 @@ async fn a_strip_of_mixed_mappings_fills_with_the_first_card_alone_and_one_reque
     for (id, listing) in ids.iter().zip(&want) {
         assert_eq!(cached(&state, id).as_ref(), Some(listing), "kitsu {id}");
     }
+    // The AniList-id page goes once the MAL page has answered; the first
+    // card's lookup is out beside them.
+    let asked = asked_of(&anilist).await;
+    let pages: Vec<&Asked> = asked
+        .iter()
+        .filter(|a| !matches!(a, Asked::ByMal(_)))
+        .collect();
     assert_eq!(
-        asked_of(&anilist).await,
-        vec![
+        pages,
+        [
+            &Asked::PageByMal(vec![2, 5, 6]),
+            &Asked::PageById(vec![13, 14, 15])
+        ]
+    );
+    assert_eq!(
+        sorted(asked),
+        sorted(vec![
             Asked::ByMal(1),
             Asked::PageByMal(vec![2, 5, 6]),
             Asked::PageById(vec![13, 14, 15])
-        ]
+        ])
     );
 }
 
@@ -201,12 +217,15 @@ async fn a_strip_refused_by_anilist_caches_none_of_its_shows() {
         assert_eq!(cached(&state, id), None, "kitsu {id} was cached");
     }
     let asked = asked_of(&anilist).await;
-    assert!(
-        matches!(asked.first(), Some(Asked::ByMal(1))),
+    assert_eq!(
+        asked.iter().filter(|a| **a == Asked::ByMal(1)).count(),
+        1,
         "the first card goes alone: {asked:?}"
     );
     assert!(
-        asked[1..].iter().all(|a| matches!(a, Asked::PageByMal(_))),
+        asked
+            .iter()
+            .all(|a| *a == Asked::ByMal(1) || matches!(a, Asked::PageByMal(_))),
         "{asked:?}"
     );
     assert!(asked.len() <= 3, "{asked:?}");
@@ -294,16 +313,29 @@ async fn a_card_that_stopped_waiting_is_left_out_of_the_page() {
     let anilist = anilist_serving(fake.clone()).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
-    for id in ["9", "3"] {
+    for id in ["9", "1", "2", "3"] {
         let _ = crate::commands::external_ids::external_ids_for(&state, id).await;
     }
-    let dropped = tokio::time::timeout(
-        std::time::Duration::from_millis(1),
-        thumbs_for_show_with_anilist_base(&state, "3", Some(&base)),
-    );
-    let (first, _, a, b) = tokio::join!(
-        thumbs_for_show_with_anilist_base(&state, "9", Some(&base)),
-        dropped,
+    // Every show's mappings known, each lookup reaches the lane in the
+    // turn it is polled. Show 3's caller is dropped once its lookup has
+    // joined the lane, before 1 and 2 ask: before the driver can take
+    // a window, which needs this task to yield.
+    let mut first = std::pin::pin!(thumbs_for_show_with_anilist_base(&state, "9", Some(&base)));
+    assert!(futures_util::poll!(&mut first).is_pending());
+    {
+        let mut dropped =
+            std::pin::pin!(thumbs_for_show_with_anilist_base(&state, "3", Some(&base)));
+        assert!(futures_util::poll!(&mut dropped).is_pending());
+        let lane = crate::commands::strip_warm::fill_lane(&state, Some(&base));
+        assert_eq!(
+            <crate::meta::anilist_streaming_eps::Streaming as crate::meta::anilist_batch::Kind>::lanes()
+                .gathered(&lane),
+            1,
+            "show 3 waits in the lane"
+        );
+    }
+    let (first, a, b) = tokio::join!(
+        first,
         thumbs_for_show_with_anilist_base(&state, "1", Some(&base)),
         thumbs_for_show_with_anilist_base(&state, "2", Some(&base)),
     );
@@ -311,7 +343,7 @@ async fn a_card_that_stopped_waiting_is_left_out_of_the_page() {
     assert_eq!(a, fake.media[1].listing());
     assert_eq!(b, fake.media[2].listing());
     assert_eq!(
-        asked_of(&anilist).await,
-        vec![Asked::ByMal(9), Asked::PageByMal(vec![1, 2])]
+        asked_in_any_order(&anilist).await,
+        sorted(vec![Asked::ByMal(9), Asked::PageByMal(vec![1, 2])])
     );
 }
