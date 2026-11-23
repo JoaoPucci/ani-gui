@@ -126,7 +126,6 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             "/api/kitsu/anime-by-slug/:slug",
             get(get_kitsu_anime_by_slug),
         )
-        .route("/api/kitsu/trending", get(get_kitsu_trending))
         .route(
             "/api/kitsu/trending-anilist",
             get(get_kitsu_trending_anilist),
@@ -367,12 +366,6 @@ async fn get_kitsu_anime_by_slug(
     Path(slug): Path<String>,
 ) -> Result<Json<Option<KitsuAnimeRef>>, AniError> {
     Ok(Json(kitsu_inner::kitsu_anime_by_slug(&state, &slug).await?))
-}
-
-async fn get_kitsu_trending(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<KitsuAnimeRef>>, AniError> {
-    Ok(Json(kitsu_inner::kitsu_trending(&state).await?))
 }
 
 async fn get_kitsu_trending_anilist(
@@ -2901,6 +2894,27 @@ mod tests {
         assert!(state.sessions.is_empty(), "no session was opened");
     }
 
+    /// Kitsu's own trending list is no route of its own: Home and the
+    /// search page both draw Trending from the AniList list
+    /// (`/api/kitsu/trending-anilist`), which falls back to Kitsu's list
+    /// itself when AniList never answered.
+    #[tokio::test]
+    async fn kitsus_own_trending_list_is_no_route() {
+        let td = TempDir::new().expect("tempdir");
+        let router = test_router(Arc::new(test_app_state(&td)));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/kitsu/trending")
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
     /// `/api/kitsu/anime/:id` — the wiremock for kitsu_inner won't
     /// answer at the unreachable test base, so the call surfaces an
     /// error. The route's job is to not panic on the path-parameter
@@ -2951,16 +2965,16 @@ mod tests {
         );
     }
 
-    /// `/api/kitsu/trending` and `/api/kitsu/trending-anilist` —
-    /// neither will get a valid response from the unreachable test
-    /// base; the test pins that the routes exist and surface the
+    /// `/api/kitsu/trending-anilist` will get no valid response from
+    /// the unreachable test base; the test pins that the route exists
+    /// and surfaces the
     /// upstream failure (rather than 404 because we forgot to
-    /// register them).
+    /// register it).
     #[tokio::test]
     async fn kitsu_trending_routes_are_registered_and_propagate_failures() {
         let td = TempDir::new().expect("tempdir");
         let router = test_router(Arc::new(test_app_state(&td)));
-        for path in ["/api/kitsu/trending", "/api/kitsu/trending-anilist"] {
+        for path in ["/api/kitsu/trending-anilist"] {
             let response = router
                 .clone()
                 .oneshot(
