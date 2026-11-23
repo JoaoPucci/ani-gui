@@ -3863,4 +3863,14 @@
 	.line.w-90 {
 		inline-size: 90%;
 	}
+	/* A forced-colours theme (a Windows contrast theme) turns every
+	   background into its canvas colour, so a state shown by a fill
+	   would vanish: there the fill takes the theme's own colours. */
+	@media (forced-colors: active) {
+		.seg-btn.active {
+			forced-color-adjust: none;
+			background: Highlight;
+			color: HighlightText;
+		}
+	}
 </style>

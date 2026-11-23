@@ -118,4 +118,13 @@
 			background: var(--accent-persimmon);
 		}
 	}
+	/* A forced-colours theme (a Windows contrast theme) turns every
+	   background into its canvas colour, so a state shown by a fill
+	   would vanish: there the fill takes the theme's own colours. */
+	@media (forced-colors: active) {
+		.search-progress-bar {
+			forced-color-adjust: none;
+			background: Highlight;
+		}
+	}
 </style>

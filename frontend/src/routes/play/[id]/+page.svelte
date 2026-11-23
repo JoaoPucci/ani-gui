@@ -6677,4 +6677,19 @@
 				0 0 0 6px color-mix(in oklab, var(--accent) 0%, transparent);
 		}
 	}
+	/* A forced-colours theme (a Windows contrast theme) turns every
+	   background into its canvas colour, so a state shown by a fill
+	   would vanish: there the fill takes the theme's own colours. */
+	@media (forced-colors: active) {
+		.pc-volume-fill,
+		.pc-scrubber-fill {
+			forced-color-adjust: none;
+			background: Highlight;
+		}
+		.pc-volume-thumb,
+		.pc-scrubber-thumb {
+			forced-color-adjust: none;
+			background: CanvasText;
+		}
+	}
 </style>

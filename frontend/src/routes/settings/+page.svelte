@@ -1191,4 +1191,29 @@
 		text-transform: uppercase;
 		color: var(--bone-300);
 	}
+	/* A forced-colours theme (a Windows contrast theme) turns every
+	   background into its canvas colour, so a state shown by a fill
+	   would vanish: there the fill takes the theme's own colours. */
+	@media (forced-colors: active) {
+		.switch-track {
+			border: 1px solid CanvasText;
+		}
+		.switch-thumb {
+			forced-color-adjust: none;
+			background: CanvasText;
+		}
+		.switch input:checked + .switch-track {
+			forced-color-adjust: none;
+			background: Highlight;
+			border-color: Highlight;
+		}
+		.switch input:checked + .switch-track .switch-thumb {
+			background: HighlightText;
+		}
+		.seg-btn.active {
+			forced-color-adjust: none;
+			background: Highlight;
+			color: HighlightText;
+		}
+	}
 </style>
