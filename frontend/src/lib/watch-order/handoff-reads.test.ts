@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
-import { createFranchiseReads, createNamedReads } from './handoff-reads';
+import { createFranchiseReads, createNamedReads, HANDOFF_WALKS_ON_OWN_LANE } from './handoff-reads';
 import type { FranchiseData } from './types';
 
 const franchise = (anchor: string): FranchiseData => ({
@@ -23,7 +23,7 @@ describe('createFranchiseReads', () => {
 	it('reads a series once however often it is wanted, and hands it on', async () => {
 		const read = vi.fn(async (id: string) => franchise(id));
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		reads.want('7');
 		await flush();
@@ -37,7 +37,7 @@ describe('createFranchiseReads', () => {
 	it('reads each series it is asked for', async () => {
 		const read = vi.fn(async (id: string) => franchise(id));
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		reads.want('8');
 		await flush();
@@ -50,7 +50,7 @@ describe('createFranchiseReads', () => {
 			throw new Error('503');
 		});
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		await flush();
 		reads.want('7');
@@ -70,7 +70,7 @@ describe('createFranchiseReads, when the page goes', () => {
 			return new Promise<FranchiseData>((r) => answers.push(r));
 		};
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		reads.want('8');
 		reads.stop();
@@ -84,7 +84,8 @@ describe('createFranchiseReads, when the page goes', () => {
 		const signals: AbortSignal[] = [];
 		const reads = createFranchiseReads(
 			(id, signal) => (signals.push(signal), new Promise<FranchiseData>(() => {})),
-			vi.fn()
+			vi.fn(),
+			HANDOFF_WALKS_ON_OWN_LANE
 		);
 		reads.want('7');
 		expect(signals[0].aborted).toBe(false);
@@ -119,7 +120,7 @@ describe('createFranchiseReads, on the franchise lane', () => {
 
 	it(`walks at most ${AT_ONCE} series at once, and the next as one answers`, async () => {
 		const { out, started, read } = held();
-		const reads = createFranchiseReads(read, vi.fn());
+		const reads = createFranchiseReads(read, vi.fn(), HANDOFF_WALKS_ON_OWN_LANE);
 		for (const id of ids(8)) reads.want(id);
 		expect(started).toEqual(ids(6));
 		out.get('1')!(franchise('1'));
@@ -133,7 +134,7 @@ describe('createFranchiseReads, on the franchise lane', () => {
 	it('starts none of the waiting reads once the page has gone', async () => {
 		const { out, started, read } = held();
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		for (const id of ids(8)) reads.want(id);
 		reads.stop();
 		await flush();
@@ -150,7 +151,7 @@ describe('createFranchiseReads, on the franchise lane', () => {
 				async (wants, answers) => {
 					const { out, started, read } = held();
 					const settled = vi.fn();
-					const reads = createFranchiseReads(read, settled);
+					const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 					let peak = 0;
 					const watch = () => (peak = Math.max(peak, out.size));
 					for (const id of wants) {

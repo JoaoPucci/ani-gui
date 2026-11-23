@@ -11,7 +11,7 @@
  * franchise, on the franchise lane (`$lib/backend/lanes`), so a read
  * whose answer nobody will use must not hold a connection. The series
  * are walked as many at a time as the lane has connections
- * (`HANDOFF_WALKS_AT_ONCE`), in the order the rows ask for them.
+ * (`handoffWalksAtOnce`), in the order the rows ask for them.
  */
 import type { FranchiseData } from './types';
 
@@ -34,11 +34,22 @@ export interface FranchiseReads {
  * week once everything it relates has finished, so a warm Home asks
  * Kitsu for little or nothing.
  */
-export const HANDOFF_WALKS_AT_ONCE = 6;
+export const HANDOFF_WALKS_ON_OWN_LANE = 6;
+
+/** How many walks Home keeps out at once when franchise reads share
+ *  the API's origin. */
+export const HANDOFF_WALKS_ON_SHARED_LANE = HANDOFF_WALKS_ON_OWN_LANE;
+
+/** The walk budget for a franchise lane that is (`ownLane`) or is not
+ *  an origin of its own. */
+export function handoffWalksAtOnce(ownLane: boolean): number {
+	return ownLane ? HANDOFF_WALKS_ON_OWN_LANE : HANDOFF_WALKS_ON_SHARED_LANE;
+}
 
 export function createFranchiseReads(
 	read: (id: string, signal: AbortSignal) => Promise<FranchiseData>,
-	settled: (id: string, franchise: FranchiseData | null) => void
+	settled: (id: string, franchise: FranchiseData | null) => void,
+	atOnce: number
 ): FranchiseReads {
 	const asked = new Set<string>();
 	const page = new AbortController();
@@ -54,7 +65,7 @@ export function createFranchiseReads(
 		settled(id, franchise);
 	};
 	const next = () => {
-		while (out < HANDOFF_WALKS_AT_ONCE && waiting.length > 0) {
+		while (out < atOnce && waiting.length > 0) {
 			const id = waiting.shift()!;
 			out += 1;
 			read(id, page.signal).then(

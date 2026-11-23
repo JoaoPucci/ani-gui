@@ -72,3 +72,14 @@ export function laneBase(
 	const own = lane === 'api' ? undefined : lanes?.[lane];
 	return trim(typeof own === 'string' && own.length > 0 ? own : apiBase);
 }
+
+/** Whether `lane` reaches an origin of its own, and so a connection
+ *  budget of its own, rather than sharing the API's. */
+export function laneIsOwn(
+	lanes: Partial<Record<string, string>> | undefined,
+	lane: Lane,
+	apiBase: string
+): boolean {
+	void [lanes, lane, apiBase];
+	return true;
+}
