@@ -1,0 +1,7 @@
+{
+	"loading_aria": "Loading video",
+	"starting": "Loading episode {n}",
+	"resuming": "Resuming at {time}",
+	"buffering": "Buffering",
+	"episode": "Episode {n}"
+}

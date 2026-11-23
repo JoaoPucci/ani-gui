@@ -66,6 +66,16 @@ export function writeReplayConfig(profile: string, before = ''): void {
 export interface RealPlay {
 	/** The cache keys written, one per play of the card's episode. */
 	seeded: string[];
+	/** The episode the Continue card plays. */
+	episode: number;
+}
+
+/** A show the Continue card plays in place of the fixture's: the show
+ *  the pages are answered with, and the episode the card plays, which
+ *  the history puts one past its last watch. */
+export interface ContinueShow {
+	match: Record<string, unknown>;
+	episode: { number: number } & Record<string, unknown>;
 }
 
 /**
@@ -85,10 +95,22 @@ export async function routeRealPlay(
 	{
 		profile,
 		settings,
-		stream
-	}: { profile: string; settings: Record<string, unknown>; stream: ReplayStream }
+		stream,
+		show
+	}: {
+		profile: string;
+		settings: Record<string, unknown>;
+		stream: ReplayStream;
+		show?: ContinueShow;
+	}
 ): Promise<RealPlay> {
 	const db = metadataDb(path.join(profile, 'cache'));
+	const match = show?.match ?? continueKitsuMatch;
+	const episodeShown = show?.episode ?? continueKitsuEpisode6;
+	const playEpisode = show?.episode.number ?? CONTINUE_EPISODE;
+	const history = show
+		? [{ ...continueHistory[0], ep_no: String(playEpisode - 1) }]
+		: continueHistory;
 	const seeded: string[] = [];
 	let homeAsked: (() => void) | null = null;
 	await page.route('**/api/**', async (r) => {
@@ -101,9 +123,9 @@ export async function routeRealPlay(
 					: (JSON.parse(r.request().postData() ?? '{}') as Record<string, unknown>);
 			const episode =
 				asked instanceof URLSearchParams ? asked.get('episode') : String(asked.episode ?? '');
-			if (episode === String(CONTINUE_EPISODE)) {
+			if (episode === String(playEpisode)) {
 				const key = replayKey(asked);
-				seedReplay(db, key, replayRow({ ...stream, episode: CONTINUE_EPISODE }));
+				seedReplay(db, key, replayRow({ ...stream, episode: playEpisode }));
 				seeded.push(key);
 			}
 			return r.continue();
@@ -132,19 +154,19 @@ export async function routeRealPlay(
 		if (p.startsWith('/api/image')) return answer(r, { status: 503 });
 		if (p === '/api/history') {
 			homeAsked?.();
-			return j(continueHistory);
+			return j(history);
 		}
-		if (p === '/api/watched-at') return j({ [continueHistory[0].id]: 1_700_000_000 });
+		if (p === '/api/watched-at') return j({ [history[0].id]: 1_700_000_000 });
 		if (p.startsWith('/api/allmanga-kitsu-map/')) {
-			return j(p.includes(continueHistory[0].id) ? continueKitsuMatch.id : null);
+			return j(p.includes(history[0].id) ? match.id : null);
 		}
-		if (p.startsWith('/api/kitsu/anime/')) return j(continueKitsuMatch);
-		if (p.startsWith('/api/kitsu/episodes/')) return j([continueKitsuEpisode6]);
+		if (p.startsWith('/api/kitsu/anime/')) return j(match);
+		if (p.startsWith('/api/kitsu/episodes/')) return j([episodeShown]);
 		if (p === '/api/kitsu/search') return j([]);
 		if (p === '/api/availability') {
 			return j({
 				available: true,
-				episode_count: continueKitsuMatch.episode_count,
+				episode_count: match.episode_count,
 				extra_episodes: []
 			});
 		}
@@ -154,18 +176,19 @@ export async function routeRealPlay(
 		return j(null);
 	});
 	await remountFirstPage(page, () => new Promise<void>((resolve) => (homeAsked = resolve)));
-	return { seeded };
+	return { seeded, episode: playEpisode };
 }
 
 /**
  * Clicks the Continue card and waits for the player's page. The strip
- * is found by its name in English or in Brazilian Portuguese, the two
- * locales the specs run in.
+ * is found by its name in any of the app's four locales.
  */
 export async function playFromContinue(page: Page, play: RealPlay): Promise<void> {
-	const strip = page.getByRole('region', { name: /continue watching|continuar assistindo/i });
+	const strip = page.getByRole('region', {
+		name: /continue watching|continuar assistindo|seguir viendo|продолжить просмотр/i
+	});
 	const card = strip.getByRole('button').first();
-	await expect(card).toContainText(String(CONTINUE_EPISODE), { timeout: 30_000 });
+	await expect(card).toContainText(String(play.episode), { timeout: 30_000 });
 	await card.click();
 	await page.waitForURL(/\/play\//, { timeout: 30_000 });
 	expect(play.seeded.length, 'the click asked the backend to play the card').toBeGreaterThan(0);
