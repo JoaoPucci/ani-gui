@@ -39,7 +39,7 @@
 	"section_row_style": "Home row style",
 	"row_style_description": "Shows a small control on the home page to choose where rows put their actions: beside the title, or at the end of the header with a band that shows while the pointer or focus is on the row. Your choice is saved on this computer and stays after you hide the control.",
 	"row_style_toggle_label": "Show row style control",
-	"section_start_look": "Player start look",
+	"section_start_look": "Player loading screen",
 	"start_look_description": "What the player shows while an episode starts loading. Both looks are being tried out, and one will stay.",
 	"start_look_still": "Episode still with a loader",
 	"start_look_card": "Title card"
