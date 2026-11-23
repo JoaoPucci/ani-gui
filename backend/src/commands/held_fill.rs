@@ -31,7 +31,7 @@
 //!   no longer counts. Served to a page's read again, one is on screen
 //!   for the grace, as a new ticket is; a later wait keeps it there.
 //!   Their retries still go — one answer per show is cached for a day,
-//!   a finished show's for a week, so it serves the next view — but
+//!   most finished shows' for a week, so it serves the next view — but
 //!   only when no fill on screen waits for a retry.
 //! - **Bounded.** At most [`registry::MAX_PENDING`] fills wait at once;
 //!   one held back past that gets no retry, as before this existed. Only
