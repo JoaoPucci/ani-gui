@@ -592,8 +592,8 @@ async fn the_history_route_marks_the_rows_the_user_named_a_show_for() {
 /// point: a delay on one answer is a guess about how fast the machine
 /// is, and on a loaded runner the other correction can arrive after it.
 /// A held wiremock answer keeps the whole server, so the other read
-/// would wait behind it; this stand-in holds one request and answers
-/// the rest.
+/// would wait behind it; this stand-in holds the reads it names and
+/// answers the rest.
 async fn kitsu_holding(held: Vec<(&'static str, crate::held::Hold)>) -> String {
     use axum::extract::Path;
     let held = std::sync::Arc::new(held);
