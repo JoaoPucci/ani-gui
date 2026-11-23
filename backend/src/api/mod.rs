@@ -2965,9 +2965,9 @@ mod tests {
         );
     }
 
-    /// `/api/kitsu/trending` and `/api/kitsu/trending-anilist` —
-    /// neither will get a valid response from the unreachable test
-    /// base; the test pins that the route exists and surfaces the
+    /// `/api/kitsu/trending-anilist` will get no valid response from
+    /// the unreachable test base; the test pins that the route exists
+    /// and surfaces the
     /// upstream failure (rather than 404 because we forgot to
     /// register it).
     #[tokio::test]
