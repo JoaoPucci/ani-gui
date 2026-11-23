@@ -18,7 +18,7 @@
  * does. The data lives in `runs.json`: titles are Kitsu's, not
  * interface copy.
  */
-import raw from './runs.json';
+import raw from '../../../../../tests/fixtures/watch-order/runs.json';
 import type { Progress, WatchRun } from '../types';
 
 export interface FixtureRun extends WatchRun {
