@@ -327,6 +327,9 @@ async function openEpisode(options: Options = {}) {
 	Object.defineProperty(video, 'duration', { configurable: true, get: () => LENGTH });
 	video.dispatchEvent(new Event('loadedmetadata'));
 	video.dispatchEvent(new Event('durationchange'));
+	// The stream has started, as a real one says: the player's start
+	// phase ends, and with it the start veil that holds the pill back.
+	video.dispatchEvent(new Event('playing'));
 	if (options.franchise !== 'held')
 		await fetches.settled('the Up next read, the settings and the skip times');
 	return { video, fetches };
@@ -362,6 +365,9 @@ async function switchTo(video: HTMLVideoElement, episode: number, session: strin
 	video.currentTime = 0;
 	video.dispatchEvent(new Event('loadedmetadata'));
 	video.dispatchEvent(new Event('durationchange'));
+	// The stream has started, as a real one says: the player's start
+	// phase ends, and with it the start veil that holds the pill back.
+	video.dispatchEvent(new Event('playing'));
 	video.dispatchEvent(new Event('timeupdate'));
 }
 
