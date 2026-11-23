@@ -149,10 +149,18 @@ async function launchAppWithStubsOnce(
   await stub("**/api/history/by-kitsu/*", (r) => answer(r, json(null)));
   await stub("**/api/download/default-dir", (r) => answer(r, json(null)));
   // Settings asks where each player flavour's program is installed:
-  // nowhere, here.
-  await stub("**/api/external-player/standard*", (r) =>
-    answer(r, json({ name: "mpv", path: null, supported: true })),
-  );
+  // nowhere, here. Custom has no standard program; IINA is macOS-only.
+  await stub("**/api/external-player/standard*", (r) => {
+    const kind = new URL(r.request().url()).searchParams.get("kind");
+    return answer(
+      r,
+      json({
+        name: kind === "custom" ? null : kind,
+        path: null,
+        supported: kind !== "iina",
+      }),
+    );
+  });
   await stub("**/api/availability", (r) =>
     answer(r, json({ available: true, episode_count: 12, extra_episodes: [] })),
   );
