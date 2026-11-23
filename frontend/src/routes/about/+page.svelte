@@ -33,6 +33,8 @@
 		switch (id) {
 			case 'curl_impersonate':
 				return m.about_bundled_tool_note_curl_impersonate();
+			case 'cacert':
+				return m.about_bundled_tool_note_cacert();
 			case 'yt_dlp':
 				return m.about_bundled_tool_note_yt_dlp();
 			case 'ffmpeg':
@@ -187,6 +189,7 @@
 			<span>{m.about_section_bundled_tools_title()}</span>
 			<span class="section-eyebrow-faint">{m.about_section_bundled_tools_hint()}</span>
 		</h2>
+		<p class="section-intro">{m.about_bundled_tools_licenses()}</p>
 		<ul class="dep-list" aria-label={m.about_section_bundled_tools_title()}>
 			{#each BUNDLED_TOOLS as dep (dep.name)}
 				<li class="dep-item">
@@ -197,6 +200,31 @@
 					<span class="dep-version">{dep.version ?? m.about_dep_version_unversioned()}</span>
 					<span class="dep-license">{dep.license}</span>
 					<span class="dep-note">{bundledToolNote(dep.noteId)}</span>
+					{#if dep.provenance}
+						<p class="dep-offer">
+							{m.about_install_download({ name: dep.name, version: dep.provenance.version })}
+							<!-- eslint-disable svelte/no-navigation-without-resolve -->
+							<a
+								class="dep-offer-link"
+								href={dep.provenance.buildUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								>{m.about_install_download_build_link({ version: dep.provenance.version })}</a
+							>
+							<span aria-hidden="true">·</span>
+							<a
+								class="dep-offer-link"
+								href={dep.provenance.sourceUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								>{m.about_install_download_source_link({
+									name: dep.name,
+									version: dep.provenance.version
+								})}</a
+							>
+							<!-- eslint-enable svelte/no-navigation-without-resolve -->
+						</p>
+					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -537,6 +565,25 @@
 		color: var(--bone-300);
 		line-height: 1.5;
 	}
+	/* Sits under the note, in its column, so the offer reads as part of
+	   the entry it qualifies. */
+	.dep-offer {
+		grid-column: -2 / -1;
+		margin: 0;
+		font-family: var(--font-body);
+		font-size: var(--type-meta);
+		color: var(--bone-300);
+		line-height: 1.5;
+	}
+	.dep-offer-link {
+		color: var(--bone-200);
+		text-decoration: none;
+		border-block-end: 1px solid color-mix(in oklab, var(--brand) 40%, transparent);
+		transition: border-color var(--dur-fast) var(--ease-out-soft);
+	}
+	.dep-offer-link:hover {
+		border-block-end-color: var(--brand);
+	}
 	@media (max-inline-size: 720px) {
 		.dep-item {
 			grid-template-columns: 1fr auto;
@@ -556,6 +603,9 @@
 		}
 		.dep-note {
 			grid-area: note;
+		}
+		.dep-offer {
+			grid-column: 1 / -1;
 		}
 	}
 

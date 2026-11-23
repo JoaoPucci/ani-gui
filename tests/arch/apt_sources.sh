@@ -14,6 +14,11 @@
 #
 #     sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
 #
+# Ubuntu 22.04 predates that file and keeps its distro sources in the
+# one-line list, so a job on an ubuntu-22.04 runner names that instead:
+#
+#     sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list -o Dir::Etc::sourceparts=-
+#
 # An HTTP error from Ubuntu's own mirror still fails the refresh (an
 # unreachable one is a warning, as apt has always treated it), and the
 # install that follows still fails the step when a package cannot be
@@ -23,9 +28,9 @@
 # composite action (.github/actions/*/action.yml — the cached apt
 # install refreshes there), on which `apt` or `apt-get` is followed by
 # an `update` word — ended by whitespace, punctuation or the end of
-# the line — must be exactly that command, leading indentation and a
-# leading `run:` or `- run:` key aside. A line spelling the refresh
-# any other way — bare, with extra flags, with `|| true`, chained with
+# the line — must be exactly one of those two commands, leading
+# indentation and a leading `run:` or `- run:` key aside. A line
+# spelling the refresh any other way — bare, with extra flags, with `|| true`, chained with
 # `;` or `&&` — is a finding, and so is a comment that happens to
 # spell it, so write comments around the refresh without naming the
 # command.
@@ -37,6 +42,9 @@
 # line. Deciding what a
 # multi-line shell command does means parsing shell, which AGENTS.md
 # §2 puts out of bounds here; a green run says nothing about those.
+# Nor does it match a form to the runner a job uses: either is
+# accepted anywhere, and the 22.04 form on a newer runner refreshes
+# no source at all.
 
 set -eu
 
@@ -49,6 +57,7 @@ if [ ! -d .github/workflows ]; then
 fi
 
 CANON='sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-'
+CANON_2204='sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list -o Dir::Etc::sourceparts=-'
 PATTERN='(^|[^[:alnum:]_-])apt(-get)?([[:space:]].*)?[[:space:]]update([^[:alnum:]_-]|$)'
 
 failed=0
@@ -62,9 +71,9 @@ for wf in .github/workflows/*.yml .github/workflows/*.yaml \
         # Indentation and a one-line `run:` key are YAML's, not the
         # command's.
         trimmed=$(printf '%s\n' "$line" | sed -E 's/^[[:space:]]*(-[[:space:]]+)?(run:[[:space:]]*)?//')
-        if [ "$trimmed" != "$CANON" ]; then
-            printf 'arch/apt_sources FAIL: %s:%s refreshes apt sources the job never uses; write it as:\n    %s\n' \
-                "$wf" "${hit%%:*}" "$CANON" >&2
+        if [ "$trimmed" != "$CANON" ] && [ "$trimmed" != "$CANON_2204" ]; then
+            printf 'arch/apt_sources FAIL: %s:%s refreshes apt sources the job never uses; write it as:\n    %s\nor, on an ubuntu-22.04 runner:\n    %s\n' \
+                "$wf" "${hit%%:*}" "$CANON" "$CANON_2204" >&2
             failed=1
         fi
     done <<EOF

@@ -17,6 +17,12 @@
 # electron/ that git tracks or would track, comments included. The
 # constraint is that the token is absent, not that it is unused.
 #
+# One kind of file is left out: the `.txt` files directly in
+# electron/build-resources/licenses/, the licence texts the packages
+# ship beside their bundled binaries. They are copied verbatim and may
+# not be edited, and the GPL's text has "fulfilling" in it. Any other
+# file there, a script included, is still searched.
+#
 # What this does not cover: a spec outside electron/, or Playwright's
 # in-place answer reached under a name that never spells the word —
 # none exists; this check would not notice one.
@@ -34,7 +40,10 @@ cd "$REPO_ROOT"
 status=0
 found=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
     -u GIT_CEILING_DIRECTORIES -u GIT_DISCOVERY_ACROSS_FILESYSTEM \
-    git -C "$REPO_ROOT" grep -lIF --untracked 'fulfill' -- electron) || status=$?
+    -u GIT_LITERAL_PATHSPECS -u GIT_GLOB_PATHSPECS -u GIT_NOGLOB_PATHSPECS \
+    -u GIT_ICASE_PATHSPECS \
+    git -C "$REPO_ROOT" grep -lIF --untracked 'fulfill' -- electron \
+    ':(exclude,glob)electron/build-resources/licenses/*.txt') || status=$?
 if [ "$status" -gt 1 ]; then
     printf 'arch/e2e_stub_server FAIL: git could not search %s (exit %s)\n' "$REPO_ROOT" "$status" >&2
     exit 1

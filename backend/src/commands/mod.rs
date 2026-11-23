@@ -12,7 +12,8 @@ mod account_mapped;
 pub(crate) mod account_owner;
 pub(crate) mod account_revisions;
 pub mod airing;
-mod anilist_banner_memo;
+mod anilist_banner_fill;
+pub(crate) mod anilist_banner_memo;
 pub mod anilist_eps_thumbs;
 pub(crate) mod anilist_ids;
 pub mod aniskip;
@@ -35,16 +36,29 @@ mod cour_ordinal_form;
 mod cour_pairing;
 pub mod cour_same_name;
 pub mod download;
+mod download_episode_stem;
+mod download_folder_name;
 mod download_names;
+mod download_place;
 pub(crate) mod external_ids;
 pub(crate) mod held_fill;
 pub mod listing_tags;
 pub mod numbering_offset;
+pub(crate) mod strip_warm;
 pub(crate) mod switch_episode;
 
 #[cfg(test)]
 #[path = "appended_extras_flow_test.rs"]
 mod appended_extras_flow_test;
+#[cfg(test)]
+#[path = "download_lock_cleanup_test.rs"]
+mod download_lock_cleanup_tests;
+#[cfg(test)]
+#[path = "download_lock_deadline_test.rs"]
+pub(crate) mod download_lock_deadline_test;
+#[cfg(test)]
+#[path = "download_lock_log_test.rs"]
+pub(crate) mod download_lock_log_test;
 #[cfg(test)]
 #[path = "download_lock_prop_test.rs"]
 mod download_lock_prop_tests;
@@ -154,6 +168,10 @@ mod kitsu_id_compare_test;
 #[cfg(test)]
 #[path = "anilist_unanswered_test.rs"]
 mod anilist_unanswered_test;
+
+#[cfg(test)]
+#[path = "kitsu_adult_hidden_test.rs"]
+mod kitsu_adult_hidden_test;
 
 #[cfg(test)]
 #[path = "guessed_from_test.rs"]
