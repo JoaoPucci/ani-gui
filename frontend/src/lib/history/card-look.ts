@@ -23,14 +23,16 @@ import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 
 /**
  * How long a matched card waits for its episode details before it
- * settles on the show's poster. Measured on a seeded profile of fifty
- * Continue rows, from a card's match to its episode details: 95% of
- * cards land within about 390 ms on a fresh launch and within about
- * 370 ms on a return to Home, so a card waits no longer than that
- * while a slow lookup (an episode page Kitsu has to be asked for)
- * settles on its poster instead of holding the skeleton.
+ * settles on the show's poster. A return to Home, or a launch whose
+ * episode pages and stills are cached, settles well inside 400 ms. The
+ * first launch of the day is what sets the wait: most cards' details
+ * are then a cold lookup (Kitsu's episode page, then AniList's stills
+ * where Kitsu has none). Measured on such a launch, one card in five
+ * landed its still inside 400 ms and four in five inside a second, for
+ * about 0.14 s more of skeleton; a lookup slower than that still
+ * settles on the poster rather than holding the skeleton.
  */
-export const EPISODE_WAIT_CAP_MS = 400;
+export const EPISODE_WAIT_CAP_MS = 1000;
 
 /** The artwork a card shows, and what to show if that one fails. */
 export interface CardImage {
