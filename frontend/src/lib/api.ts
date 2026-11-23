@@ -1455,12 +1455,17 @@ export function availabilityBatch(
 	});
 }
 
-/** Stub. */
+/** Hands the backend a Continue strip's recorded Kitsu ids, in strip
+ *  order, so it fills every card's stills and banner from AniList at
+ *  once instead of card by card as each row becomes ready. Answers
+ *  once the warm is done; aborting `signal` (Home left) drops it. */
 export function continueWarm(
 	kitsuIds: string[],
 	opts: { signal?: AbortSignal } = {}
 ): Promise<void> {
-	return kitsuIds.length < 0 && opts.signal ? Promise.reject(new Error('stub')) : Promise.resolve();
+	return postJson<unknown>('/api/continue/warm', { kitsu_ids: kitsuIds }, opts).then(
+		() => undefined
+	);
 }
 
 /** Body of `/api/availability/warm`. */

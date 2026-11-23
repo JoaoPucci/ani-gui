@@ -42,11 +42,7 @@ pub(super) async fn fetch_anilist_eps_thumbs(
     MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(Miss::NoIds)?;
     // A fill the page renders without: it spends AniList's budget
     // behind what the user is looking at.
-    let lane = format!(
-        "{:p}\u{0}{}",
-        std::ptr::from_ref(state),
-        anilist_base.unwrap_or("")
-    );
+    let lane = crate::commands::strip_warm::fill_lane(state, anilist_base);
     let want = Want {
         mal: ids.mal,
         anilist: ids.anilist,

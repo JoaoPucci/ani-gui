@@ -24,6 +24,39 @@ pub(crate) fn remember(pool: &SqlitePool, refs: &[KitsuAnimeRef]) {
     }
 }
 
+fn warmed_key(kitsu_id: &str) -> String {
+    format!("{}{kitsu_id}", crate::cache::families::ANILIST_STRIP_BANNER)
+}
+
+/// Remember what a Continue strip's warm found for a show's banner: the
+/// banner, or `None` where AniList's media has none. Kept apart from the
+/// trending memo: it is read only where the show's detail has no cover
+/// of its own ([`warmed`]), so a show Kitsu has a cover for shows no
+/// AniList banner it did not before.
+pub(crate) fn remember_warmed(pool: &SqlitePool, kitsu_id: &str, banner: Option<&str>) {
+    let _ = meta_cache_put(
+        pool,
+        &warmed_key(kitsu_id),
+        banner.unwrap_or(""),
+        ANILIST_BANNER_TTL.as_secs(),
+    );
+}
+
+/// What a strip's warm found for a show's banner: `Some(None)` where
+/// AniList has none, `None` where the warm found nothing to say — no
+/// row, or a banner since found gone.
+pub(crate) fn warmed(pool: &SqlitePool, kitsu_id: &str) -> Option<Option<String>> {
+    let found = meta_cache_get(pool, &warmed_key(kitsu_id)).ok().flatten()?;
+    if found.is_empty() {
+        return Some(None);
+    }
+    if crate::meta::images::is_dead(pool, &found) {
+        let _ = meta_cache_delete(pool, &warmed_key(kitsu_id));
+        return None;
+    }
+    Some(Some(found))
+}
+
 /// The banner remembered for a Kitsu id, if any. A remembered URL the
 /// image proxy has since found gone is forgotten here rather than
 /// handed out again.

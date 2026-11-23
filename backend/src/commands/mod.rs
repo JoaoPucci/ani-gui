@@ -12,7 +12,7 @@ mod account_mapped;
 pub(crate) mod account_owner;
 pub(crate) mod account_revisions;
 pub mod airing;
-mod anilist_banner_memo;
+pub(crate) mod anilist_banner_memo;
 pub mod anilist_eps_thumbs;
 pub(crate) mod anilist_ids;
 pub mod aniskip;
