@@ -5797,6 +5797,19 @@
 		opacity: 0;
 		cursor: pointer;
 	}
+	/* The slider's field is transparent, so the ring it takes from the
+	   keyboard is drawn on the slider around it; in a forced-colours
+	   theme, which drops shadows, as an outline. */
+	.pc-volume-slider:has(input:focus-visible) {
+		box-shadow: var(--ring);
+		border-radius: 999px;
+	}
+	@media (forced-colors: active) {
+		.pc-volume-slider:has(input:focus-visible) {
+			outline: 2px solid CanvasText;
+			outline-offset: 2px;
+		}
+	}
 	.pc-volume-slider input[type='range']::-webkit-slider-thumb {
 		appearance: none;
 		-webkit-appearance: none;
@@ -6202,7 +6215,9 @@
 	.ep-jump-pill:focus-within {
 		border-color: var(--accent);
 		background: color-mix(in oklab, var(--bone-100) 10%, transparent);
+		/* The app's ring on the pill: its field turns its own off. */
 		box-shadow:
+			var(--ring),
 			0 0 8px color-mix(in oklab, var(--accent) 50%, transparent),
 			0 0 16px color-mix(in oklab, var(--accent) 25%, transparent);
 	}

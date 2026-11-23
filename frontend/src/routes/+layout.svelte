@@ -1089,6 +1089,7 @@
 		box-shadow:
 			inset 0 0 0 2px var(--brand),
 			inset 0 0 0 4px var(--ink-000);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
 		--ring-forced-offset: -4px;
 	}
 	.rail-foot.active {

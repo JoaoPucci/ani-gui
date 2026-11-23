@@ -1198,6 +1198,14 @@
 	.switch input:focus-visible + .switch-track {
 		box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 60%, transparent);
 	}
+	/* A forced-colours theme drops the track's shadow, and the field
+	   that takes focus is transparent: the track draws an outline. */
+	@media (forced-colors: active) {
+		.switch input:focus-visible + .switch-track {
+			outline: 2px solid CanvasText;
+			outline-offset: 2px;
+		}
+	}
 	.switch-state {
 		font-family: var(--font-mono);
 		font-size: var(--type-micro);

@@ -2473,6 +2473,8 @@
 		outline: 2px solid var(--accent-oxblood);
 		outline-offset: 0;
 		box-shadow: none;
+		/* The same in a forced-colours theme (tokens.css). */
+		--ring-forced-offset: 0;
 	}
 
 	/* The row style switch's place: the head of the rows, flush with
