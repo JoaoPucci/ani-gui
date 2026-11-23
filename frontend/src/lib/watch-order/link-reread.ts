@@ -10,7 +10,7 @@
  * player's Up next card and the franchise page read through it.
  */
 import type { LatestRead } from './latest-read';
-import type { WatchOrderAnswer } from './loader';
+import { rereadAnswer, type WatchOrderAnswer } from './loader';
 
 export function followLink<T>(
 	reads: LatestRead<WatchOrderAnswer<T> | null>,
@@ -23,7 +23,6 @@ export function followLink<T>(
 	}
 	if (shown.view === null) return;
 	reads.refresh(async (signal) => {
-		const fresh = await read(signal);
-		return fresh?.view ? fresh : shown;
+		return rereadAnswer(await read(signal)) ?? shown;
 	});
 }

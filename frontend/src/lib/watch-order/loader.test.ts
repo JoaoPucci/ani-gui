@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { visitRead } from './loader';
+import { rereadAnswer, visitRead } from './loader';
 
 describe('visitRead', () => {
 	it("hands on the route's answer as the page's view", async () => {
@@ -36,5 +36,18 @@ describe('visitRead', () => {
 			}, visit.signal);
 			expect(await answered).toBeNull();
 		}
+	});
+});
+
+describe('rereadAnswer', () => {
+	it('draws a read again that read the history', () => {
+		const fresh = { view: { history: true } };
+		expect(rereadAnswer(fresh)).toBe(fresh);
+	});
+
+	it('keeps what is drawn when the read failed, found no franchise, or could not read the history', () => {
+		expect(rereadAnswer(null)).toBeNull();
+		expect(rereadAnswer({ view: null })).toBeNull();
+		expect(rereadAnswer({ view: { history: false } })).toBeNull();
 	});
 });

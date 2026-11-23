@@ -32,7 +32,7 @@
 		visitAnswer,
 		type ShowAnswer
 	} from '$lib/watch-order/session-memo';
-	import { visitRead } from '$lib/watch-order/loader';
+	import { rereadAnswer, visitRead } from '$lib/watch-order/loader';
 	import { stripReads } from '$lib/watch-order/strip-reads';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { numeral } from '$lib/watch-order/meta';
@@ -523,13 +523,14 @@
 	let watchOrderHop = $state<FirstHop | null>(null);
 	// The strip's walk and its read again after a history link
 	// ($lib/watch-order/strip-reads), on the shown visit's reads. A read
-	// again that fails keeps what is drawn.
+	// again that fails, or could not read the history, keeps what is
+	// drawn ($lib/watch-order/loader `rereadAnswer`).
 	const strip = stripReads<ShowAnswer>({
 		current: () => (watchOrderData?.view ? watchOrderData : null),
 		reread: () =>
 			showReads
 				.keep(visitRead((signal) => watchOrderSources.show(id, signal), showReads.signal))
-				.then((a) => (a?.view ? a : null)),
+				.then(rereadAnswer),
 		// Whatever the strip draws is what the session remembers for the
 		// show of the visit it belongs to (`key`), a link's re-read
 		// included, so a later visit's first frame draws the rows the link

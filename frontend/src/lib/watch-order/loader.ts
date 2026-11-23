@@ -43,3 +43,16 @@ export async function visitRead<T>(
 	const view = await read(signal).catch(() => null);
 	return signal?.aborted ? null : { view };
 }
+
+/**
+ * A read again's answer, or null to keep what is drawn: the read failed
+ * or found no franchise, or it could not read the history (`history`
+ * false), so its answer has no progress for that reason and drawing it
+ * would take away the progress the page drew.
+ */
+export function rereadAnswer<T>(fresh: WatchOrderAnswer<T> | null): WatchOrderAnswer<T> | null {
+	const view: unknown = fresh?.view ?? null;
+	if (fresh === null || view === null) return null;
+	const unread = typeof view === 'object' && 'history' in view && view.history === false;
+	return unread ? null : fresh;
+}
