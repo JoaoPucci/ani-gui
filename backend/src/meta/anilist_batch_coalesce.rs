@@ -34,17 +34,21 @@ use super::{batch, Kind, Want};
 use crate::error::{AniError, Result};
 use crate::meta::anilist_gate::{current_class, in_class, Class};
 
-/// How long a lane waits for more lookups before its batch goes out:
-/// a fraction of the gate's least gap between two requests, and of the
-/// episode route's budget for the fill.
+/// How long a lane gathers lookups before its batch goes out: under the
+/// gate's least gap between two requests (250 ms), so the request a
+/// gathered lookup rides in leaves no later than its own would have,
+/// the lane's first having just been sent.
 pub(crate) const WINDOW: Duration = Duration::from_millis(100);
 
 type Reply<T> = oneshot::Sender<Result<T>>;
 
+/// Each open lane's lookups not yet sent, by lane.
+type Open<T> = HashMap<String, Vec<(Want, Reply<T>)>>;
+
 /// A kind's open lanes: each one's lookups not yet sent, by lane. A lane
 /// is here exactly while its driver runs.
 pub(crate) struct Lanes<T> {
-    open: Mutex<HashMap<String, Vec<(Want, Reply<T>)>>>,
+    open: Mutex<Open<T>>,
 }
 
 impl<T> Default for Lanes<T> {
@@ -56,7 +60,7 @@ impl<T> Default for Lanes<T> {
 }
 
 impl<T> Lanes<T> {
-    fn open(&self) -> std::sync::MutexGuard<'_, HashMap<String, Vec<(Want, Reply<T>)>>> {
+    fn open(&self) -> std::sync::MutexGuard<'_, Open<T>> {
         self.open
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -78,20 +82,28 @@ pub(crate) async fn coalesced<K: Kind>(
     let class = current_class();
     let lane = format!("{lane}\u{0}{class:?}");
     let (reply, answer) = oneshot::channel();
-    let opened = {
+    // The lookup that opens the lane goes out at once, alone: what a
+    // card's look waits on is never held for a window. Only lookups
+    // arriving while a lane is open wait for its next batch.
+    let first = {
         let mut lanes = K::lanes().open();
         match lanes.get_mut(&lane) {
             Some(pending) => {
                 pending.push((want, reply));
-                false
+                None
             }
             None => {
-                lanes.insert(lane.clone(), vec![(want, reply)]);
-                true
+                lanes.insert(lane.clone(), Vec::new());
+                Some(reply)
             }
         }
     };
-    if opened {
+    if let Some(reply) = first {
+        let base = base_override.map(str::to_owned);
+        tokio::spawn(in_class(
+            class,
+            deliver::<K>(client.clone(), base, vec![want], vec![reply]),
+        ));
         let driver = Driver::<K> {
             lane,
             client: client.clone(),

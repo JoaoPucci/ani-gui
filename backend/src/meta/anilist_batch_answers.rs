@@ -53,7 +53,8 @@ impl<T: Clone> Answers<T> {
 }
 
 /// Ask `keys` in `space`, a walk of whole pages per fifty ids: a walk's
-/// failure answers its own keys only.
+/// failure answers its own keys only, and one that could not be read
+/// hands them to their single lookups.
 pub(super) async fn answers<T, P, PF>(space: Space, keys: &[u32], ask: &mut P) -> Answers<T>
 where
     P: FnMut(Space, Vec<u32>) -> PF,
@@ -79,6 +80,11 @@ where
                 }
                 out.single.extend(alone);
             }
+            // A page that cannot be read cannot say which of its shows
+            // it failed for: each is asked by its single lookup, as
+            // before batching. Any other failure is that of every show
+            // it covered.
+            Err(AniError::ParseFailed { .. }) => out.single.extend(chunk.iter().copied()),
             Err(e) => out.failed.extend(chunk.iter().map(|k| (*k, e.clone()))),
         }
     }
@@ -88,9 +94,12 @@ where
 /// The single lookup for the key `key` of `space` names, made with
 /// `want`, asked once however many shows need it. A key reaches here
 /// only when AniList records media for it — several, more than a page
-/// holds, or one whose node could not be read — so the lookup by it
-/// finds one and never falls back to the AniList id beside it: every
-/// show naming the key reads the same answer.
+/// holds, or one whose node could not be read — or when its page could
+/// not be read at all. In the first cases the lookup by it finds a
+/// media and never falls back to the AniList id beside it, so every
+/// show naming the key reads the same answer; in the last, shows naming
+/// one MAL id with different AniList ids beside it share the first
+/// one's answer, as they would whenever AniList knows the MAL id.
 pub(super) async fn single_once<T: Clone, S, SF>(
     singles: &mut HashMap<(Space, u32), Result<T>>,
     single: &mut S,
