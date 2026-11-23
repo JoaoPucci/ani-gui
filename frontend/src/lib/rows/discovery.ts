@@ -2,8 +2,9 @@
  * Rows of cards stacked down a page, each loaded on its own: what each
  * row's request has come to, and what the page draws for it. The search
  * page's discovery rows, shown while nothing has been asked, are one
- * such stack (loadDiscoveryRows loads them); the home page's rows are
- * another ($lib/home/rows).
+ * such stack; the home page's catalogue rows are another. Both pages
+ * load theirs with loadDiscoveryRows, and what Home draws as its rows
+ * land is $lib/home/rows'.
  *
  * The rows are fetched side by side and each lands when it lands, so
  * the order they answer in is not the order they are drawn in.
