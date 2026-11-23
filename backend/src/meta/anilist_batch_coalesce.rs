@@ -72,6 +72,19 @@ impl<T> Lanes<T> {
     }
 }
 
+tokio::task_local! {
+    /// Set inside [`gathered`].
+    static GATHER: bool;
+}
+
+/// Run `f` with every lookup it starts waiting for its lane's window,
+/// the one that opens a lane included, so lookups started together go
+/// as one batch. For a warm no card's look waits on: a card's own
+/// lookup, outside this, still opens its lane and goes at once.
+pub(crate) async fn gathered<F: std::future::Future>(f: F) -> F::Output {
+    GATHER.scope(true, f).await
+}
+
 /// `want`'s answer of kind `K`, asked with the other lookups of `lane`
 /// that miss at the same time.
 ///
@@ -89,29 +102,37 @@ pub(crate) async fn coalesced<K: Kind>(
     let (reply, answer) = oneshot::channel();
     // The lookup that opens the lane goes out at once, alone: what a
     // card's look waits on is never held for a window. Only lookups
-    // arriving while a lane is open wait for its next batch.
-    let first = {
+    // arriving while a lane is open wait for its next batch — and,
+    // inside [`gathered`], the one that opens it too.
+    let gather = GATHER.try_with(|g| *g).unwrap_or(false);
+    let (opened, first) = {
         let mut lanes = K::lanes().open();
         match lanes.get_mut(&lane) {
             Some(pending) => {
                 pending.push((want, reply));
-                None
+                (false, None)
+            }
+            None if gather => {
+                lanes.insert(lane.clone(), vec![(want, reply)]);
+                (true, None)
             }
             None => {
                 lanes.insert(lane.clone(), Vec::new());
-                Some(reply)
+                (true, Some(reply))
             }
         }
     };
-    if let Some(reply) = first {
+    if opened {
         // Made before the driver is spawned, so a runtime that ends before
         // the driver first runs still closes the lane.
         let closing = Closing::<K>(Some(lane.clone()), PhantomData);
-        let base = base_override.map(str::to_owned);
-        tokio::spawn(in_class(
-            class,
-            deliver::<K>(client.clone(), base, vec![want], vec![reply]),
-        ));
+        if let Some(reply) = first {
+            let base = base_override.map(str::to_owned);
+            tokio::spawn(in_class(
+                class,
+                deliver::<K>(client.clone(), base, vec![want], vec![reply]),
+            ));
+        }
         let driver = Driver::<K> {
             lane,
             client: client.clone(),

@@ -7,8 +7,9 @@
 //! ([`crate::meta::anilist_batch`]) mostly carry one or two shows. The
 //! history records most rows' Kitsu id, so Home hands the whole strip
 //! here as it loads. The warm reads every show's mappings together,
-//! then starts every show's lookups in the same moment, so each lane
-//! sends its first lookup alone and the rest in one batch. A card's own
+//! then starts every show's lookups in the same moment, gathered
+//! (`meta::anilist_batch::gathered`), so each kind goes as one batch. A
+//! card's own
 //! lookup that comes while the warm's is out shares it (the thumbnail
 //! lookup's per-show sharing), or finds its answer cached.
 //!
@@ -55,6 +56,8 @@ pub(crate) async fn warm_strip(state: &AppState, kitsu_ids: &[String], anilist_b
             .map(|id| crate::commands::external_ids::external_ids_for(state, id)),
     )
     .await;
+    // Gathered: the warm's lookups go as one page per kind, none sent
+    // ahead alone — no card's look waits on the warm itself.
     let stills = futures_util::future::join_all(ids.iter().map(|id| {
         crate::commands::anilist_eps_thumbs::thumbs_for_show_with_anilist_base(
             state,
@@ -64,7 +67,7 @@ pub(crate) async fn warm_strip(state: &AppState, kitsu_ids: &[String], anilist_b
     }));
     let banners =
         futures_util::future::join_all(ids.iter().map(|id| warm_banner(state, id, anilist_base)));
-    futures_util::future::join(stills, banners).await;
+    crate::meta::anilist_batch::gathered(futures_util::future::join(stills, banners)).await;
 }
 
 /// Remember the banner AniList has for `kitsu_id`, unless its detail is
