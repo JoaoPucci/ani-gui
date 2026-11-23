@@ -282,6 +282,13 @@ interface Stop {
 	clips: Clip[];
 	/** Which of the controls this change is about it is, if any. */
 	kind: Kind;
+	/** Whether it, its chip or an element its focus rings draws an
+	 *  outline: the ring a forced-colours theme keeps, since it drops
+	 *  every box shadow. */
+	outlined: boolean;
+	/** Where its own outline and its chip's outline lie, if it draws
+	 *  them: what a forced-colours theme shows of its ring. */
+	outlines: Box[];
 	/** The selectors asked about that the control matches. */
 	hits: string[];
 }
@@ -466,9 +473,12 @@ function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop |
 				// A sheet from another origin cannot be read.
 			}
 		}
+		const lined = (s: CSSStyleDeclaration) => s.outlineStyle !== 'none' && px(s.outlineWidth) > 0;
+		let childOutlined = false;
 		const childRings: Stop['childRings'] = [];
 		for (const d of el.querySelectorAll<HTMLElement>('*')) {
 			if (!focusRules.some((r) => d.matches(r.selectorText))) continue;
+			if (lined(getComputedStyle(d))) childOutlined = true;
 			const by = reach(getComputedStyle(d));
 			if (by === null) continue;
 			childRings.push({
@@ -524,6 +534,23 @@ function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop |
 			rule,
 			room,
 			kind,
+			outlined: outlined || (hasBefore && lined(before)) || childOutlined,
+			outlines: [
+				...(outlined ? [grow(rect, px(cs.outlineWidth) + px(cs.outlineOffset))] : []),
+				...(hasBefore && lined(before)
+					? [
+							grow(
+								{
+									left: (rect.left + rect.right) / 2 - px(before.width) / 2,
+									right: (rect.left + rect.right) / 2 + px(before.width) / 2,
+									top: (rect.top + rect.bottom) / 2 - px(before.height) / 2,
+									bottom: (rect.top + rect.bottom) / 2 + px(before.height) / 2
+								},
+								px(before.outlineWidth) + px(before.outlineOffset)
+							)
+						]
+					: [])
+			],
 			hits: selectors.filter((s) => el.matches(s))
 		};
 	}, selectors);
@@ -693,6 +720,58 @@ const views = [
 	{ label: 'desktop', width: 1440, height: 900 }
 ] as const;
 
+/** The pages every walk covers, each with how to reach it from Home
+ *  and the controls it must reach. */
+function pagesOf(page: Page) {
+	return [
+		{
+			label: 'home',
+			required: ['winctl', 'brand', 'nav', 'rail-foot'],
+			go: async () => {
+				await expect(page.getByText(/top rated/i).first()).toBeVisible({
+					timeout: 15_000
+				});
+			}
+		},
+		{
+			label: 'show',
+			required: ['winctl', 'brand', 'nav', 'rail-foot', 'seg'],
+			go: async () => {
+				await page.locator(`a[href$="/anime/${topRated[0].id}"]`).first().click();
+				await expect.poll(() => page.url()).toContain(`/anime/${topRated[0].id}`);
+				await expect(page.locator('button.ep-tile').first()).toBeVisible({
+					timeout: 15_000
+				});
+			}
+		},
+		{
+			label: 'settings',
+			required: ['winctl', 'brand', 'nav', 'rail-foot', 'seg'],
+			go: async () => {
+				await page.locator('a.nav-link[href$="/settings"]').click();
+				await expect.poll(() => page.url()).toContain('/settings');
+				await expect(page.locator('select.select-input').first()).toBeVisible({
+					timeout: 15_000
+				});
+			}
+		},
+		{
+			label: 'search',
+			required: ['winctl', 'brand', 'nav', 'rail-foot'],
+			go: async () => {
+				await expect(page.getByText(/top rated/i).first()).toBeVisible({ timeout: 15_000 });
+				const input = page.locator('input[type="search"]').first();
+				await input.fill('fullmetal');
+				await input.press('Enter');
+				await expect.poll(() => page.url()).toContain('/search');
+				await expect(page.locator('a.card-link').first()).toBeVisible({
+					timeout: 15_000
+				});
+			}
+		}
+	] as const;
+}
+
 test('every focus ring is drawn once and whole', async () => {
 	test.setTimeout(240_000);
 	const testInfo = test.info();
@@ -702,53 +781,7 @@ test('every focus ring is drawn once and whole', async () => {
 		await expect(page.locator('.winctl-btn')).toHaveCount(3, {
 			timeout: 15_000
 		});
-		const pages = [
-			{
-				label: 'home',
-				required: ['winctl', 'brand', 'nav', 'rail-foot'],
-				go: async () => {
-					await expect(page.getByText(/top rated/i).first()).toBeVisible({
-						timeout: 15_000
-					});
-				}
-			},
-			{
-				label: 'show',
-				required: ['winctl', 'brand', 'nav', 'rail-foot', 'seg'],
-				go: async () => {
-					await page.locator(`a[href$="/anime/${topRated[0].id}"]`).first().click();
-					await expect.poll(() => page.url()).toContain(`/anime/${topRated[0].id}`);
-					await expect(page.locator('button.ep-tile').first()).toBeVisible({
-						timeout: 15_000
-					});
-				}
-			},
-			{
-				label: 'settings',
-				required: ['winctl', 'brand', 'nav', 'rail-foot', 'seg'],
-				go: async () => {
-					await page.locator('a.nav-link[href$="/settings"]').click();
-					await expect.poll(() => page.url()).toContain('/settings');
-					await expect(page.locator('select.select-input').first()).toBeVisible({
-						timeout: 15_000
-					});
-				}
-			},
-			{
-				label: 'search',
-				required: ['winctl', 'brand', 'nav', 'rail-foot'],
-				go: async () => {
-					await expect(page.getByText(/top rated/i).first()).toBeVisible({ timeout: 15_000 });
-					const input = page.locator('input[type="search"]').first();
-					await input.fill('fullmetal');
-					await input.press('Enter');
-					await expect.poll(() => page.url()).toContain('/search');
-					await expect(page.locator('a.card-link').first()).toBeVisible({
-						timeout: 15_000
-					});
-				}
-			}
-		] as const;
+		const pages = pagesOf(page);
 		for (const maximized of [false, true]) {
 			await app.evaluate(({ BrowserWindow }, max) => {
 				const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isVisible());
@@ -1122,3 +1155,43 @@ async function walkPlayer(origin: string) {
 		await stopApp(app);
 	}
 }
+
+test('in a forced-colours theme every focused control draws an outline', async () => {
+	test.setTimeout(240_000);
+	const { app, page } = await launch();
+	try {
+		// A contrast theme (Windows) drops every box shadow, so a ring
+		// drawn only as a shadow is not there; an outline is kept.
+		await page.emulateMedia({ reducedMotion: 'reduce', forcedColors: 'active' });
+		expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true);
+		await sizeViewport(page, 1440, 900);
+		for (const p of pagesOf(page)) {
+			await page.locator('a.brand').click();
+			await p.go();
+			await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `${p.label}, forced colours, ${key}`;
+				const stops = await walk(page, key);
+				expect(stops.length, `${at}: the keyboard reached controls`).toBeGreaterThan(3);
+				for (const s of stops) {
+					const where = `${at}: ${s.name} ${JSON.stringify(s)}`;
+					expect.soft(s.outlined, `${where}: draws an outline`).toBe(true);
+					// Whole, and once: the window buttons' chip carries it.
+					for (const ring of s.outlines) {
+						for (const c of s.clips) {
+							expect
+								.soft(inside(ring, c.box), `${where}: its outline is cut by ${c.name}`)
+								.toBe(true);
+						}
+					}
+					if (s.kind === 'winctl') {
+						expect.soft(s.outlines.length, `${where}: only its chip draws an outline`).toBe(1);
+						expect.soft(s.look.outline, `${where}: the button draws none`).toBe('none');
+					}
+				}
+			}
+		}
+	} finally {
+		await stopApp(app);
+	}
+});
