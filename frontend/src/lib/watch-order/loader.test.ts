@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
-import { loadWatchOrder, type WatchOrderSources } from './loader';
+import { loadWatchOrder, rereadRows, type WatchOrderSources } from './loader';
 import type { HistoryRow } from './progress';
 import type { FranchiseData, WatchEntry } from './types';
 
@@ -245,5 +245,42 @@ describe('loadWatchOrder', () => {
 				expect(got.rows).toEqual(want);
 			})
 		);
+	});
+});
+
+describe('rereadRows', () => {
+	const OLD = { franchise: FRANCHISE, rows: [{ kitsu_id: '8', ep_no: '1' }] };
+
+	it('reads the rows again against the franchise it has, without walking it', async () => {
+		const franchise = vi.fn();
+		const named = vi.fn(async () => NAMED);
+		expect(await rereadRows(OLD, { franchise, named })).toEqual({
+			franchise: FRANCHISE,
+			rows: ROWS
+		});
+		expect(franchise).not.toHaveBeenCalled();
+	});
+
+	it('keeps the rows it had when the history cannot be read', async () => {
+		expect(await rereadRows(OLD, sources(true, false))).toBe(OLD);
+	});
+
+	it('keeps what it had once the visit ended, before or during the read', async () => {
+		const ended = new AbortController();
+		ended.abort();
+		expect(await rereadRows(OLD, sources(true, true), ended.signal)).toBe(OLD);
+		const during = new AbortController();
+		const named = async () => {
+			during.abort();
+			return NAMED;
+		};
+		expect(await rereadRows(OLD, { franchise: vi.fn(), named }, during.signal)).toBe(OLD);
+	});
+
+	it('reads nothing for a strip with no franchise', async () => {
+		const empty = { franchise: null, rows: [] };
+		const named = vi.fn();
+		expect(await rereadRows(empty, { franchise: vi.fn(), named })).toBe(empty);
+		expect(named).not.toHaveBeenCalled();
 	});
 });
