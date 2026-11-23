@@ -486,6 +486,11 @@ export interface StandardProgram {
 	supported: boolean;
 }
 
+/** How long Settings waits to hear what a type change leaves the
+ *  command, before it gives the change up. The answer is local and
+ *  pure, so anything near this long is a backend that is not there. */
+const KIND_CHANGE_TIMEOUT_MS = 5000;
+
 /** Ask the backend what the External player command becomes when the
  *  player's type changes from `from` to `to`. */
 export function externalPlayerCommandAfterKindChange(
@@ -494,7 +499,9 @@ export function externalPlayerCommandAfterKindChange(
 	to: ExternalPlayerKind
 ): Promise<string> {
 	const q = new URLSearchParams({ command, from, to });
-	return getJson<string>(`/api/external-player/after-kind-change?${q}`);
+	return getJson<string>(`/api/external-player/after-kind-change?${q}`, {
+		signal: AbortSignal.timeout(KIND_CHANGE_TIMEOUT_MS)
+	});
 }
 
 /** Ask the backend where a type's standard program is installed. */

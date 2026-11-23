@@ -6,8 +6,9 @@
  *
  * Changes are taken one at a time, in the order they were made, so a
  * quick second change is asked about from where the first one left the
- * command. A question that fails changes the type and keeps the
- * command. A command the user edits while the answer is on its way is
+ * command. A question that fails changes nothing, and `onFail` hears of
+ * it: the new type saved with the old command is the state the rule
+ * exists to prevent. A command the user edits while the answer is on its way is
  * theirs, and the answer does not replace it.
  */
 
@@ -31,7 +32,6 @@ export function createKindChange(
 	save: (next: Config) => Promise<void>,
 	onFail: (error: unknown) => void = () => {}
 ): (to: ExternalPlayerKind) => Promise<void> {
-	void onFail;
 	let queue: Promise<void> = Promise.resolve();
 	return (to) => {
 		const run = queue.then(() => change(to));
@@ -42,11 +42,14 @@ export function createKindChange(
 	async function change(to: ExternalPlayerKind): Promise<void> {
 		const before = current();
 		if (!before) return;
-		let command = before.external_player;
+		let command: string;
 		try {
 			command = await ask(before.external_player, before.external_player_kind, to);
-		} catch {
-			// Unanswered: the type still changes, the command stays.
+		} catch (e) {
+			// Unanswered: the new type with the old command is what the
+			// rule prevents, so nothing changes, and the page says so.
+			onFail(e);
+			return;
 		}
 		const now = current() ?? before;
 		if (now.external_player !== before.external_player) command = now.external_player;

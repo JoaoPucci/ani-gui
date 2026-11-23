@@ -171,7 +171,12 @@
 	};
 	// What the command becomes is the backend's to say
 	// ($lib/settings/kind-change.ts).
-	const changeKind = createKindChange(externalPlayerCommandAfterKindChange, () => cfg, persist);
+	const changeKind = createKindChange(
+		externalPlayerCommandAfterKindChange,
+		() => cfg,
+		persist,
+		(e) => (errorBlock = failed(errorBlock, 'save', describeSettingsFailure(e)))
+	);
 	function setExternalPlayerKind(kind: ExternalPlayerKind) {
 		void changeKind(kind);
 	}
