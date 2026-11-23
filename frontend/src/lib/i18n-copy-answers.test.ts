@@ -224,6 +224,7 @@ describe('Russian headings end without a full stop', () => {
 		'rows.style_group_label',
 		// The empty-search headline is "prefix «query» suffix".
 		'search.empty_headline_suffix',
+		'search.discovery_nothing_headline',
 		'search.filtered_empty_headline',
 		'search.error_headline',
 		'settings.title',
