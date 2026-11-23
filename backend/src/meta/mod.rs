@@ -8,6 +8,7 @@
 
 pub mod anilist;
 pub mod anilist_airing;
+pub(crate) mod anilist_batch;
 pub(crate) mod anilist_gate;
 pub mod anilist_media;
 pub(crate) mod anilist_pages;

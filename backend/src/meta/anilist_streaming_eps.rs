@@ -22,7 +22,8 @@ mod parse;
 pub use parse::parse_streaming_episodes_response;
 #[path = "anilist_streaming_eps_batch.rs"]
 mod batch;
-pub use batch::{streaming_listings_batch, Want};
+pub use crate::meta::anilist_batch::Want;
+pub use batch::streaming_listings_batch;
 #[path = "anilist_streaming_eps_coalesce.rs"]
 mod coalesce;
 pub(crate) use coalesce::streaming_listing_coalesced;

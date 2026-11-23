@@ -1,12 +1,10 @@
-//! One page of a batched streaming-listing lookup: its parser, which
-//! refuses a page that leaves out what the batch asked for, and reads
-//! each node with the single lookup's own node parser. Split from
-//! `anilist_streaming_eps_batch.rs` so each file stays inside the CRAP
-//! gate's per-file bar.
+//! One page of a batched lookup: its parser, which refuses a page that
+//! leaves out what the batch asked for, and reads each node with the
+//! kind's own node reader. Split from `anilist_batch.rs` so each file
+//! stays inside the CRAP gate's per-file bar.
 
 use serde::Deserialize;
 
-use super::super::parse::{listing_of, Media};
 use super::{Keyed, Space};
 use crate::error::{AniError, Result};
 use crate::meta::anilist_pages::{by_key, Page};
@@ -21,7 +19,12 @@ use crate::meta::anilist_pages::{by_key, Page};
 /// names no show and is left out; one whose listing cannot be read is
 /// handed to its show's single lookup, with the keys several nodes
 /// answer.
-pub(crate) fn parse_streaming_page(body: &[u8], space: Space) -> Result<Page<Keyed>> {
+pub(crate) fn parse_page<T>(
+    body: &[u8],
+    space: Space,
+    fields: &[&str],
+    read: fn(serde_json::Value) -> Option<T>,
+) -> Result<Page<Keyed<T>>> {
     #[derive(Deserialize)]
     struct Wrap {
         data: Data,
@@ -54,7 +57,7 @@ pub(crate) fn parse_streaming_page(body: &[u8], space: Space) -> Result<Page<Key
     let mut media = Vec::with_capacity(page.media.len());
     let mut unreadable = Vec::new();
     for node in page.media {
-        match node_of(node, key_name)? {
+        match node_of(node, key_name, fields, read)? {
             Node::Read(key, listing) => media.push((key, listing)),
             Node::Unreadable(key) => unreadable.push(key),
             Node::Nameless => {}
@@ -71,8 +74,8 @@ pub(crate) fn parse_streaming_page(body: &[u8], space: Space) -> Result<Page<Key
 }
 
 /// What one node of a page reads as.
-enum Node {
-    Read(u32, crate::meta::anilist_streaming_eps::StreamingListing),
+enum Node<T> {
+    Read(u32, T),
     /// A node naming its show whose listing cannot be read: the show
     /// goes to its single lookup, which reads that failure for it alone
     /// rather than failing every show on the page.
@@ -82,12 +85,17 @@ enum Node {
 }
 
 /// One node's key and listing.
-fn node_of(node: serde_json::Value, key_name: &str) -> Result<Node> {
+fn node_of<T>(
+    node: serde_json::Value,
+    key_name: &str,
+    fields: &[&str],
+    read: fn(serde_json::Value) -> Option<T>,
+) -> Result<Node<T>> {
     if !node.is_object() {
         return Err(failed("a node that is not an object"));
     }
-    let asked = [key_name, "episodes", "status", "streamingEpisodes"];
-    if let Some(missing) = asked.iter().find(|f| node.get(**f).is_none()) {
+    let asked = std::iter::once(&key_name).chain(fields);
+    if let Some(missing) = asked.into_iter().find(|f| node.get(**f).is_none()) {
         return Err(failed(&format!("a node without {missing}")));
     }
     let key = match &node[key_name] {
@@ -97,14 +105,14 @@ fn node_of(node: serde_json::Value, key_name: &str) -> Result<Node> {
             .and_then(|k| u32::try_from(k).ok())
             .ok_or_else(|| failed(&format!("a node whose {key_name} is not an id")))?,
     };
-    Ok(match serde_json::from_value::<Media>(node) {
-        Ok(media) => Node::Read(key, listing_of(media)),
-        Err(_) => Node::Unreadable(key),
+    Ok(match read(node) {
+        Some(read) => Node::Read(key, read),
+        None => Node::Unreadable(key),
     })
 }
 
 fn failed(detail: &str) -> AniError {
     AniError::ParseFailed {
-        detail: format!("anilist streamingEpisodes batch response: {detail}"),
+        detail: format!("anilist batch response: {detail}"),
     }
 }

@@ -1,35 +1,44 @@
 //! What the pages of one id space answered for each key a batch asked,
 //! and the single lookups a batch falls back to. Split from
-//! `anilist_streaming_eps_batch.rs` so each file stays inside the CRAP
-//! gate's per-file bar.
+//! `anilist_batch.rs` so each file stays inside the CRAP gate's
+//! per-file bar.
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 
-use super::{Keyed, Space, StreamingListing, Want};
+use super::{Keyed, Space, Want};
 use crate::error::{AniError, Result};
 use crate::meta::anilist_pages::{whole_pages, Page, PAGE_CAP};
 
 /// What the pages of one id space said about each key asked.
-#[derive(Default)]
-pub(super) struct Answers {
-    found: HashMap<u32, StreamingListing>,
+pub(super) struct Answers<T> {
+    found: HashMap<u32, T>,
     /// Keys only a single lookup can settle.
     single: HashSet<u32>,
     failed: HashMap<u32, AniError>,
 }
 
+impl<T> Default for Answers<T> {
+    fn default() -> Self {
+        Self {
+            found: HashMap::new(),
+            single: HashSet::new(),
+            failed: HashMap::new(),
+        }
+    }
+}
+
 /// What one key reads as.
-pub(super) enum Got {
-    Listing(StreamingListing),
+pub(super) enum Got<T> {
+    Listing(T),
     Failed(AniError),
     Single,
     /// The page answered without it.
     Absent,
 }
 
-impl Answers {
-    pub(super) fn get(&self, key: u32) -> Got {
+impl<T: Clone> Answers<T> {
+    pub(super) fn get(&self, key: u32) -> Got<T> {
         if let Some(l) = self.found.get(&key) {
             return Got::Listing(l.clone());
         }
@@ -45,10 +54,10 @@ impl Answers {
 
 /// Ask `keys` in `space`, a walk of whole pages per fifty ids: a walk's
 /// failure answers its own keys only.
-pub(super) async fn answers<P, PF>(space: Space, keys: &[u32], ask: &mut P) -> Answers
+pub(super) async fn answers<T, P, PF>(space: Space, keys: &[u32], ask: &mut P) -> Answers<T>
 where
     P: FnMut(Space, Vec<u32>) -> PF,
-    PF: Future<Output = Result<Page<Keyed>>>,
+    PF: Future<Output = Result<Page<Keyed<T>>>>,
 {
     let mut out = Answers::default();
     for chunk in keys.chunks(PAGE_CAP) {
@@ -78,19 +87,19 @@ where
 
 /// The single lookup for the key `key` of `space` names, made with
 /// `want`, asked once however many shows need it. A key reaches here
-/// only when AniList records media for it (several, or more than a page
-/// holds), so the lookup by it finds one and never falls back to the
-/// AniList id beside it: every show naming the key reads the same
-/// answer.
-pub(super) async fn single_once<S, SF>(
-    singles: &mut HashMap<(Space, u32), Result<StreamingListing>>,
+/// only when AniList records media for it — several, more than a page
+/// holds, or one whose node could not be read — so the lookup by it
+/// finds one and never falls back to the AniList id beside it: every
+/// show naming the key reads the same answer.
+pub(super) async fn single_once<T: Clone, S, SF>(
+    singles: &mut HashMap<(Space, u32), Result<T>>,
     single: &mut S,
     key: (Space, u32),
     want: Want,
-) -> Result<StreamingListing>
+) -> Result<T>
 where
     S: FnMut(Want) -> SF,
-    SF: Future<Output = Result<StreamingListing>>,
+    SF: Future<Output = Result<T>>,
 {
     if let Some(done) = singles.get(&key) {
         return done.clone();
