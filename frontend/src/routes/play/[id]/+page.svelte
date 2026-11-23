@@ -5477,10 +5477,10 @@
 		background: rgba(15, 15, 17, 0.92);
 		border: 1px solid color-mix(in oklab, var(--accent) 70%, #fff 0%);
 		border-radius: var(--radius-pill);
-		box-shadow:
-			0 1px 0 rgba(255, 255, 255, 0.08) inset,
-			0 8px 24px rgba(0, 0, 0, 0.45),
+		--skip-shadow-rest:
+			0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 8px 24px rgba(0, 0, 0, 0.45),
 			0 2px 8px rgba(0, 0, 0, 0.3);
+		box-shadow: var(--skip-shadow-rest);
 		cursor: pointer;
 		z-index: 3;
 		transition:
@@ -5503,10 +5503,7 @@
 		outline-offset: 3px;
 		/* The outline is the ring: the resting shadows, without the
 		   spread the hover adds, which under the mouse drew a second. */
-		box-shadow:
-			0 1px 0 rgba(255, 255, 255, 0.08) inset,
-			0 8px 24px rgba(0, 0, 0, 0.45),
-			0 2px 8px rgba(0, 0, 0, 0.3);
+		box-shadow: var(--skip-shadow-rest);
 	}
 	.player-skip-btn:active {
 		transform: translateY(0);
