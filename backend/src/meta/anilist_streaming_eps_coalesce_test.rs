@@ -258,6 +258,60 @@ async fn a_single_lookup_the_mal_page_hands_over_does_not_wait_for_the_id_page()
 }
 
 #[tokio::test]
+async fn a_show_the_id_page_answered_is_not_held_behind_the_mal_page_s_single_lookup() {
+    // Two media record MAL id 1, so its show goes to a slow single
+    // lookup; the show Kitsu maps to AniList alone is answered by the
+    // AniList-id page, and gets that answer as the page comes in.
+    let mut known = fake(9);
+    known.media.push(FakeMedia {
+        id: 500,
+        mal: Some(1),
+        listed: 1,
+    });
+    known.media.push(FakeMedia {
+        id: 30,
+        mal: None,
+        listed: 1,
+    });
+    let server = serve(SlowSingles(known, Duration::from_millis(600))).await;
+    let client = reqwest::Client::new();
+    let base = server.uri();
+    let lane = "id-page-not-held";
+    let started = tokio::time::Instant::now();
+    let (client, base) = (&client, base.as_str());
+    let ask = |want| async move {
+        let got = in_background(streaming_listing_coalesced(client, lane, want, Some(base))).await;
+        (got, started.elapsed())
+    };
+    let ask = &ask;
+    let rest = async {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::join!(
+            ask(by_mal(1)),
+            ask(Want {
+                mal: None,
+                anilist: Some(30),
+            })
+        )
+    };
+    let (_, ((one, _), (thirty, thirty_took))) = tokio::join!(ask(by_mal(9)), rest);
+    assert!(one.is_ok());
+    assert_eq!(
+        thirty.expect("answered"),
+        FakeMedia {
+            id: 30,
+            mal: None,
+            listed: 1
+        }
+        .listing()
+    );
+    assert!(
+        thirty_took < Duration::from_millis(450),
+        "the id page's show waited for the MAL page's single lookup: {thirty_took:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_lookup_arriving_while_a_batch_is_out_does_not_wait_for_it() {
     // A's batch takes 600 ms to answer. B, arriving 200 ms in, goes out
     // in a batch of its own a window later rather than after A's answer.
