@@ -1,7 +1,7 @@
 //! Whose turn a request takes ([`super`]): the class it counts as, the
 //! rule that a retry stands back while any other request waits, and the
-//! line each request sent logs, labelled by its [`Ask`]. Split from [`super`] so each file stays
-//! inside the CRAP gate's per-file bar.
+//! line each request sent logs, labelled by its [`Ask`]. Split from
+//! [`super`] so each file stays inside the CRAP gate's per-file bar.
 
 use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};

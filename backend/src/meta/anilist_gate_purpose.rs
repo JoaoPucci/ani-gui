@@ -1,25 +1,31 @@
 //! What a request through the gate ([`super`]) is for: the stable label
-//! its sent line carries, so the app's log says who spent each request
-//! of AniList's budget. Every transport takes an [`Ask`] and the label
-//! has no default: a new caller names its purpose or does not compile.
-//! Split from [`super`] so each file stays inside the CRAP gate's
-//! per-file bar.
+//! its sent line carries, so the app's log says which kind of request
+//! spent each request of AniList's budget. A label names the job a
+//! request does — the strip's stills, a tracker's id bridge — and a job
+//! several screens share carries one label; the line's class tells a
+//! background fill from what the user is looking at. Every transport
+//! takes an [`Ask`] and the label has no default: a new caller names
+//! its purpose or does not compile. A fetcher that does one job sends
+//! under that job's label; one that serves several takes the purpose
+//! from its caller. Split from [`super`] so each file stays inside the
+//! CRAP gate's per-file bar.
 
-/// Why a request goes to AniList. One per feature that asks, never a
+/// Why a request goes to AniList. One per job a request does, never a
 /// catch-all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Purpose {
     /// The home page's Trending Now feed.
     Trending,
-    /// A show's banner, for a card or page whose Kitsu entry has no
-    /// cover.
+    /// A show's banner: a Continue strip's warm asks it for every warmed
+    /// show, a detail read for a show whose Kitsu entry has no cover.
     Banner,
     /// A show's streaming episodes: episode stills and the listing.
     Stills,
     /// A show's airing status and next episode.
     Airing,
     /// An id bridge between AniList and MAL that resolves the entry a
-    /// tracker read or write addresses.
+    /// tracker read or write addresses: the list editor, progress
+    /// write-back and the episode map's resolution all ask it.
     TrackerIds,
     /// The Watch Later rail's bridge from MAL ids to AniList's.
     WatchLaterIds,
@@ -70,8 +76,9 @@ impl Purpose {
 pub(crate) struct Ask {
     /// Why it is sent.
     pub(crate) purpose: Purpose,
-    /// How many shows it asks about; `None` for a request not keyed by
-    /// show — the trending feed, the account and its list.
+    /// How many shows it asks about, counted as the ids it carries;
+    /// `None` for a request not keyed by show — the trending feed, the
+    /// account and its list.
     pub(crate) shows: Option<usize>,
 }
 
