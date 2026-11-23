@@ -74,6 +74,7 @@
       "stryker": "stryker-js (TS lib only)"
     },
     "packages.yml": {
+      "catalog": "AppImage starts on the catalog's system",
       "checksums": "SHA256SUMS",
       "filter": "filter",
       "gate": "packages-build",
