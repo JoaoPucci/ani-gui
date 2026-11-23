@@ -10,6 +10,10 @@ use super::{mal_id_for_media_id, media_id_for_mal, media_ids_for_mals, media_ids
 use crate::app::AppState;
 use crate::cache::meta_cache_row;
 use crate::error::AniError;
+use crate::meta::anilist_gate::Purpose;
+
+/// The label the tracker bridge asks under.
+const TRACKER: Purpose = Purpose::TrackerIds;
 
 /// `AppState` with an in-memory cache; the Kitsu client points at an
 /// unbound port because nothing here reaches Kitsu.
@@ -75,7 +79,7 @@ async fn a_second_translation_of_the_same_mal_id_asks_anilist_nothing() {
     let state = state();
 
     for _ in 0..2 {
-        let got = media_id_for_mal(&state, 21, Some(&anilist.uri()))
+        let got = media_id_for_mal(&state, 21, Some(&anilist.uri()), TRACKER)
             .await
             .expect("translation");
         assert_eq!(got, Some(154587));
@@ -97,7 +101,7 @@ async fn anilist_not_indexing_a_mal_id_is_remembered_for_a_day() {
     let state = state();
 
     for _ in 0..2 {
-        let got = media_id_for_mal(&state, 21, Some(&anilist.uri()))
+        let got = media_id_for_mal(&state, 21, Some(&anilist.uri()), TRACKER)
             .await
             .expect("translation");
         assert_eq!(got, None);
@@ -115,7 +119,7 @@ async fn a_failed_translation_is_not_remembered() {
     let state = state();
 
     for _ in 0..2 {
-        let err = media_id_for_mal(&state, 21, Some(&anilist.uri()))
+        let err = media_id_for_mal(&state, 21, Some(&anilist.uri()), TRACKER)
             .await
             .unwrap_err();
         assert!(matches!(err, AniError::Upstream { status: 500 }), "{err:?}");
@@ -196,7 +200,7 @@ async fn a_batch_asks_only_for_the_ids_it_does_not_know() {
         .await;
     let state = state();
 
-    media_id_for_mal(&state, 63403, Some(&anilist.uri()))
+    media_id_for_mal(&state, 63403, Some(&anilist.uri()), TRACKER)
         .await
         .expect("warm");
     let map = media_ids_for_mals(&state, &[63403, 63404], Some(&anilist.uri()))
@@ -236,10 +240,10 @@ async fn a_batch_answer_serves_the_single_translation_afterwards() {
         .expect("batch");
     // Both ids were answered by the batch: one positively, one by
     // its absence from a page AniList did return.
-    let known = media_id_for_mal(&state, 63403, Some(&anilist.uri()))
+    let known = media_id_for_mal(&state, 63403, Some(&anilist.uri()), TRACKER)
         .await
         .expect("single");
-    let absent = media_id_for_mal(&state, 63404, Some(&anilist.uri()))
+    let absent = media_id_for_mal(&state, 63404, Some(&anilist.uri()), TRACKER)
         .await
         .expect("single");
     assert_eq!(known, Some(207141));
@@ -297,7 +301,7 @@ async fn a_batch_skips_an_id_anilist_is_known_not_to_index() {
     .await;
     let state = state();
 
-    media_id_for_mal(&state, 63404, Some(&anilist.uri()))
+    media_id_for_mal(&state, 63404, Some(&anilist.uri()), TRACKER)
         .await
         .expect("single");
     let map = media_ids_for_mals(&state, &[63404], Some(&anilist.uri()))
@@ -393,7 +397,7 @@ async fn a_batch_takes_a_mal_id_several_media_record_as_the_single_translation_d
     assert_eq!(map.get(&51039), Some(&137728));
     assert_eq!(map.get(&7), Some(&5));
     assert_eq!(
-        media_id_for_mal(&state, 51039, Some(&anilist.uri()))
+        media_id_for_mal(&state, 51039, Some(&anilist.uri()), TRACKER)
             .await
             .expect("answered"),
         Some(137728)
@@ -435,4 +439,37 @@ async fn a_batch_whose_single_translation_fails_keeps_the_rest_and_remembers_not
             .expect("read")
             .is_none()
     );
+}
+
+#[test]
+fn a_rail_batchs_single_translation_is_sent_as_the_rails() {
+    // The single translation a MAL id several media record falls back
+    // to is the Watch Later rail's request, and its sent line says so —
+    // not the tracker id bridge the same query serves for a write.
+    let lines = crate::meta::anilist_gate::sent_tests::sent_lines_of(|| async {
+        let anilist = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("MediaIdsByMals"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":137728,"idMal":51039},{"id":196613,"idMal":51039}]}}}"#,
+            ))
+            .mount(&anilist)
+            .await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("MediaIdByMal("))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"id":137728}}}"#),
+            )
+            .mount(&anilist)
+            .await;
+        let state = state();
+        media_ids_for_mals(&state, &[51039], Some(&anilist.uri()))
+            .await
+            .expect("answered");
+    });
+    assert_eq!(lines.len(), 2, "{lines:#?}");
+    for line in &lines {
+        assert!(line.contains("purpose=watch_later_ids "), "{line}");
+        assert!(line.contains("shows=1 "), "{line}");
+    }
 }
