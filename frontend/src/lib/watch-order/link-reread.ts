@@ -5,7 +5,8 @@
  * an answer shown, they are read against its franchise, which stays
  * shown meanwhile (`refresh`, `rereadRows`). With none yet, the walk
  * still out may have read its rows before the link, so the show is
- * read afresh. The player's Up next card reads through it.
+ * read afresh. The player's Up next card and the franchise page read
+ * through it.
  */
 import type { LatestRead } from './latest-read';
 import { loadWatchOrder, rereadRows, type WatchOrderData, type WatchOrderSources } from './loader';
