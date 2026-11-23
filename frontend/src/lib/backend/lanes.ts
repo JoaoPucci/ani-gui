@@ -34,7 +34,8 @@
  *                  read cancelled (`$lib/watch-order/latest-read`). Home
  *                  walks the series of its Continue rows at their finale
  *                  six at a time, the lane's budget, and the rest in
- *                  turn (`$lib/watch-order/handoff-reads`).
+ *                  turn; two at a time when the lane falls back to the
+ *                  API's origin (`$lib/watch-order/handoff-reads`).
  *
  * Every lane serves every route, so a lane nobody announced falls
  * back to the API's origin and still answers — it just shares the
@@ -74,12 +75,11 @@ export function laneBase(
 }
 
 /** Whether `lane` reaches an origin of its own, and so a connection
- *  budget of its own, rather than sharing the API's. */
+ *  budget of its own, rather than falling back to the API's. */
 export function laneIsOwn(
 	lanes: Partial<Record<string, string>> | undefined,
 	lane: Lane,
 	apiBase: string
 ): boolean {
-	void [lanes, lane, apiBase];
-	return true;
+	return lane !== 'api' && laneBase(lanes, lane, apiBase) !== trim(apiBase);
 }
