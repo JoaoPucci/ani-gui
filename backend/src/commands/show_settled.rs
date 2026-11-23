@@ -39,3 +39,7 @@ fn today() -> i64 {
         .map_or(0, |d| d.as_secs());
     i64::try_from(secs / 86_400).unwrap_or(i64::MAX)
 }
+
+#[cfg(test)]
+#[path = "show_settled_test.rs"]
+mod tests;

@@ -418,6 +418,21 @@ async fn a_warmed_strip_keeps_its_finished_shows_stills_for_the_week() {
     let anilist = serve(fake, "POST").await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
+    // Each show's detail held, finished long enough ago to have settled,
+    // as the cards' own matches leave it.
+    for id in &ids {
+        let body = serde_json::json!({
+            "id": id, "canonical_title": "Show", "titles": {}, "abbreviated_titles": [],
+            "status": "finished", "end_date": "2026-06-01",
+        });
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &crate::commands::kitsu::anime_detail_key(id),
+            &body.to_string(),
+            7 * 24 * 60 * 60,
+        )
+        .expect("seed");
+    }
     warm_strip(&state, &ids, Some(&base)).await;
     let conn = state.cache_pool.get().expect("conn");
     for id in &ids {

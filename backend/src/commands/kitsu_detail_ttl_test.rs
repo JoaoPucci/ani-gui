@@ -110,8 +110,16 @@ async fn kitsu_with_episodes() -> wiremock::MockServer {
     mock
 }
 
+/// The show's detail held for `ttl`, ended long enough ago to have
+/// settled (`show_settled`).
 fn hold_detail(state: &AppState, status: Option<&str>, ttl: u64) {
-    let body = serde_json::to_string(&detail("12", status)).expect("json");
+    hold_detail_ended(state, status, Some("2026-06-01"), ttl);
+}
+
+fn hold_detail_ended(state: &AppState, status: Option<&str>, end: Option<&str>, ttl: u64) {
+    let mut held = detail("12", status);
+    held.end_date = end.map(str::to_string);
+    let body = serde_json::to_string(&held).expect("json");
     meta_cache_put(&state.cache_pool, &anime_detail_key("12"), &body, ttl).expect("seed");
 }
 
@@ -213,4 +221,23 @@ async fn a_show_that_finishes_while_its_page_is_held_gets_the_week_on_the_next_w
     crate::cache::meta_cache_delete(&state.cache_pool, "kitsu:episodes:12:p1").expect("expire");
     kitsu_episode_page(&state, "12", 1).await.expect("page");
     assert_eq!(page_ttl(&state, 1), 7 * DAY);
+}
+
+#[tokio::test]
+async fn a_show_that_has_only_just_finished_keeps_its_pages_a_day() {
+    // Kitsu calls a show finished from the day after its end date, and
+    // its last episodes' titles and stills often come in after that: a
+    // page written before the show has settled is asked again daily.
+    for end in [
+        Some("2999-01-01"),
+        None,
+        Some("2026-06"),
+        Some("not a date"),
+    ] {
+        let mock = kitsu_with_episodes().await;
+        let state = state_with_kitsu_at(&mock.uri());
+        hold_detail_ended(&state, Some("finished"), end, 7 * DAY);
+        kitsu_episode_page(&state, "12", 1).await.expect("page");
+        assert_eq!(page_ttl(&state, 1), DAY, "{end:?}");
+    }
 }

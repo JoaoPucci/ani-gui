@@ -856,17 +856,39 @@ fn stored_ttl(pool: &crate::cache::SqlitePool, kitsu_id: &str) -> u64 {
     u64::try_from(ttl).expect("non-negative")
 }
 
+/// Hold Kitsu's detail for `kitsu_id`: `status`, ended on `end`.
+fn hold_detail(pool: &crate::cache::SqlitePool, kitsu_id: &str, status: &str, end: &str) {
+    let body = serde_json::json!({
+        "id": kitsu_id,
+        "canonical_title": "Show",
+        "titles": {},
+        "abbreviated_titles": [],
+        "status": status,
+        "end_date": end,
+    });
+    crate::cache::meta_cache_put(
+        pool,
+        &crate::commands::kitsu::anime_detail_key(kitsu_id),
+        &body.to_string(),
+        7 * DAY,
+    )
+    .expect("seed");
+}
+
 #[test]
 fn a_finished_show_s_listing_keeps_the_week_and_an_airing_one_a_day() {
     let pool = crate::cache::open_in_memory().expect("in-mem pool");
+    for id in ["1", "2", "3", "4"] {
+        hold_detail(&pool, id, "finished", "2026-06-01");
+    }
     let finished = StreamingListing {
         finished: true,
         ..listing(&[(1, "https://cr.cdn/1.jpg")])
     };
     cache_anilist_eps_thumbs(&pool, "1", &Ok(finished));
     cache_anilist_eps_thumbs(&pool, "2", &Ok(listing(&[(1, "https://cr.cdn/1.jpg")])));
-    // AniList answered a finished show with no stills: that answer is as
-    // settled as the show.
+    // AniList answered a settled finished show with no stills: that
+    // answer is as settled as the show.
     let bare = StreamingListing {
         finished: true,
         ..StreamingListing::default()
@@ -879,13 +901,34 @@ fn a_finished_show_s_listing_keeps_the_week_and_an_airing_one_a_day() {
     assert_eq!(stored_ttl(&pool, "4"), 5 * 60);
 }
 
+#[test]
+fn a_finished_listing_of_a_show_not_yet_settled_is_kept_a_day() {
+    // AniList calls a show FINISHED around its last airing, and the
+    // streaming listing's last stills often arrive after that: until
+    // Kitsu's detail says the show finished a week ago or more, the
+    // listing is asked again daily. No detail held says nothing.
+    let pool = crate::cache::open_in_memory().expect("in-mem pool");
+    hold_detail(&pool, "1", "finished", "2999-01-01");
+    hold_detail(&pool, "2", "current", "2026-06-01");
+    let finished = StreamingListing {
+        finished: true,
+        ..listing(&[(1, "https://cr.cdn/1.jpg")])
+    };
+    for id in ["1", "2", "3"] {
+        cache_anilist_eps_thumbs(&pool, id, &Ok(finished.clone()));
+        assert_eq!(stored_ttl(&pool, id), DAY, "kitsu {id}");
+    }
+}
+
 proptest::proptest! {
-    /// A listing's lifetime follows AniList's status alone: whatever its
-    /// count and entries, a finished show's keeps the week and any other
-    /// a day; a show with no ids to ask with, five minutes.
+    /// A listing's lifetime: the week only when AniList says the show
+    /// finished and Kitsu's held detail says it has settled, whatever
+    /// its count and entries; a day otherwise; a show with no ids to ask
+    /// with, five minutes.
     #[test]
     fn a_listing_s_lifetime_follows_its_status(
         finished in proptest::bool::ANY,
+        settled in proptest::bool::ANY,
         episodes in proptest::option::of(0u32..2000),
         numbers in proptest::collection::btree_set(1u32..200, 0..8),
         no_ids in proptest::bool::ANY,
@@ -896,11 +939,11 @@ proptest::proptest! {
         } else {
             Ok(StreamingListing { finished, episodes, ..listing(&pairs) })
         };
-        let want = match (&outcome, finished) {
-            (Err(()), _) => 5 * 60,
-            (Ok(_), true) => 7 * DAY,
-            (Ok(_), false) => DAY,
+        let want = match &outcome {
+            Err(()) => 5 * 60,
+            Ok(_) if finished && settled => 7 * DAY,
+            Ok(_) => DAY,
         };
-        proptest::prop_assert_eq!(listing_ttl(&outcome, true), want);
+        proptest::prop_assert_eq!(listing_ttl(&outcome, settled), want);
     }
 }
