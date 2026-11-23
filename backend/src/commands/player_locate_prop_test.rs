@@ -120,4 +120,38 @@ proptest! {
             prop_assert_eq!(got, answer);
         }
     }
+
+    #[test]
+    fn an_exported_value_comes_back_as_written_in_either_form(
+        value in "[A-Za-z]:\\\\[A-Za-z0-9 ()._çãñВидео\\\\-]{0,40}[A-Za-z0-9.]",
+        expand in any::<bool>(),
+    ) {
+        let line = if expand {
+            let mut hex = String::from("hex(2):");
+            let units: Vec<u16> = value.encode_utf16().chain([0]).collect();
+            let bytes: Vec<String> = units
+                .iter()
+                .flat_map(|u| u.to_le_bytes())
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            for (i, b) in bytes.iter().enumerate() {
+                if i > 0 {
+                    hex.push(',');
+                    if i % 24 == 0 {
+                        hex.push_str("\\\r\n  ");
+                    }
+                }
+                hex.push_str(b);
+            }
+            format!("@={hex}")
+        } else {
+            format!("@=\"{}\"", value.replace('\\', "\\\\"))
+        };
+        let text = format!("Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\X]\r\n{line}\r\n\r\n");
+        let mut file = vec![0xFF, 0xFE];
+        for unit in text.encode_utf16() {
+            file.extend_from_slice(&unit.to_le_bytes());
+        }
+        prop_assert_eq!(parse_reg_export(&file), Some(value));
+    }
 }

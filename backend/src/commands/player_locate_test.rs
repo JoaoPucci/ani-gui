@@ -256,6 +256,78 @@ fn a_registered_path_keeps_a_variable_it_cannot_expand_and_a_lone_percent() {
     }
 }
 
+/// `text` as reg.exe writes an export: UTF-16LE behind a byte-order
+/// mark, CRLF line ends.
+fn reg_file(text: &str) -> Vec<u8> {
+    let mut out = vec![0xFF, 0xFE];
+    for unit in text.replace('\n', "\r\n").encode_utf16() {
+        out.extend_from_slice(&unit.to_le_bytes());
+    }
+    out
+}
+
+/// `value` as a `hex(2):` list: its UTF-16LE bytes and the closing NUL,
+/// wrapped as reg.exe wraps it.
+fn hex2(value: &str) -> String {
+    let mut bytes: Vec<String> = Vec::new();
+    for unit in value.encode_utf16().chain([0]) {
+        for b in unit.to_le_bytes() {
+            bytes.push(format!("{b:02x}"));
+        }
+    }
+    let mut out = String::from("hex(2):");
+    for (i, b) in bytes.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+            if i % 24 == 0 {
+                out.push_str("\\\n  ");
+            }
+        }
+        out.push_str(b);
+    }
+    out
+}
+
+#[test]
+fn an_exported_registration_gives_its_path_in_any_language() {
+    // reg.exe's query output is in the console's code page, which
+    // cannot carry every path; its export is UTF-16.
+    let path = "C:\\Programas\\Vídeo Ação\\Плеер\\vlc.exe";
+    let escaped = path.replace('\\', "\\\\");
+    let file = format!(
+        "Windows Registry Editor Version 5.00\n\n[HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\vlc.exe]\n@=\"{escaped}\"\n\"Path\"=\"C:\\\\Programas\"\n\n"
+    );
+    assert_eq!(parse_reg_export(&reg_file(&file)).as_deref(), Some(path));
+}
+
+#[test]
+fn an_exported_expandable_registration_is_read_from_its_bytes() {
+    let value = "%LOCALAPPDATA%\\Programs\\mpv ñ\\mpv.exe";
+    let file = format!(
+        "Windows Registry Editor Version 5.00\n\n[HKEY_CURRENT_USER\\X\\mpv.exe]\n@={}\n\n",
+        hex2(value)
+    );
+    assert_eq!(parse_reg_export(&reg_file(&file)).as_deref(), Some(value));
+}
+
+#[test]
+fn an_export_reads_its_own_key_and_only_its_default() {
+    // A subkey's default is not the key's, nor is a named value.
+    let file = "Windows Registry Editor Version 5.00\n\n[HKEY_CURRENT_USER\\X\\vlc.exe]\n\"Path\"=\"C:\\\\VLC\"\n\n[HKEY_CURRENT_USER\\X\\vlc.exe\\Sub]\n@=\"C:\\\\Other\\\\x.exe\"\n\n";
+    assert_eq!(parse_reg_export(&reg_file(file)), None);
+    assert_eq!(parse_reg_export(&reg_file("")), None);
+    assert_eq!(parse_reg_export(&[]), None);
+    assert_eq!(parse_reg_export(&[0xFF]), None);
+    let empty = "[HKEY_CURRENT_USER\\X]\n@=\"\"\n";
+    assert_eq!(parse_reg_export(&reg_file(empty)), None);
+    // A quote inside the value is escaped in the file.
+    let quoted = "[HKEY_CURRENT_USER\\X]\n@=\"\\\"C:\\\\VLC\\\\vlc.exe\\\"\"\n";
+    assert_eq!(
+        parse_reg_export(&reg_file(quoted)).as_deref(),
+        Some("C:\\VLC\\vlc.exe")
+    );
+}
+
 #[test]
 fn the_registry_query_follows_the_subprocess_convention() {
     // AGENTS.md §5: tokio's Command, killed on drop, TERM=dumb, NO_COLOR=1.
