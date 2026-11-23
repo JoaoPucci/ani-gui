@@ -61,6 +61,20 @@ impl<V> Drop for Running<'_, V> {
     }
 }
 
+#[cfg(test)]
+impl<V> Inflight<V> {
+    /// How many callers wait on the lookup running under `key`: zero
+    /// when none runs. For a test to know a caller has joined a lookup
+    /// before it lets the lookup answer.
+    pub(crate) fn sharing(&self, key: &str) -> usize {
+        self.running
+            .lock()
+            .expect("inflight map poisoned")
+            .get(key)
+            .map_or(0, broadcast::Sender::receiver_count)
+    }
+}
+
 impl<V: Clone> Inflight<V> {
     /// Run `start` under `key`, or wait for the caller already running it
     /// and take a copy of its answer. A caller whose leader went away

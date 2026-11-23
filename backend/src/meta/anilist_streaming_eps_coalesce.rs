@@ -26,3 +26,7 @@ pub(crate) async fn streaming_listing_coalesced(
 #[cfg(test)]
 #[path = "anilist_streaming_eps_coalesce_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "anilist_streaming_eps_turn_test.rs"]
+mod turn_tests;
