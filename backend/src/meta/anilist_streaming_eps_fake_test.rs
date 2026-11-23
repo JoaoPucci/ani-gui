@@ -197,6 +197,21 @@ pub(crate) async fn asked_of(server: &wiremock::MockServer) -> Vec<Asked> {
         .collect()
 }
 
+/// What the requests the server received asked for, in no particular
+/// order: [`asked_of`] sorted. For requests that were out at the same
+/// time — a lane's opener and the page gathered behind it — which the
+/// server's thread can read in either order however far apart they
+/// were sent.
+pub(crate) async fn asked_in_any_order(server: &wiremock::MockServer) -> Vec<Asked> {
+    sorted(asked_of(server).await)
+}
+
+/// `asked` in the order [`asked_in_any_order`] keeps.
+pub(crate) fn sorted(mut asked: Vec<Asked>) -> Vec<Asked> {
+    asked.sort_by_key(|a| format!("{a:?}"));
+    asked
+}
+
 /// What each request for the stills (`streamingEpisodes`) the server
 /// received asked for, in order.
 pub(crate) async fn asked_for_stills(server: &wiremock::MockServer) -> Vec<Asked> {

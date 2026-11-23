@@ -71,6 +71,11 @@ struct Gate {
     /// Requests other than retries waiting for their turn now. While
     /// any waits, no retry takes a turn.
     fresh_waiting: AtomicUsize,
+    /// The class of each request let go, in the order it was let go:
+    /// what a test reads the order of sending from, which a mock
+    /// server's record of what it received does not keep.
+    #[cfg(test)]
+    let_go: Mutex<Vec<Class>>,
 }
 
 impl Gate {
@@ -79,6 +84,8 @@ impl Gate {
             pace,
             ledger: Mutex::new(Ledger::default()),
             fresh_waiting: AtomicUsize::new(0),
+            #[cfg(test)]
+            let_go: Mutex::new(Vec::new()),
         }
     }
 
@@ -117,6 +124,11 @@ impl Gate {
                     if class == Class::Retry {
                         ledger.record_retry(&self.pace, now);
                     }
+                    #[cfg(test)]
+                    self.let_go
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .push(class);
                     let waited = now - began;
                     sent(&self.pace, ask, class, &ledger, now, waited, behind_retry);
                     return Ok(now);
@@ -228,24 +240,11 @@ pub(crate) fn retry_wait(url: &str) -> std::time::Duration {
     at.saturating_duration_since(now)
 }
 
-/// Share one gate under `url`'s host with `pace` until the guard drops.
 #[cfg(test)]
-pub(crate) fn share_for_tests(url: &str, pace: Pace) -> SharedForTests {
-    let key = authority(url);
-    shared().insert(key.clone(), Arc::new(Gate::new(pace)));
-    SharedForTests(key)
-}
-
-/// Removes a test's shared gate when dropped.
+#[path = "anilist_gate_shared.rs"]
+mod shared_for_tests;
 #[cfg(test)]
-pub(crate) struct SharedForTests(String);
-
-#[cfg(test)]
-impl Drop for SharedForTests {
-    fn drop(&mut self) {
-        shared().remove(&self.0);
-    }
-}
+pub(crate) use shared_for_tests::share_for_tests;
 
 #[cfg(test)]
 #[path = "anilist_gate_test.rs"]
