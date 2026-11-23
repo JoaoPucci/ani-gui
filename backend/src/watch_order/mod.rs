@@ -35,6 +35,7 @@ pub mod segments;
 pub mod sequence;
 pub mod strip_view;
 pub mod up_next;
+pub mod wire;
 
 /// A prequel → sequel pair between two run members.
 pub type RunLink = (String, String);
