@@ -7,7 +7,7 @@
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
-use wiremock::matchers::method;
+use wiremock::matchers::{body_string_contains, method};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use crate::account::provider::{EntryUpdate, ProviderMediaId, Tokens, UserListProvider};
@@ -51,7 +51,9 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
 pub(crate) fn sent_lines_of<F: Future>(f: impl FnOnce() -> F) -> Vec<String> {
     let captured = Captured::default();
     let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::new("ani_gui=info"))
+        .with_env_filter(tracing_subscriber::EnvFilter::new(
+            crate::DEFAULT_LOG_FILTER,
+        ))
         .with_ansi(false)
         .with_writer(captured.clone())
         .finish();
@@ -239,12 +241,6 @@ fn the_account_requests_are_labelled_by_what_they_do() {
     assert_labelled(&line, "list_write", Some(1));
     let line = one_line(|uri| async move {
         let _ = provider(&uri)
-            .delete_entry_for(&tokens(), ProviderMediaId(ID), "1")
-            .await;
-    });
-    assert_labelled(&line, "list_delete", Some(1));
-    let line = one_line(|uri| async move {
-        let _ = provider(&uri)
             .current_entry(&tokens(), ProviderMediaId(ID))
             .await;
     });
@@ -261,4 +257,37 @@ fn the_account_requests_are_labelled_by_what_they_do() {
             .await;
     });
     assert_labelled(&line, "media_evidence", Some(1));
+}
+
+#[test]
+fn a_delete_labels_both_its_requests() {
+    // The row-id lookup and the mutation it feeds are both the delete's.
+    let lines = sent_lines_of(|| async {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("query MediaList("))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(r#"{"data":{"MediaList":{"id":5}}}"#),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("mutation Delete("))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"data":{"DeleteMediaListEntry":{"deleted":true}}}"#),
+            )
+            .mount(&server)
+            .await;
+        let provider = AniListProvider::with_bases(client(), server.uri(), server.uri());
+        provider
+            .delete_entry_for(&tokens(), ProviderMediaId(ID), "1")
+            .await
+            .expect("deleted");
+    });
+    assert_eq!(lines.len(), 2, "{lines:#?}");
+    for line in &lines {
+        assert_labelled(line, "list_delete", Some(1));
+        assert!(!line.contains(&ID.to_string()), "an id in the log: {line}");
+    }
 }

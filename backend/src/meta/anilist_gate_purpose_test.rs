@@ -4,7 +4,9 @@ use std::marker::PhantomData;
 use super::{Ask, Purpose};
 
 /// Every purpose. [`exhaustive`] fails to compile when a variant is
-/// added and not listed here, so the checks below cover each one.
+/// added, as the reminder to list it here too: nothing checks that this
+/// list is complete, so a variant left out of it escapes the checks
+/// below.
 const ALL: [Purpose; 14] = [
     Purpose::Trending,
     Purpose::Banner,
