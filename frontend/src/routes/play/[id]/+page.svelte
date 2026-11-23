@@ -6558,9 +6558,16 @@
 		padding: var(--space-2) var(--space-2) 0;
 	}
 	.ep-card-foot-row {
-		display: inline-flex;
+		/* A card is narrow at the smallest window (five to a row): the
+		   number keeps its line, and the length or the words beside it
+		   move under it and wrap between words when they do not fit,
+		   inside the card. */
+		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
-		gap: var(--space-2);
+		column-gap: var(--space-2);
+		row-gap: 0;
+		min-inline-size: 0;
 		font-family: var(--font-body);
 		font-size: 0.6875rem; /* 11px */
 		font-weight: 600;
@@ -6570,11 +6577,13 @@
 	}
 	.ep-card-foot-num {
 		font-variant-numeric: tabular-nums lining-nums;
+		white-space: nowrap;
 	}
 	.ep-card-foot-dot {
 		color: color-mix(in oklab, var(--bone-100) 24%, transparent);
 	}
 	.ep-card-foot-len {
+		min-inline-size: 0;
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		letter-spacing: 0;
