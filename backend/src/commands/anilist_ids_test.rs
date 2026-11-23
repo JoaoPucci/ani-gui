@@ -10,6 +10,10 @@ use super::{mal_id_for_media_id, media_id_for_mal, media_ids_for_mals, media_ids
 use crate::app::AppState;
 use crate::cache::meta_cache_row;
 use crate::error::AniError;
+use crate::meta::anilist_gate::Purpose;
+
+/// The label the tracker bridge asks under.
+const TRACKER: Purpose = Purpose::TrackerIds;
 
 /// `AppState` with an in-memory cache; the Kitsu client points at an
 /// unbound port because nothing here reaches Kitsu.
@@ -75,7 +79,7 @@ async fn a_second_translation_of_the_same_mal_id_asks_anilist_nothing() {
     let state = state();
 
     for _ in 0..2 {
-        let got = media_id_for_mal(&state, 21, Some(&anilist.uri()))
+        let got = media_id_for_mal(&state, 21, Some(&anilist.uri()), TRACKER)
             .await
             .expect("translation");
         assert_eq!(got, Some(154587));
@@ -97,7 +101,7 @@ async fn anilist_not_indexing_a_mal_id_is_remembered_for_a_day() {
     let state = state();
 
     for _ in 0..2 {
-        let got = media_id_for_mal(&state, 21, Some(&anilist.uri()))
+        let got = media_id_for_mal(&state, 21, Some(&anilist.uri()), TRACKER)
             .await
             .expect("translation");
         assert_eq!(got, None);
@@ -115,7 +119,7 @@ async fn a_failed_translation_is_not_remembered() {
     let state = state();
 
     for _ in 0..2 {
-        let err = media_id_for_mal(&state, 21, Some(&anilist.uri()))
+        let err = media_id_for_mal(&state, 21, Some(&anilist.uri()), TRACKER)
             .await
             .unwrap_err();
         assert!(matches!(err, AniError::Upstream { status: 500 }), "{err:?}");
@@ -196,7 +200,7 @@ async fn a_batch_asks_only_for_the_ids_it_does_not_know() {
         .await;
     let state = state();
 
-    media_id_for_mal(&state, 63403, Some(&anilist.uri()))
+    media_id_for_mal(&state, 63403, Some(&anilist.uri()), TRACKER)
         .await
         .expect("warm");
     let map = media_ids_for_mals(&state, &[63403, 63404], Some(&anilist.uri()))
@@ -236,10 +240,10 @@ async fn a_batch_answer_serves_the_single_translation_afterwards() {
         .expect("batch");
     // Both ids were answered by the batch: one positively, one by
     // its absence from a page AniList did return.
-    let known = media_id_for_mal(&state, 63403, Some(&anilist.uri()))
+    let known = media_id_for_mal(&state, 63403, Some(&anilist.uri()), TRACKER)
         .await
         .expect("single");
-    let absent = media_id_for_mal(&state, 63404, Some(&anilist.uri()))
+    let absent = media_id_for_mal(&state, 63404, Some(&anilist.uri()), TRACKER)
         .await
         .expect("single");
     assert_eq!(known, Some(207141));
@@ -297,7 +301,7 @@ async fn a_batch_skips_an_id_anilist_is_known_not_to_index() {
     .await;
     let state = state();
 
-    media_id_for_mal(&state, 63404, Some(&anilist.uri()))
+    media_id_for_mal(&state, 63404, Some(&anilist.uri()), TRACKER)
         .await
         .expect("single");
     let map = media_ids_for_mals(&state, &[63404], Some(&anilist.uri()))
@@ -393,7 +397,7 @@ async fn a_batch_takes_a_mal_id_several_media_record_as_the_single_translation_d
     assert_eq!(map.get(&51039), Some(&137728));
     assert_eq!(map.get(&7), Some(&5));
     assert_eq!(
-        media_id_for_mal(&state, 51039, Some(&anilist.uri()))
+        media_id_for_mal(&state, 51039, Some(&anilist.uri()), TRACKER)
             .await
             .expect("answered"),
         Some(137728)

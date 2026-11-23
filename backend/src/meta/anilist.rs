@@ -253,12 +253,14 @@ const MEDIA_ID_BY_MAL_GQL: &str = "query MediaIdByMal($idMal: Int!) { \
         Media(idMal: $idMal, type: ANIME) { id } \
     }";
 
-/// Resolve a MAL id → AniList numeric `mediaId`. `None` when AniList
-/// doesn't index the supplied MAL id. Mirrors [`banner_for_mal_id`]'s
-/// network shape; `base_override` points at wiremock in tests.
+/// Resolve a MAL id → AniList numeric `mediaId`, as the tracker bridge
+/// asks it. `None` when AniList doesn't index the supplied MAL id.
+/// Tests only: the query serves more than one feature, so the app asks
+/// it through [`media_id_for_mal_as`], naming its purpose.
 ///
 /// # Errors
 /// Network / Upstream / ParseFailed — same as [`banner_for_mal_id`].
+#[cfg(test)]
 pub async fn media_id_for_mal(
     client: &reqwest::Client,
     mal_id: u32,
@@ -267,10 +269,11 @@ pub async fn media_id_for_mal(
     media_id_for_mal_as(client, mal_id, base_override, Purpose::TrackerIds).await
 }
 
-/// [`media_id_for_mal`], sent for `purpose`.
+/// Resolve a MAL id → AniList numeric `mediaId`, sent for `purpose`.
+/// `None` when AniList doesn't index the supplied MAL id.
 ///
 /// # Errors
-/// As [`media_id_for_mal`].
+/// Network / Upstream / ParseFailed — same as [`banner_for_mal_id`].
 pub(crate) async fn media_id_for_mal_as(
     client: &reqwest::Client,
     mal_id: u32,
@@ -299,11 +302,11 @@ const MAL_ID_BY_MEDIA_GQL: &str = "query MalIdByMedia($id: Int!) { \
 
 /// Resolve an AniList numeric `mediaId` → the show's MAL id. `None`
 /// when AniList has no MAL link recorded. Mirrors
-/// [`media_id_for_mal`]'s network shape; `base_override` points at
+/// [`media_id_for_mal_as`]'s network shape; `base_override` points at
 /// wiremock in tests.
 ///
 /// # Errors
-/// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
+/// Network / Upstream / ParseFailed — same as [`media_id_for_mal_as`].
 pub async fn mal_id_for_media_id(
     client: &reqwest::Client,
     media_id: u32,
@@ -345,7 +348,7 @@ pub const MAL_BATCH_PAGE_SIZE: usize = super::anilist_pages::PAGE_CAP;
 /// makes no request.
 ///
 /// # Errors
-/// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
+/// Network / Upstream / ParseFailed — same as [`media_id_for_mal_as`].
 pub async fn media_listed_for_mals(
     client: &reqwest::Client,
     mal_ids: &[u32],
@@ -376,11 +379,11 @@ pub async fn media_listed_for_mals(
 }
 
 /// Every AniList media that records `mal_id` as its MAL id, in AniList
-/// id order: several can, where [`media_id_for_mal`] answers with one.
+/// id order: several can, where [`media_id_for_mal_as`] answers with one.
 /// Empty when none does.
 ///
 /// # Errors
-/// Network / Upstream / ParseFailed, as [`media_id_for_mal`].
+/// Network / Upstream / ParseFailed, as [`media_id_for_mal_as`].
 pub async fn media_ids_recording_mal(
     client: &reqwest::Client,
     mal_id: u32,

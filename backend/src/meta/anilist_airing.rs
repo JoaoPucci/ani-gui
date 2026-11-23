@@ -60,7 +60,7 @@ const AIRING_GQL: &str = "query Airing($id: Int, $idMal: Int) { \
 /// is supplied.
 ///
 /// # Errors
-/// Network / Upstream / ParseFailed — same as [`media_id_for_mal`].
+/// Network / Upstream / ParseFailed — same as [`crate::meta::anilist::media_id_for_mal_as`].
 pub async fn airing_status(
     client: &reqwest::Client,
     anilist_id: Option<u32>,

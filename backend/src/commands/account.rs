@@ -760,8 +760,13 @@ pub(crate) async fn resolve_native_media_id(
         // (unchanged primary), direct anilist/anime mapping second.
         ProviderKind::AniList => {
             if let Some(mal_id) = ids.mal {
-                let media_id =
-                    super::anilist_ids::media_id_for_mal(state, mal_id, anilist_base).await?;
+                let media_id = super::anilist_ids::media_id_for_mal(
+                    state,
+                    mal_id,
+                    anilist_base,
+                    crate::meta::anilist_gate::Purpose::TrackerIds,
+                )
+                .await?;
                 if media_id.is_some() {
                     return Ok(media_id.map(ProviderMediaId));
                 }

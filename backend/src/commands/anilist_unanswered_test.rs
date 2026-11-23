@@ -168,7 +168,13 @@ async fn an_unanswered_id_translation_is_an_error_and_remembers_nothing() {
         let anilist = anilist(how).await;
         let state = state_with_kitsu("http://127.0.0.1:1");
         let uri = Some(anilist.uri());
-        let one = crate::commands::anilist_ids::media_id_for_mal(&state, 21, uri.as_deref()).await;
+        let one = crate::commands::anilist_ids::media_id_for_mal(
+            &state,
+            21,
+            uri.as_deref(),
+            crate::meta::anilist_gate::Purpose::TrackerIds,
+        )
+        .await;
         assert!(
             matches!(&one, Err(e) if is_the_failure(how, e)),
             "{how:?}: {one:?}"

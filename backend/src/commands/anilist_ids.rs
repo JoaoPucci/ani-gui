@@ -65,23 +65,12 @@ fn remember_id(pool: &SqlitePool, key: &str, id: Option<u32>) {
 }
 
 /// AniList's `mediaId` for a MAL id; `None` when AniList does not
-/// index it.
+/// index it. Asked for `purpose` when AniList is asked: the tracker id
+/// bridge and the Watch Later rail both translate this way.
 ///
 /// # Errors
-/// Same as [`crate::meta::anilist::media_id_for_mal`].
+/// Same as [`crate::meta::anilist::media_id_for_mal_as`].
 pub(crate) async fn media_id_for_mal(
-    state: &AppState,
-    mal_id: u32,
-    anilist_base: Option<&str>,
-) -> Result<Option<u32>> {
-    media_id_for_mal_as(state, mal_id, anilist_base, Purpose::TrackerIds).await
-}
-
-/// [`media_id_for_mal`], asked for `purpose` when AniList is asked.
-///
-/// # Errors
-/// As [`media_id_for_mal`].
-async fn media_id_for_mal_as(
     state: &AppState,
     mal_id: u32,
     anilist_base: Option<&str>,
@@ -161,8 +150,7 @@ pub(crate) async fn media_ids_for_mals(
             // order. A single translation that fails leaves the id out,
             // and kept nowhere, for the next load to ask again.
             Some(_) => {
-                match media_id_for_mal_as(state, mal_id, anilist_base, Purpose::WatchLaterIds).await
-                {
+                match media_id_for_mal(state, mal_id, anilist_base, Purpose::WatchLaterIds).await {
                     Ok(media_id) => media_id,
                     Err(err) => {
                         tracing::debug!(mal_id, error = ?err, "anilist: single translation failed");
