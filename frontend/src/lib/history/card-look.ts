@@ -28,7 +28,8 @@ import type { KitsuAnimeRef, KitsuEpisode } from '$lib/api';
  * wait matters for a card whose show's rows have expired, so that its
  * details are a cold lookup (Kitsu's episode page, then AniList's
  * stills where Kitsu has none): an airing show's on its first launch
- * of a day, a finished one's once its week has run out. Measured on a
+ * of a day, a finished one's in the week after it ends and once its
+ * week has run out. Measured on a
  * launch where every card was such a lookup, one card in five landed
  * its still inside 400 ms and four in five inside a second, for about
  * 0.14 s more of skeleton; a lookup slower than that still settles on
