@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Run a program on a terminal of its own, and close that terminal when told.
+
+    on-a-terminal.py <program> [args...]
+
+The program runs on a pseudo-terminal, as it would started from a terminal
+window: its stdin, stdout and stderr are the terminal, which is also its
+controlling terminal, and it leads the terminal's session. What it writes
+there is relayed to this script's stderr.
+
+This script's stdin takes one command per line:
+
+    hangup  close the terminal, as closing the terminal window does: the
+            program gets its SIGHUP, and every write it makes to the
+            terminal from then on fails (EIO);
+    kill    SIGKILL the program's process group.
+
+On its stdout, one JSON object per line: {"pid": <pid>} once the program has
+started, then {"exit": <code>} or {"signal": <number>} when it ends, and this
+script exits; what the terminal still holds when the program ends is
+relayed first. If this script's stdin closes first, it kills the program's
+process group, so a test that dies leaves nothing behind; and when the
+program ends, whatever it left in its group is killed before it is reaped.
+
+The program is this script's child, so its pid, and the id of the process
+group it leads, stay its own until this script reaps it: the group is
+signalled only before that. Core dumps are off for the program.
+"""
+import json
+import os
+import pty
+import resource
+import select
+import signal
+import sys
+import time
+
+
+def report(event):
+    # The test may be gone; that must not stop the script from stopping
+    # the program.
+    try:
+        os.write(sys.stdout.fileno(), (json.dumps(event) + "\n").encode())
+    except OSError:
+        pass
+
+
+def drain(terminal):
+    """Passes on what the terminal still holds once the program has ended:
+    its last lines may arrive after the check that saw it end. Stops at
+    the first quiet 0.2 s, or once nothing holds the terminal's other end."""
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        ready, _, _ = select.select([terminal], [], [], 0.2)
+        if not ready:
+            return
+        try:
+            chunk = os.read(terminal, 65536)
+        except OSError:
+            return
+        if not chunk:
+            return
+        try:
+            os.write(sys.stderr.fileno(), chunk)
+        except OSError:
+            return
+
+
+def main():
+    program = sys.argv[1:]
+    if not program:
+        sys.stderr.write(__doc__)
+        return 2
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    pid, terminal = pty.fork()
+    if pid == 0:
+        try:
+            os.execvp(program[0], program)
+        finally:
+            os._exit(127)
+    report({"pid": pid})
+
+    def kill_group():
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    commands = sys.stdin.fileno()
+    pending = b""
+    # Stops once the terminal reads nothing more: every holder of its other
+    # end has closed it.
+    relaying = True
+    # Whether what the terminal reads is passed on to stderr.
+    forwarding = True
+    while True:
+        # Seen without reaping it: while the program is a zombie, its pid
+        # and its group's id are still its own, so what it left in the
+        # group is killed before the reap gives them up.
+        if os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT):
+            kill_group()
+            _, status = os.waitpid(pid, 0)
+            if terminal is not None and relaying and forwarding:
+                drain(terminal)
+            break
+        watched = [commands] + ([terminal] if terminal is not None and relaying else [])
+        ready, _, _ = select.select(watched, [], [], 0.1)
+        if terminal is not None and terminal in ready:
+            try:
+                chunk = os.read(terminal, 65536)
+            except OSError:
+                chunk = b""
+            if chunk and forwarding:
+                try:
+                    os.write(sys.stderr.fileno(), chunk)
+                except OSError:
+                    # Nobody reads the relay any more (the test worker
+                    # has exited): the terminal is still drained, so the
+                    # program never blocks on it, and the stdin EOF that
+                    # comes with it is read next.
+                    forwarding = False
+            elif not chunk:
+                relaying = False
+        if commands in ready:
+            chunk = os.read(commands, 4096)
+            if not chunk:
+                kill_group()
+                os.waitpid(pid, 0)
+                return 1
+            pending += chunk
+            while b"\n" in pending:
+                line, pending = pending.split(b"\n", 1)
+                command = line.strip()
+                if command == b"hangup" and terminal is not None:
+                    os.close(terminal)
+                    terminal = None
+                elif command == b"kill":
+                    kill_group()
+    if os.WIFSIGNALED(status):
+        report({"signal": os.WTERMSIG(status)})
+    else:
+        report({"exit": os.WEXITSTATUS(status)})
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

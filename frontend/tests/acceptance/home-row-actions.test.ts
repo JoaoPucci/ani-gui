@@ -16,6 +16,7 @@ import { mount, unmount, flushSync } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { afterRead, watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -54,6 +55,7 @@ let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 let historyCleared = 0;
 let pulls: Provider[] = [];
+let fetches: ReturnType<typeof watchPageFetches>;
 
 function connect(provider: Provider) {
 	accountStore.setConnected(provider, {
@@ -111,6 +113,7 @@ beforeEach(() => {
 	localStorage.clear();
 	historyCleared = 0;
 	pulls = [];
+	fetches = watchPageFetches();
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -167,6 +170,17 @@ const settledAnnouncement = () => {
 };
 const short = (n: number, unit: 'minute' | 'hour') =>
 	new Intl.RelativeTimeFormat('en', { numeric: 'always', style: 'short' }).format(-n, unit);
+
+/** The tracker re-pulls the page has sent, counted as it sends them:
+ *  a handler sees a request only once MSW has carried it there. */
+const pullsSent = () =>
+	fetches.sent
+		.filter((f) => f.method === 'POST' && f.path.startsWith('/api/account/list/'))
+		.map((f) => f.path.slice('/api/account/list/'.length));
+
+/** The history clears the page has sent, counted the same way. */
+const clearsSent = () =>
+	fetches.sent.filter((f) => f.method === 'DELETE' && f.path === '/api/history').length;
 
 const WL = () => m.account_watch_later_title();
 const CW = () => m.home_strip_continue_eyebrow();
@@ -309,8 +323,6 @@ for (const style of ['inline', 'band'] as const) {
 			expect(refresh.getAttribute('aria-disabled')).toBe('true');
 			expect(document.activeElement).toBe(refresh);
 			refresh.click();
-			await new Promise((r) => setTimeout(r, 50));
-			expect(pulls).toEqual(['anilist']);
 			expect(announced()).toBe(m.account_watch_later_refreshing());
 
 			release();
@@ -318,6 +330,13 @@ for (const style of ['inline', 'band'] as const) {
 				() => status().includes(m.account_watch_later_updated_now()),
 				'the just-updated state'
 			);
+			// The second press sent no pull of its own. A refresh waits
+			// only on the sign-in's bearer before it pulls, and a token
+			// this far from expiry is handed back at once, so once nothing
+			// the page asked is still out a pull that press started has
+			// been sent.
+			await fetches.settled('the refresh to finish');
+			expect(pullsSent()).toEqual(['anilist']);
 			expect(refresh.hasAttribute('aria-disabled')).toBe(false);
 			expect(document.activeElement).toBe(refresh);
 			expect(announced()).toBe(m.account_watch_later_updated_now());
@@ -517,8 +536,18 @@ for (const style of ['inline', 'band'] as const) {
 				landed: ['anilist'],
 				source: 'editor'
 			});
+			const since = fetches.sent.length;
 			releaseRefresh();
-			await new Promise((r) => setTimeout(r, 50));
+			// The refresh's own load has finished: its read of the rail is
+			// in, and so is the availability check that read set off.
+			await until(
+				() =>
+					fetches.sent
+						.slice(since)
+						.some((f) => f.path === '/api/availability/batch' && fetches.read.includes(f)),
+				'the refresh’s own load to finish'
+			);
+			await afterRead();
 			// The refresh's own read landed, but it was superseded: the
 			// refresh has nothing of its own to say yet.
 			expect(settledAnnouncement()).toBeNull();
@@ -633,7 +662,7 @@ for (const style of ['inline', 'band'] as const) {
 			cancel.click();
 			await until(() => target.querySelector('[role="dialog"]') === null, 'the dialog to close');
 			await until(() => document.activeElement === clear, 'focus to come back to Clear history');
-			expect(historyCleared).toBe(0);
+			expect(clearsSent()).toBe(0);
 		});
 
 		it('clears history after the confirm, from the row’s own action', async () => {
@@ -644,14 +673,16 @@ for (const style of ['inline', 'band'] as const) {
 
 			action(CW(), CLEAR())!.click();
 			await until(() => target.querySelector('[role="dialog"]') !== null, 'the confirm dialog');
-			// Nothing goes before the user confirms.
-			expect(historyCleared).toBe(0);
+			// Nothing goes before the user confirms: a clear the press
+			// started would be counted as the page sends it.
+			expect(clearsSent()).toBe(0);
 			const confirm = Array.from(target.querySelectorAll('[role="dialog"] button')).find(
 				(b) => b.textContent?.trim() === m.home_clear_confirm_button()
 			) as HTMLButtonElement;
 			confirm.click();
 			await until(() => row(CW()) === null, 'the Continue Watching row to go');
 			expect(historyCleared).toBe(1);
+			expect(clearsSent()).toBe(1);
 		});
 	});
 }

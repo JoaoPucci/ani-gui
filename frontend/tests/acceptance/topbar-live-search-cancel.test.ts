@@ -17,6 +17,8 @@ import { page, setUrl } from './page-state.svelte';
 import { kitsuRef } from './home-handlers';
 import { sixConnections, type Connections } from './connections';
 import { hangingReads, type HangingReads } from './hanging-reads';
+import { afterRead, watchPageFetches } from './page-fetches';
+import { armedBy } from './scheduled-timers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -102,6 +104,9 @@ describe('topbar live search — the query moves on', () => {
 			)
 		);
 		pool = sixConnections();
+		// Inside the connections, so a request the stand-in cancels is
+		// seen failing where the page asked it.
+		const fetches = watchPageFetches();
 		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
 		layout = mount(Layout, { target, props: { children } });
 		input().focus();
@@ -111,8 +116,13 @@ describe('topbar live search — the query moves on', () => {
 		type('frieren');
 		await until(() => pool!.cancelled.includes('/api/kitsu/search'), 'the first search cancelled');
 		// Before the next search answers, the cancelled one shows
-		// nothing: no failure, no empty list.
-		await new Promise((r) => setTimeout(r, 0));
+		// nothing: no failure, no empty list. Read once the page has
+		// seen its request fail and what that set off has run.
+		await until(
+			() => fetches.failed.some((f) => f.path === '/api/kitsu/search'),
+			'the page to see the first search fail'
+		);
+		await afterRead();
 		expect(target.textContent).not.toContain(m.app_search_error_kitsu());
 		expect(target.textContent).not.toContain(m.app_search_error_no_matches());
 		await until(() => (target.textContent ?? '').includes('Frieren'), "the second search's hit");
@@ -172,13 +182,19 @@ describe('topbar live search — the query moves on', () => {
 				return HttpResponse.json<KitsuAnimeRef[]>([]);
 			})
 		);
+		const fetches = watchPageFetches();
 		const children = createRawSnippet(() => ({ render: () => '<div></div>' }));
 		layout = mount(Layout, { target, props: { children } });
 		input().focus();
 		input().dispatchEvent(new FocusEvent('focus'));
-		type('frieren');
+		const pause = armedBy(() => type('frieren'));
+		expect(pause.pending, 'typing armed the pause before the search').toBe(1);
 		(input().closest('form') as HTMLFormElement).requestSubmit();
-		await new Promise((r) => setTimeout(r, 500));
+		// Once the pause has come due or been called off, a search it
+		// started has been asked, and is recorded where the page asks it.
+		await pause.done('the pause before the search to end');
+		await afterRead();
+		expect(fetches.sent.filter((f) => f.path === '/api/kitsu/search')).toEqual([]);
 		expect(asked).toBe(0);
 	});
 });

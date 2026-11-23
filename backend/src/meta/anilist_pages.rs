@@ -63,6 +63,25 @@ where
     Ok(pages)
 }
 
+/// A whole page's nodes, by the key each was asked by: the keys one node
+/// answers, with that node, and the keys several nodes answer, which
+/// only a single lookup can settle (in the order first seen twice).
+#[must_use]
+pub fn by_key<T>(media: Vec<(u32, T)>) -> (std::collections::HashMap<u32, T>, Vec<u32>) {
+    let mut once = std::collections::HashMap::new();
+    let mut several = Vec::new();
+    for (key, node) in media {
+        if several.contains(&key) {
+            continue;
+        }
+        if once.insert(key, node).is_some() {
+            once.remove(&key);
+            several.push(key);
+        }
+    }
+    (once, several)
+}
+
 #[cfg(test)]
 #[path = "anilist_pages_prop_test.rs"]
 mod prop_tests;

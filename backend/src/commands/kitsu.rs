@@ -575,9 +575,12 @@ pub fn allmanga_kitsu_put_played(state: &AppState, show_id: &str, kitsu_id: &str
 
 /// Evict a single `provider show_id → kitsu_id` mapping. Used by the
 /// frontend's `resolveKitsuMatch` step 0 to drop a binding to a music
-/// entry, the one binding provably wrong; a binding it merely doubts
-/// is passed over and kept. SQLite errors propagate; a missing row is
-/// not an error (DELETE on no rows is a no-op).
+/// entry, the one binding provably wrong: no play starts from a music
+/// entry and no resolve picks one now, so such a binding is never a
+/// show the app played — the original Idol bug left them, guessed by
+/// a version before the music filter. A binding it merely doubts is
+/// passed over and kept. SQLite errors propagate; a missing row is not
+/// an error (DELETE on no rows is a no-op).
 pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
     crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_played_key(show_id))?;
     crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_key(show_id))
@@ -792,10 +795,12 @@ pub(crate) fn cached_cour_pairing_verdict(
     ))
 }
 
-/// Whether a Kitsu `subtype` is a music video. A provider that indexes
-/// anime episodes has no song clips, so the reverse resolve's Kitsu
-/// search skips them — otherwise a search term like "Idol" resolves to
-/// the YOASOBI MV and persists its id into the reverse mapping.
+/// Whether a Kitsu `subtype` is a music video. The reverse resolve's
+/// Kitsu search skips them, as every search the app offers does
+/// ([`crate::meta::kitsu::drop_music`]: Kitsu lists far more music
+/// videos than the provider serves) — otherwise a search term like
+/// "Idol" resolves to the YOASOBI MV and persists its id into the
+/// reverse mapping.
 /// Case-insensitive; an absent subtype is not music.
 fn is_music_subtype(subtype: Option<&str>) -> bool {
     subtype
@@ -1229,8 +1234,15 @@ async fn anime_detail_fetch(
     if detail.cover_image.is_none() {
         // A show the trending row listed already brought its banner
         // with that one request; only an unlisted show asks AniList.
-        let banner = match super::anilist_banner_memo::remembered(&state.cache_pool, id) {
-            Some(b) => Some(b),
+        // A Continue strip's warm may have asked AniList for it too,
+        // and kept the answer, banner or none.
+        // Taken once: the detail row keeps it from here, for the row's
+        // own lifetime, as it keeps an answer it asked for itself.
+        let remembered = super::anilist_banner_memo::remembered(&state.cache_pool, id)
+            .map(Some)
+            .or_else(|| super::anilist_banner_memo::take_warmed(&state.cache_pool, id));
+        let banner = match remembered {
+            Some(found) => found,
             None => anilist_banner_for(state, id, anilist_base)
                 .await
                 .unwrap_or_else(|e| {
@@ -1279,15 +1291,8 @@ async fn anilist_banner_for(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Result<Option<String>> {
-    let ids = super::external_ids::external_ids_for(state, kitsu_id).await?;
-    // The detail renders without it: a background fill.
-    crate::meta::anilist_gate::in_background(crate::meta::anilist_media::banner_for_ids(
-        &state.meta_http,
-        ids.mal,
-        ids.anilist,
-        anilist_base,
-    ))
-    .await
+    // Shared with a strip warm asking for the same show's banner.
+    super::anilist_banner_fill::banner_for_show(state, kitsu_id, anilist_base).await
 }
 
 #[cfg(test)]
@@ -1317,6 +1322,10 @@ mod banner_tests;
 #[cfg(test)]
 #[path = "kitsu_detail_shared_test.rs"]
 mod detail_shared_tests;
+
+#[cfg(test)]
+#[path = "kitsu_banner_batch_test.rs"]
+mod banner_batch_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2133,9 +2142,9 @@ mod tests {
     #[test]
     fn is_music_subtype_matches_case_insensitively() {
         // The reverse resolve's Kitsu search must skip music-video hits
-        // (a YOASOBI "Idol" MV) so it never returns or persists one — the
-        // provider has no song clips. Streamable subtypes and an absent
-        // subtype pass.
+        // (a YOASOBI "Idol" MV) so it never returns or persists one — no
+        // search the app offers carries a music video. Other subtypes and
+        // an absent subtype pass.
         assert!(is_music_subtype(Some("music")));
         assert!(is_music_subtype(Some("Music")));
         assert!(!is_music_subtype(Some("TV")));

@@ -1,0 +1,14 @@
+# AppArmor profile for ani-gui. The .deb's postinst installs it as
+# /etc/apparmor.d/ani-gui where AppArmor knows ABI 4.0, and its postrm
+# removes it. It lets Chromium's namespace sandbox start
+# for the installed binary on hosts that restrict unprivileged user
+# namespaces (Ubuntu 23.10 and later).
+abi <abi/4.0>,
+include <tunables/global>
+
+profile ani-gui /opt/ani-gui/ani-gui.bin flags=(unconfined) {
+  userns,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/ani-gui>
+}

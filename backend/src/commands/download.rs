@@ -25,10 +25,19 @@ use crate::scraper::provider::StreamSource;
 
 #[path = "download_lock.rs"]
 mod lock;
-use lock::*;
-// The lock's property cases reach these through this module.
+pub(crate) use lock::sweep_lock_leftovers;
+#[path = "download_old_scratch.rs"]
+mod old_scratch;
+#[cfg(not(test))]
+use lock::{acquire_instance_lock, target_lock};
+pub(crate) use old_scratch::OldScratchVisits;
+// The lock's own cases reach these through this module.
 #[cfg(test)]
-pub(crate) use lock::{acquire_instance_lock, target_lock_path};
+pub(crate) use lock::{acquire_instance_lock, target_lock, target_lock_path};
+#[cfg(all(test, unix))]
+pub(crate) use lock::{remove_lock_file, remove_lock_file_with};
+#[path = "download_parts.rs"]
+pub(crate) mod parts;
 #[path = "download_resume.rs"]
 mod resume;
 use resume::resumed_partials;
@@ -161,15 +170,21 @@ pub struct DownloadProgress {
 }
 
 /// SSE final-event body. `dest_dir` is the directory the file landed
-/// in, which is what a "reveal in folder" intent needs.
+/// in, which is what a "reveal in folder" intent needs: the show's own
+/// folder inside the one the user chose
+/// ([`super::download_place::episode_place`]), or the chosen folder
+/// itself where the episode goes there instead — already in it from a
+/// version before show folders, or of a title that gives the show no
+/// folder name.
 ///
 /// Only the directory, because the same response ends a range
 /// download: `1-12` writes twelve files and there is no single name to
-/// return. A single-episode download lands on `<resolved title>
-/// Episode <n>.mp4` however it got there — including a yt-dlp run that
-/// could not repackage and was retried through ffmpeg, which discards
-/// the mislabeled file and writes the same target. Only a repackage
-/// failure with no ffmpeg to retry through fails instead, with
+/// return. A single-episode download lands on the place
+/// `download_place::episode_place` gives it however it got there —
+/// including a yt-dlp run that could not repackage and was retried
+/// through ffmpeg, which discards the mislabeled file and writes the
+/// same target. Only a repackage failure with no ffmpeg to retry
+/// through fails instead, with
 /// [`AniError::FfmpegMissing`].
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadResponse {
@@ -218,9 +233,10 @@ where
     std::fs::create_dir_all(&dest).map_err(|_| AniError::Io)?;
 
     // The bundled-binary directory joins the search ahead of PATH —
-    // packaged builds ship their own yt-dlp (Windows: ffmpeg too),
-    // and the bundle is the tool the package validated, exactly as
-    // the curl resolver ranks its bundled directory first.
+    // packaged builds ship their own yt-dlp (and the Windows installer
+    // downloads ffmpeg into it), and the bundle is the tool the package
+    // validated, exactly as the curl resolver ranks its bundled
+    // directory first.
     let path_env = tool_search_path(state, path_env);
     let path_env = path_env.as_str();
 
@@ -242,7 +258,7 @@ where
     // script's own -e loop, one pick then one transfer per episode.
     if let Some((first, last)) = super::download_range::episode_range(&args.episode) {
         let quality = args.quality.as_deref().unwrap_or("best");
-        super::download_range::download_range(
+        let landed = super::download_range::download_range(
             state,
             args,
             first,
@@ -254,7 +270,7 @@ where
         )
         .await?;
         return Ok(DownloadResponse {
-            dest_dir: dest.to_string_lossy().into_owned(),
+            dest_dir: landed.to_string_lossy().into_owned(),
         });
     }
 
@@ -362,19 +378,23 @@ where
             }
         };
 
-    tracing::info!(
-        slug = %resolved.slug,
-        episode = %args.episode,
-        mode = %args.mode,
-        dest = %dest.display(),
-        "download: spawning tool on natively resolved stream",
-    );
     // Named for the episode it plays, or for the number an earlier
     // version gave it where that version's download is in the folder.
     let played = crate::commands::play_native_record::matched_episode(&resolved, &args.episode);
     let former = crate::commands::play_native_merge::former_number(&resolved);
-    let file_stem =
-        super::download_names::episode_stem(&dest, &resolved.title, &played, former.as_deref());
+    let place =
+        super::download_place::episode_place(&dest, &resolved.title, &played, former.as_deref());
+    sweep_lock_leftovers(&dest).await;
+    let mut visits = OldScratchVisits::default();
+    drop(visits.visit(&dest));
+    drop(visits.visit(&place.dir));
+    tracing::info!(
+        slug = %resolved.slug,
+        episode = %args.episode,
+        mode = %args.mode,
+        dest = %place.dir.display(),
+        "download: spawning tool on natively resolved stream",
+    );
     let source = StreamSource {
         master_url: resolved.master_url,
         referer: resolved.referer,
@@ -404,8 +424,8 @@ where
         &state.proxy_http,
         &state.host_budget,
         &source,
-        &dest,
-        &file_stem,
+        &place.dir,
+        &place.stem,
         Some(quality),
         path_env,
         std::time::Duration::from_secs(60 * 60),
@@ -420,7 +440,7 @@ where
     .await?;
 
     Ok(DownloadResponse {
-        dest_dir: dest.to_string_lossy().into_owned(),
+        dest_dir: place.dir.to_string_lossy().into_owned(),
     })
 }
 
@@ -1025,7 +1045,8 @@ fn name_is_taken(path: &std::path::Path) -> std::io::Result<bool> {
 }
 
 /// A sidecar's name, taken only for a complete file. The bytes go to
-/// a hidden scratch sibling; finishing installs the scratch at the
+/// a scratch in the destination's hidden working folder (see
+/// [`parts`]); finishing installs the scratch at the
 /// name — a link, or a create-new and a rename where links are not
 /// offered — refusing a name already taken, which is the user's. A
 /// claim dropped unfinished removes its scratch and the name stays
@@ -1057,6 +1078,9 @@ pub(crate) struct SidecarClaim {
     installed: bool,
     /// The scratch is provably gone, and the drop has nothing to do.
     finished: bool,
+    /// The claim on the working folder the scratch is in. Declared
+    /// last, so it drops after the scratch's own removal.
+    _hold: parts::Hold,
 }
 
 /// Claim `path` for a new sidecar.
@@ -1071,11 +1095,8 @@ pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<Sidecar
             "a sidecar is already at the name",
         ));
     }
-    let scratch = path.with_file_name(format!(
-        ".ani-gui-{}-{}.part.vtt",
-        std::process::id(),
-        uuid::Uuid::new_v4().simple()
-    ));
+    let hold = parts::take_beside(path, false).await?;
+    let scratch = hold.part(".part.vtt");
     let file = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -1087,6 +1108,7 @@ pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<Sidecar
         file: Some(file),
         installed: false,
         finished: false,
+        _hold: hold,
     })
 }
 
@@ -1362,8 +1384,8 @@ where
     // And the other app instance's download. Taken after the
     // in-process mutex so this process's own tasks queue on the cheap
     // lock and only one of them contends the file. Held to the return
-    // — dropping the handle closes the descriptor, which is what
-    // releases it.
+    // — dropping it releases the lock and removes the lock file, on
+    // every way out of here, a cancel included.
     // Best-effort, because publishing is what makes this safe. A lock
     // that cannot be taken costs a duplicate transfer — which then
     // finds the name taken and discards its copy — and refusing the
@@ -1428,7 +1450,7 @@ where
     // Everything below writes here. Nothing is at the target until a
     // whole file exists, so a half transfer is never sitting under the
     // name the dock, the file manager and every other download read.
-    let mut scratch = Scratch::new(dest);
+    let mut scratch = Scratch::for_target(&target).await?;
     // The ceiling guards a hung tool. A paced run is slow by design
     // and ends the moment playback stops, so it runs under a ceiling
     // of its own; a wait for the lane while playback is live ends the
@@ -1579,7 +1601,7 @@ where
             // A fresh name for the retry rather than writing
             // over the condemned one, so nothing it leaves can
             // be mistaken for what ffmpeg produces.
-            scratch.renew(dest);
+            scratch.renew();
             on_line("status.download.repackage_retry");
         } else {
             // v5's && chain: a failing yt-dlp run retries the
@@ -1587,7 +1609,7 @@ where
             if ffmpeg.is_none() {
                 return Err(e);
             }
-            scratch.renew(dest);
+            scratch.renew();
             on_line("status.download.retry_ffmpeg");
         }
     }
@@ -1897,7 +1919,8 @@ where
 /// The downloader's tool-search path: the bundled-binary directory
 /// (when packaging ships one) ahead of the caller's PATH. Also what
 /// the spawned tool itself sees as PATH, so a bundled yt-dlp finds
-/// the bundled ffmpeg for its own repackaging.
+/// the ffmpeg beside it — on Windows, the one the installer downloads
+/// into that directory — for its own repackaging.
 fn tool_search_path(state: &AppState, path_env: &str) -> String {
     match &state.bundled_bin {
         Some(dir) => std::env::join_paths(
@@ -2203,3 +2226,8 @@ mod prop_tests;
 #[cfg(test)]
 #[path = "download_test.rs"]
 mod tests;
+// Whole transfers against the working folder stage stub tools as
+// shell scripts, which only a unix runner spawns.
+#[cfg(all(test, unix))]
+#[path = "download_parts_flow_test.rs"]
+mod parts_flow_tests;
