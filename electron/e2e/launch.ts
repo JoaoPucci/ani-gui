@@ -24,8 +24,8 @@
  * (outboundAttempts); smoke.spec.ts asks the backend for something
  * only GitHub knows and finds the attempt there.
  *
- * Pre-condition: `pnpm run package` (or the chained `pnpm e2e`) has
- * produced `dist/linux-unpacked/`.
+ * Pre-condition: `pnpm run package:e2e` (or the chained `pnpm e2e`)
+ * has produced `dist-e2e/linux-unpacked/`.
  */
 import {
 	_electron,
@@ -38,16 +38,21 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { launchRefusal } from '../lib/e2e-display.cjs';
+import { appEnv } from '../lib/e2e-launch-env.cjs';
 import { stopOwnGroup } from '../lib/own-group.cjs';
 import { guardOutput, guardPolicy, recordAppOutput } from './policy-guard';
 import { answer } from './stubs';
 
-/** electron-builder's pre-AppImage output — the production code path:
- *  the `app://` protocol handler, the bundled SvelteKit assets and the
- *  sidecar backend under `process.resourcesPath`. */
+/** The e2e package (`pnpm run package:e2e`, lib/e2e-package.cjs):
+ *  electron-builder's unpacked tree of the release's Linux package —
+ *  the production code path: the `app://` protocol handler, the bundled
+ *  SvelteKit assets and the sidecar backend under
+ *  `process.resourcesPath` — except that its backend is a test-run
+ *  build, so a flags file signed by the test-run key can turn a flag
+ *  on (flags-file.ts). */
 export const packagedBinary = path.join(
 	path.resolve(__dirname, '..'),
-	'dist/linux-unpacked/ani-gui'
+	'dist-e2e/linux-unpacked/ani-gui'
 );
 
 /** The switches every test launch carries.
@@ -58,15 +63,6 @@ export const packagedBinary = path.join(
  *
  *  `--mute-audio` so a test run makes no sound. */
 export const testLaunchSwitches = ['--no-sandbox', '--mute-audio'] as const;
-
-/** What every test launch sets, whatever the spec passes: a test
- *  run (`ANI_GUI_UNATTENDED=1`). A boot that fails then exits instead
- *  of waiting on a dialog nobody reads (lib/boot-failure.cjs), and the
- *  backend takes its flags from the test — `ANI_GUI_TEST_FLAGS_FILE`,
- *  or the defaults — and never asks GitHub for the live file, so a
- *  flipped flag or a slow CDN cannot change a test's result
- *  (backend/src/flags/launch.rs). */
-export const testRunEnv = { ANI_GUI_UNATTENDED: '1' } as const;
 
 /** A proxy that lets nothing through. It answers every request with
  *  403 and closes, and records the request line: `CONNECT host:port`
@@ -91,23 +87,6 @@ async function refusingProxy(): Promise<{ origin: string; seen: string[]; close:
 	server.unref();
 	const { port } = server.address() as net.AddressInfo;
 	return { origin: `http://127.0.0.1:${port}`, seen, close: () => server.close() };
-}
-
-/** The proxy settings every test launch carries, pointing at `origin`:
- *  the backend's HTTP clients (reqwest) and the provider transport
- *  (curl) both read them, in either case. Loopback is exempt, so the
- *  backend still reaches a spec's own local servers — a media fixture,
- *  an upstream that never answers — and the renderer its backend. */
-function proxyEnv(origin: string): Record<string, string> {
-	const env: Record<string, string> = {};
-	for (const name of ['http_proxy', 'https_proxy', 'all_proxy']) {
-		env[name] = origin;
-		env[name.toUpperCase()] = origin;
-	}
-	const loopback = '127.0.0.1,localhost,::1';
-	env.no_proxy = loopback;
-	env.NO_PROXY = loopback;
-	return env;
 }
 
 /** Removes the scratch directory `dir`, that path alone. A failure is
@@ -158,14 +137,25 @@ export function removeAfterExit(dir: string): void {
  *  or at once if the launch never starts. A worker killed before its
  *  app exits leaves the profile behind. Every launch is guarded: a
  *  content security policy violation the test did not declare fails it
- *  (./policy-guard.ts). */
+ *  (./policy-guard.ts).
+ *
+ *  `flagsFile` is the test run's flags file (`ANI_GUI_TEST_FLAGS_FILE`,
+ *  which flags-file.ts writes) and the only way to name one: a value in
+ *  `env`, inherited from the shell that runs the suite or not, is
+ *  dropped, so a launch without it runs with the defaults. */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
 	{
 		binary = packagedBinary,
 		profile,
+		flagsFile,
 		switches = []
-	}: { binary?: string; profile?: string; switches?: readonly string[] } = {}
+	}: {
+		binary?: string;
+		profile?: string;
+		flagsFile?: string;
+		switches?: readonly string[];
+	} = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
 	if (refusal) {
@@ -185,7 +175,7 @@ export async function launchPackagedApp(
 		app = await _electron.launch({
 			executablePath: binary,
 			args: [...testLaunchSwitches, ...switches],
-			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv }
+			env: appEnv(env, { proxyOrigin: proxy.origin, flagsFile })
 		});
 	} catch (err) {
 		proxy.close();
@@ -211,9 +201,11 @@ export async function launchPackagedApp(
  *  stdout and stderr lead to (terminal-closed.spec.ts): the driver
  *  keeps both as pipes it reads itself. Otherwise the same launch as
  *  launchPackagedApp — the display refusal, testLaunchSwitches, the
- *  refusing proxy and a test run's environment — and the same policy
- *  guard, over the child's stdout and stderr where they are pipes (the
- *  driver's page listeners need Playwright attached, which it is not).
+ *  refusing proxy and a test run's environment (lib/e2e-launch-env.cjs,
+ *  which drops a flags file the shell left set; this launch names
+ *  none) — and the same policy guard, over the child's stdout and
+ *  stderr where they are pipes (the driver's page listeners need
+ *  Playwright attached, which it is not).
  *
  *  `via` is a program to start the app under, which gets the app's
  *  command line as its arguments (a terminal of its own:
@@ -243,7 +235,7 @@ export async function spawnPackagedApp(
 	let child: ChildProcess;
 	try {
 		child = spawn(command[0], command.slice(1), {
-			env: { ...env, ...proxyEnv(proxy.origin), ...testRunEnv },
+			env: appEnv(env, { proxyOrigin: proxy.origin }),
 			stdio,
 			detached: true
 		});
