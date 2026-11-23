@@ -5,7 +5,9 @@
 //! its own cached answer.
 
 use super::*;
-use crate::meta::anilist_streaming_eps_fake_test::{asked_of, Asked, FakeAniList, FakeMedia};
+use crate::meta::anilist_streaming_eps_fake_test::{
+    asked_in_any_order, asked_of, sorted, Asked, FakeAniList, FakeMedia,
+};
 
 /// Kitsu answering `/anime/:id?include=mappings` for each show in
 /// `shows`: (kitsu id, its sites).
@@ -98,8 +100,8 @@ async fn a_strip_of_ten_shows_fills_with_the_first_card_alone_and_one_request_fo
         );
     }
     assert_eq!(
-        asked_of(&anilist).await,
-        vec![Asked::ByMal(1), Asked::PageByMal((2..=10).collect())]
+        asked_in_any_order(&anilist).await,
+        sorted(vec![Asked::ByMal(1), Asked::PageByMal((2..=10).collect())])
     );
 }
 
@@ -169,13 +171,27 @@ async fn a_strip_of_mixed_mappings_fills_with_the_first_card_alone_and_one_reque
     for (id, listing) in ids.iter().zip(&want) {
         assert_eq!(cached(&state, id).as_ref(), Some(listing), "kitsu {id}");
     }
+    // The AniList-id page goes once the MAL page has answered; the first
+    // card's lookup is out beside them.
+    let asked = asked_of(&anilist).await;
+    let pages: Vec<&Asked> = asked
+        .iter()
+        .filter(|a| !matches!(a, Asked::ByMal(_)))
+        .collect();
     assert_eq!(
-        asked_of(&anilist).await,
-        vec![
+        pages,
+        [
+            &Asked::PageByMal(vec![2, 5, 6]),
+            &Asked::PageById(vec![13, 14, 15])
+        ]
+    );
+    assert_eq!(
+        sorted(asked),
+        sorted(vec![
             Asked::ByMal(1),
             Asked::PageByMal(vec![2, 5, 6]),
             Asked::PageById(vec![13, 14, 15])
-        ]
+        ])
     );
 }
 
@@ -201,12 +217,15 @@ async fn a_strip_refused_by_anilist_caches_none_of_its_shows() {
         assert_eq!(cached(&state, id), None, "kitsu {id} was cached");
     }
     let asked = asked_of(&anilist).await;
-    assert!(
-        matches!(asked.first(), Some(Asked::ByMal(1))),
+    assert_eq!(
+        asked.iter().filter(|a| **a == Asked::ByMal(1)).count(),
+        1,
         "the first card goes alone: {asked:?}"
     );
     assert!(
-        asked[1..].iter().all(|a| matches!(a, Asked::PageByMal(_))),
+        asked
+            .iter()
+            .all(|a| *a == Asked::ByMal(1) || matches!(a, Asked::PageByMal(_))),
         "{asked:?}"
     );
     assert!(asked.len() <= 3, "{asked:?}");
@@ -311,7 +330,7 @@ async fn a_card_that_stopped_waiting_is_left_out_of_the_page() {
     assert_eq!(a, fake.media[1].listing());
     assert_eq!(b, fake.media[2].listing());
     assert_eq!(
-        asked_of(&anilist).await,
-        vec![Asked::ByMal(9), Asked::PageByMal(vec![1, 2])]
+        asked_in_any_order(&anilist).await,
+        sorted(vec![Asked::ByMal(9), Asked::PageByMal(vec![1, 2])])
     );
 }
