@@ -79,7 +79,11 @@ pub fn parse_mappings(body: &[u8]) -> Result<KitsuMappings> {
             _ => {}
         }
     }
-    let has_cover = parsed.data.attributes.and_then(|a| a.cover_image).is_some() && false;
+    let has_cover = parsed
+        .data
+        .attributes
+        .and_then(|a| a.cover_image)
+        .is_some_and(|c| !c.is_null());
     Ok(KitsuMappings { ids, has_cover })
 }
 

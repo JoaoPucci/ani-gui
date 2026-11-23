@@ -688,7 +688,7 @@ impl KitsuClient {
             .header(reqwest::header::ACCEPT, "application/vnd.api+json")
             .query(&[
                 ("include", "mappings".to_string()),
-                ("fields[anime]", "canonicalTitle".to_string()),
+                ("fields[anime]", "canonicalTitle,coverImage".to_string()),
                 ("fields[mappings]", "externalSite,externalId".to_string()),
             ])
             .send()
