@@ -36,13 +36,36 @@ describe('changing the player type', () => {
 		expect(p.saved).toEqual([config('vlc', 'vlc')]);
 	});
 
-	it('keeps the command and still saves the type when the question fails', async () => {
+	it('saves nothing and reports it when the question fails', async () => {
+		// Saving the new type with the old command is the state the
+		// backend's rule exists to prevent: mpv run with VLC's arguments.
 		const p = page(config('mpv', 'mpv'));
+		const offline = new Error('offline');
 		const ask = vi.fn(async () => {
-			throw new Error('offline');
+			throw offline;
 		});
-		await createKindChange(ask, p.current, p.save)('vlc');
-		expect(p.saved).toEqual([config('mpv', 'vlc')]);
+		const onFail = vi.fn();
+		await createKindChange(ask, p.current, p.save, onFail)('vlc');
+		expect(p.saved).toEqual([]);
+		expect(p.current()).toEqual(config('mpv', 'mpv'));
+		expect(onFail).toHaveBeenCalledWith(offline);
+	});
+
+	it('takes the next change after a question that failed', async () => {
+		const p = page(config('mpv', 'mpv'));
+		let fail = true;
+		const ask = vi.fn(async (_c: string, _f: ExternalPlayerKind, to: ExternalPlayerKind) => {
+			if (fail) {
+				fail = false;
+				throw new Error('offline');
+			}
+			return to;
+		});
+		const change = createKindChange(ask, p.current, p.save, () => {});
+		await change('vlc');
+		await change('iina');
+		expect(ask.mock.calls.at(-1)).toEqual(['mpv', 'mpv', 'iina']);
+		expect(p.saved).toEqual([config('iina', 'iina')]);
 	});
 
 	it('asks about each change from where the one before it left the command', async () => {

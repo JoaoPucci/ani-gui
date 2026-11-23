@@ -4,6 +4,7 @@ import { readPosition, savePosition } from './play/watch-position';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { RefillEnded } from './refill/refill-waiter';
 import {
+	externalPlayerCommandAfterKindChange,
 	externalPlayerStandard,
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
@@ -267,6 +268,30 @@ describe('historyDelete', () => {
 		await historyDelete('weird/id with spaces');
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/history/weird%2Fid%20with%20spaces`);
+	});
+});
+
+describe('externalPlayerCommandAfterKindChange', () => {
+	it('GETs the command with both types, every character of it encoded', async () => {
+		const fetchMock = mockFetchOnce<string>('vlc');
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await expect(externalPlayerCommandAfterKindChange('C:\\a b+c&d#e', 'mpv', 'vlc')).resolves.toBe(
+			'vlc'
+		);
+		const called = new URL(lastCall(fetchMock).url);
+		expect(`${called.origin}${called.pathname}`).toBe(
+			`${BASE}/api/external-player/after-kind-change`
+		);
+		expect(called.searchParams.get('command')).toBe('C:\\a b+c&d#e');
+		expect(called.searchParams.get('from')).toBe('mpv');
+		expect(called.searchParams.get('to')).toBe('vlc');
+	});
+
+	it('gives up on a question that is never answered', async () => {
+		const fetchMock = mockFetchOnce<string>('vlc');
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await externalPlayerCommandAfterKindChange('mpv', 'mpv', 'vlc');
+		expect(lastCall(fetchMock).init?.signal).toBeInstanceOf(AbortSignal);
 	});
 });
 

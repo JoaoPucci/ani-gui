@@ -123,10 +123,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	expect(unanswered, 'a change the table does not answer').toEqual([]);
 	if (app) unmount(app);
 	app = null;
 	target.remove();
+	expect(unanswered, 'a change the table does not answer').toEqual([]);
 });
 
 async function settle() {
@@ -235,7 +235,7 @@ describe('settings — the backend decides what the command becomes', () => {
 		});
 	});
 
-	it('still changes the type, keeping the command, when the backend cannot answer', async () => {
+	it('keeps the type and the command, and says so, when the backend cannot answer', async () => {
 		await open();
 		server.use(
 			http.get(
@@ -245,6 +245,10 @@ describe('settings — the backend decides what the command becomes', () => {
 		);
 		await choose(m.settings_external_player_kind_vlc());
 		expect(command().value).toBe('mpv');
-		expect(saved.at(-1)).toMatchObject({ external_player_kind: 'vlc', external_player: 'mpv' });
+		expect(type(m.settings_external_player_kind_mpv()).getAttribute('aria-pressed')).toBe('true');
+		expect(saved).toEqual([]);
+		expect(target.querySelector('[role="alert"] .state-headline')?.textContent?.trim()).toBe(
+			m.settings_error_save_headline()
+		);
 	});
 });

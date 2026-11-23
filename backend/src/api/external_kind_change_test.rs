@@ -53,6 +53,15 @@ async fn a_blank_command_is_answered() {
 
 #[tokio::test]
 async fn an_unknown_type_is_refused() {
+    // A refusal of the query, not a 404: the route must be there.
     let (status, _) = ask("command=mpv&from=mpv&to=winamp").await;
-    assert!(status.is_client_error(), "{status}");
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_command_reads_as_the_renderer_encodes_it() {
+    // URLSearchParams sends a space as `+` and a plus as `%2B`.
+    let (status, body) = ask("command=C%3A%5Cmy+mpv%5Cmpv%2Bx.exe&from=mpv&to=vlc").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "\"C:\\\\my mpv\\\\mpv+x.exe\"");
 }
