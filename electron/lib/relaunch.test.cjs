@@ -167,6 +167,65 @@ test("Electron's relaunch is asked for once, with nothing changed", () => {
   assert.deepEqual(calls, [[]]);
 });
 
+test("Electron's relaunch is asked for inside the user's environment, when one is given", () => {
+  // Electron's relauncher is started from this process's environment at
+  // the call, and the new instance inherits it (lib/child-env.cjs): the
+  // call runs inside asUser, and only the call.
+  const calls = [];
+  let inside = false;
+  relaunch(
+    { kind: "relaunch" },
+    {
+      app: { relaunch: (...a) => calls.push({ args: a, inside }) },
+      spawn: () => assert.fail(),
+      asUser: (open) => {
+        inside = true;
+        try {
+          return open();
+        } finally {
+          inside = false;
+        }
+      },
+    },
+  );
+  assert.deepEqual(calls, [{ args: [], inside: true }]);
+});
+
+test("planned from the user's environment, the AppImage's restart changes only its environment", () => {
+  // What Electron leaves in the app's own environment, beside the
+  // AppImage's: the restart planned from the rebuilt one gets the
+  // session's desktop and nothing Electron added, and the same command,
+  // arguments, AppImage file and sandbox switch as before.
+  const { childEnv } = require("./child-env.cjs");
+  const launch = {
+    ...appImageEnv,
+    XDG_CURRENT_DESKTOP: "Unity",
+    ORIGINAL_XDG_CURRENT_DESKTOP: "ubuntu:GNOME",
+    CHROME_DESKTOP: "ani-gui.desktop",
+  };
+  const now = { ...launch, GDK_BACKEND: "wayland" };
+  const rebuilt = childEnv({ platform: "linux", launch, now });
+  const of = (env) =>
+    relaunchPlan({
+      platform: "linux",
+      env,
+      execPath: appImageExec,
+      argv: [appImageExec, "--enable-wayland-ime", "--no-sandbox", "--some-user-flag"],
+      pid: 4242,
+    });
+  const before = of(now);
+  const after = of(rebuilt);
+  assert.equal(after.kind, before.kind);
+  assert.equal(after.command, before.command);
+  assert.deepEqual(after.args, before.args);
+  assert.equal(after.env.XDG_CURRENT_DESKTOP, "ubuntu:GNOME");
+  for (const k of ["ORIGINAL_XDG_CURRENT_DESKTOP", "CHROME_DESKTOP", "GDK_BACKEND", "APPDIR"]) {
+    assert.ok(!(k in after.env), k);
+  }
+  assert.equal(after.env.APPIMAGE, appImageEnv.APPIMAGE);
+  assert.equal(after.env.OWD, appImageEnv.OWD);
+});
+
 test("the waiter is spawned detached, silent and let go, with its own environment", () => {
   const calls = [];
   let unref = 0;
