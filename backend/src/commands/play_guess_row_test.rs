@@ -5,7 +5,7 @@ use super::*;
 use crate::commands::play_native_test_provider::{stitched_recap, STITCHED, STITCHED_SLUG};
 use proptest::prelude::*;
 
-fn state(td: &tempfile::TempDir) -> AppState {
+fn state(td: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = super::tests::state_with_proxy_origin();
     state
         .providers
@@ -221,5 +221,200 @@ proptest! {
             Some(_) => None,
         };
         prop_assert_eq!(args.resolve_kitsu_id(&played), want);
+    }
+}
+
+/// The stitched show's play from the card whose row is the played key,
+/// linked to 4013, naming `guess_id` as its guess.
+async fn linked_play(guess_id: &str) -> (bool, Option<String>) {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::history::write_atomic(
+        &state.history_path,
+        &[crate::history::HistoryEntry {
+            ep_no: "4".into(),
+            id: played_key(),
+            title: STITCHED.into(),
+            watched_at: None,
+            kitsu_id: Some("4013".into()),
+            own_number: true,
+        }],
+    )
+    .expect("history");
+    let mut asked = args(Some(&played_key()));
+    asked.guess_id = Some(guess_id.into());
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    let recorded = crate::history::read_all(&state.history_path)
+        .expect("rows")
+        .into_iter()
+        .find(|r| r.id == played_key())
+        .and_then(|r| r.kitsu_id);
+    (resp.own_listing, recorded)
+}
+
+#[tokio::test]
+async fn a_guessed_play_on_a_linked_line_does_not_stand_for_it() {
+    // The guess (7158) is not the show the line records: the play is not
+    // the line's, so the renderer records and mirrors nothing of it.
+    let (own, recorded) = linked_play("7158").await;
+    assert!(!own);
+    assert_eq!(recorded.as_deref(), Some("4013"));
+}
+
+#[tokio::test]
+async fn a_play_naming_the_link_stands_for_the_linked_line() {
+    let (own, recorded) = linked_play("4013").await;
+    assert!(own);
+    assert_eq!(recorded.as_deref(), Some("4013"));
+}
+
+#[tokio::test]
+async fn a_guessed_play_repairs_a_line_whose_recorded_show_kitsu_deleted() {
+    // The line records 4013, which Kitsu answered gone: Continue Watching
+    // guesses it again, and a play of the guess that lands on the line's
+    // own listing stands for it, as it did before a link could stick.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &format!("{}4013", crate::commands::kitsu_gone::GONE_PREFIX),
+        "404",
+        3600,
+    )
+    .expect("gone mark");
+    crate::history::write_atomic(
+        &state.history_path,
+        &[crate::history::HistoryEntry {
+            ep_no: "4".into(),
+            id: played_key(),
+            title: STITCHED.into(),
+            watched_at: None,
+            kitsu_id: Some("4013".into()),
+            own_number: true,
+        }],
+    )
+    .expect("history");
+    let mut asked = args(Some(&played_key()));
+    asked.guess_id = Some("7158".into());
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    assert!(resp.own_listing);
+}
+
+#[tokio::test]
+async fn a_cards_play_over_a_line_naming_another_show_says_it_kept_the_line() {
+    // A card no guess opened (`card_row`) plays the page's show (49877)
+    // on a line the user named 4013: the session says the line is kept.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::history::write_atomic(
+        &state.history_path,
+        &[crate::history::HistoryEntry {
+            ep_no: "4".into(),
+            id: played_key(),
+            title: STITCHED.into(),
+            watched_at: None,
+            kitsu_id: Some("4013".into()),
+            own_number: true,
+        }],
+    )
+    .expect("history");
+    let mut card = args(None);
+    card.card_row = Some(played_key());
+    card.kitsu_id = Some("49877".into());
+    let resp = play_with_progress(&state, &card, |_| {})
+        .await
+        .expect("plays");
+    assert!(resp.line_kept);
+    assert!(!resp.own_listing);
+    // A play the line records is no keep.
+    card.kitsu_id = Some("4013".into());
+    let resp = play_with_progress(&state, &card, |_| {})
+        .await
+        .expect("plays");
+    assert!(!resp.line_kept);
+}
+
+/// The play of a card no guess opened (a named line's), asked from the
+/// card's row `card`.
+fn card_args(card: &str) -> PlayArgs {
+    PlayArgs {
+        card_row: Some(card.into()),
+        kitsu_id: Some("42".into()),
+        ..args(None)
+    }
+}
+
+fn noted(state: &AppState, row: &str) -> Option<String> {
+    crate::commands::guessed_from::all(state)
+        .expect("notes")
+        .remove(row)
+}
+
+#[tokio::test]
+async fn a_named_cards_fresh_play_of_another_listing_notes_the_card() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let card = "test-a:another-show-4";
+    play_with_progress(&state, &card_args(card), |_| {})
+        .await
+        .expect("plays");
+    assert_eq!(noted(&state, &played_key()).as_deref(), Some(card));
+}
+
+#[tokio::test]
+async fn a_named_cards_replayed_play_of_another_listing_notes_the_card() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    let card = "test-a:another-show-4";
+    let asked = card_args(card);
+    play_resolution_cache::put(
+        &state.cache_pool,
+        &asked.resolution_key(),
+        &CachedResolution {
+            upstream_url: format!("{}/x/master.m3u8", upstream.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: played_key(),
+            show_title: STITCHED.into(),
+            resolved_slot: Some(5),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            played: Some("5".into()),
+            former_episode: None,
+            versions: Vec::new(),
+            version: None,
+            episode_unverified: false,
+        },
+    );
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(noted(&state, &played_key()).as_deref(), Some(card));
+}
+
+proptest! {
+    /// The card a play was asked from: the guessed card's row first,
+    /// else the row of the card no guess opened, else none.
+    #[test]
+    fn a_play_names_its_guessed_card_else_its_card_row(
+        guess in proptest::option::of("[a-z]{1,4}"),
+        card in proptest::option::of("[a-z]{1,4}"),
+    ) {
+        let asked = PlayArgs {
+            card_row: card.clone(),
+            ..args(guess.as_deref())
+        };
+        prop_assert_eq!(asked.card(), guess.as_deref().or(card.as_deref()));
     }
 }

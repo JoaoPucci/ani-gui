@@ -92,6 +92,18 @@ pub struct PlayArgs {
         deserialize_with = "crate::commands::play_args::deserialize_loose_bool"
     )]
     pub prefetch: bool,
+    /// `true` when the caller records the watch itself once its player
+    /// has opened on the stream (mark-watched), so this resolve writes
+    /// no history row, fresh or replayed. Unlike [`Self::prefetch`] it
+    /// is still a user waiting on a click, at interactive priority: the
+    /// player's switch to the show the user picked for a card, which a
+    /// viewer may leave, or a player may fail to open, before anything
+    /// was watched.
+    #[serde(
+        default,
+        deserialize_with = "crate::commands::play_args::deserialize_loose_bool"
+    )]
+    pub record_later: bool,
     /// Kitsu id of the anime the user is playing. The frontend knows
     /// it (the user came from `/anime/[kitsu_id]`); we don't, until
     /// the user passes it in. Recording the
@@ -126,6 +138,13 @@ pub struct PlayArgs {
     /// reads the same way.
     #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub guess_id: Option<String>,
+    /// The history row of a Continue card that opened this play with no
+    /// guess: a line the user named, or one a play recorded. Its play
+    /// never replaces the show that line records
+    /// ([`crate::commands::guess_guard`]). `None` for a guessed card's
+    /// play, which names [`Self::guess_row`], and for every other play.
+    #[serde(default)]
+    pub card_row: Option<String>,
     /// The captions choice remembered for the show
     /// (`$lib/play/caption-choice.ts`): a BCP 47 tag, or `off`. `None`
     /// when none is.
@@ -142,6 +161,22 @@ pub struct PlayArgs {
 }
 
 impl PlayArgs {
+    /// Whether this play's resolve writes its history row: not a warm
+    /// ([`Self::prefetch`]), nor a play its caller records once its
+    /// player opened ([`Self::record_later`]).
+    #[must_use]
+    pub fn writes_history(&self) -> bool {
+        !self.prefetch && !self.record_later
+    }
+
+    /// The Continue card this play was asked from: a guessed card's row
+    /// ([`Self::guess_row`]), else the row of a card no guess opened
+    /// ([`Self::card_row`]). `None` for a play no card asked for.
+    #[must_use]
+    pub fn card(&self) -> Option<&str> {
+        self.guess_row.as_deref().or(self.card_row.as_deref())
+    }
+
     /// Whether this play, asked from a guessed Continue card, landed
     /// on the card's own listing — the show key `played`
     /// ([`crate::scraper::provider::same_listing`]). False for a play
@@ -255,10 +290,11 @@ impl PlayArgs {
 /// Update Continue Watching on a play-cache hit.
 ///
 /// A cache miss records the row on its way through
-/// `play_native_record::write_history`. A hit never reaches that
+/// `play_native_record::write_history_then`. A hit never reaches that
 /// path, so the row is written here instead. No-op on prefetch calls
 /// (the page-mount loop fires concurrently and whichever finishes
-/// last would otherwise overwrite the user's real click) and on
+/// last would otherwise overwrite the user's real click), on plays
+/// their caller records once the player opened (`record_later`), and on
 /// legacy rows missing show_id.
 fn write_history_on_cache_hit(
     state: &AppState,
@@ -266,7 +302,7 @@ fn write_history_on_cache_hit(
     cached: &CachedResolution,
     asked: crate::history::guard::Asked<'_>,
 ) {
-    if args.prefetch || cached.show_id.is_empty() {
+    if !args.writes_history() || cached.show_id.is_empty() {
         return;
     }
     let entry = crate::history::HistoryEntry {
@@ -287,7 +323,12 @@ fn write_history_on_cache_hit(
         kitsu_id: crate::commands::play_native_record::resolved_id(
             state,
             &cached.show_title,
-            args.resolve_kitsu_id(&cached.show_id),
+            crate::commands::guess_guard::guarded(
+                state,
+                args,
+                &cached.show_id,
+                args.resolve_kitsu_id(&cached.show_id),
+            ),
         ),
         own_number: true,
     };
@@ -299,6 +340,9 @@ fn write_history_on_cache_hit(
         }
         held.upsert_resolved(entry)?;
         held.played_from(&cached.show_id, asked.page);
+        // Which card the row's play came from, settled with the row: a
+        // write the guard turns away settles none.
+        crate::commands::guessed_from::record(state, args.card(), &cached.show_id);
         Ok::<_, AniError>(())
     });
     if let Err(e) = wrote {
@@ -365,7 +409,7 @@ fn scrape_priority(args: &PlayArgs) -> crate::scraper::gate::ScrapePriority {
 ///
 /// # Errors
 /// Inherits from the native resolve (timeout, parse failure, provider
-/// errors) and [`create_session`] (URL-shape validation on the
+/// errors) and [`create_session_with_kind`] (URL-shape validation on the
 /// resolved upstream).
 pub async fn play(state: &AppState, args: &PlayArgs) -> Result<CreateSessionResponse> {
     play_with_progress(state, args, |_| {}).await
@@ -418,7 +462,10 @@ where
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
             if let Some(mut resp) = try_serve_cached(state, &cached, args.viewer()).await {
-                resp.own_listing = args.lands_on_guess_row(&cached.show_id);
+                resp.own_listing =
+                    crate::commands::guess_guard::own_listing(state, args, &cached.show_id);
+                resp.line_kept =
+                    crate::commands::guess_guard::line_kept(state, args, &cached.show_id);
                 tracing::info!(
                     title = %args.title,
                     episode = %args.episode,
@@ -521,11 +568,12 @@ where
             return Err(ne.error);
         }
     };
-    // A prefetch stamps the numbering and stays out of the user's
-    // history; a play records its watch. Either puts the numbering right
+    // A prefetch, or a play its caller records later, stamps the
+    // numbering and stays out of the user's history; a play records its
+    // watch. Either puts the numbering right
     // before the rows this play caches: a probe that takes the fresh
     // availability row fetches no listing to repair it from.
-    if args.prefetch {
+    if !args.writes_history() {
         crate::commands::play_native_record::stamp_numbering(state, &native, asked);
     } else {
         crate::commands::play_native_record::record_fresh_watch(
@@ -533,7 +581,13 @@ where
             &native,
             &args.episode,
             asked,
-            args.resolve_kitsu_id(&native.slug),
+            crate::commands::guess_guard::guarded(
+                state,
+                args,
+                &native.slug,
+                args.resolve_kitsu_id(&native.slug),
+            ),
+            args.card(),
         );
     }
     // A successful resolve is a positive availability fact, same
@@ -580,7 +634,7 @@ where
     // skips the provider round-trips (subject to TTL + HEAD
     // validation). show_id is the provider's slug, and storing it is
     // what lets a cache hit write the same history row a fresh
-    // resolve would: `play_native_record::write_history` has the slug
+    // resolve would: `play_native_record::write_history_then` has the slug
     // in hand from the walk, `write_history_on_cache_hit` reads it
     // back from here. Nothing outside this app writes that file.
     // Written whatever cache_resolutions says: the row doubles as the
@@ -627,7 +681,12 @@ where
         episode: Some(episode),
         former_episode,
         episode_unverified: cached_resolution.episode_unverified,
-        own_listing: args.lands_on_guess_row(&cached_resolution.show_id),
+        own_listing: crate::commands::guess_guard::own_listing(
+            state,
+            args,
+            &cached_resolution.show_id,
+        ),
+        line_kept: crate::commands::guess_guard::line_kept(state, args, &cached_resolution.show_id),
         ..create_session_with_kind(state, &session_args, kind)?
     };
     with_versions_of(&mut resp, &native.versions, native.version);
@@ -713,9 +772,11 @@ pub(crate) mod tests {
                 year,
                 alt_titles: vec![],
                 prefetch,
+                record_later: false,
                 kitsu_id,
                 version: None,
                 guess_row: None,
+                card_row: None,
                 guess_id: None,
                 caption: None,
             };
@@ -732,10 +793,11 @@ pub(crate) mod tests {
     /// Build an `AppState` for the `try_serve_cached` tests. Mirrors
     /// `app::tests::fake_state` (private, unreachable from here) so the
     /// shape stays in lock-step.
-    pub(crate) fn state_with_proxy_origin() -> AppState {
+    pub(crate) fn state_with_proxy_origin() -> crate::scratch::Scratch<AppState> {
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-        AppState {
+        let dirs = crate::scratch::dir();
+        let state = AppState {
             // Unreachable: the fresh-resolve fallback must fail fast in
             // tests instead of walking a live provider.
             secret: AppSecret::random(),
@@ -746,22 +808,53 @@ pub(crate) mod tests {
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
-            history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
+            history_path: dirs.history(),
             providers: crate::provider_set::ProviderSet::for_tests().with_stub(
                 std::sync::Arc::new(crate::scraper::table_provider::TableProvider::unreachable()),
             ),
-            image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
+            image_cache_dir: dirs.images(),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
-            config_path: std::path::PathBuf::from("/tmp/ani-gui-config.toml"),
-            state_dir: std::path::PathBuf::from("/tmp/ani-gui-state"),
+            config_path: dirs.config(),
+            state_dir: dirs.state(),
             internal_secret: crate::account::InternalSecret::random(),
             mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
             account_write_locks: crate::commands::account::AccountWriteLocks::new(),
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
             flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
+        };
+        dirs.hold(state)
+    }
+
+    /// Every test that plays records history through this state, and
+    /// cargo runs them side by side. A history path two states share is
+    /// one file those tests race on — one reads another's rows — and a
+    /// fixed one outlives the run. Each state's files live in a
+    /// directory of their own, gone once the state is.
+    #[test]
+    fn each_test_state_keeps_its_files_in_a_directory_of_its_own() {
+        let a = state_with_proxy_origin();
+        let b = state_with_proxy_origin();
+        assert_ne!(
+            a.history_path, b.history_path,
+            "two test states share one history file"
+        );
+        let dir = a.history_path.parent().expect("parent").to_path_buf();
+        for path in [&a.image_cache_dir, &a.config_path, &a.state_dir] {
+            assert!(
+                path.starts_with(&dir),
+                "{} sits outside the state's own directory",
+                path.display()
+            );
         }
+        std::fs::write(&a.history_path, "row\n").expect("the state's directory is writable");
+        drop(a);
+        assert!(
+            !dir.exists(),
+            "{} outlives the state that wrote it",
+            dir.display()
+        );
     }
 
     /// The gap this closes: when no availability row exists — the
@@ -783,9 +876,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("42".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -856,9 +951,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("42".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -918,9 +1015,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -944,7 +1043,7 @@ pub(crate) mod tests {
     /// by the returned tempdir. The cache-hit tests exercise the
     /// opt-in path, so they declare the opt-in instead of relying on
     /// the old unconditional caching.
-    fn state_with_caching_on() -> (tempfile::TempDir, AppState) {
+    fn state_with_caching_on() -> (tempfile::TempDir, crate::scratch::Scratch<AppState>) {
         let td = tempfile::tempdir().expect("tempdir");
         let cfg = td.path().join("config.toml");
         std::fs::write(&cfg, "cache_resolutions = true\n").expect("config write");
@@ -979,9 +1078,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         }
@@ -1259,9 +1360,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -1575,9 +1678,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         }
@@ -1728,9 +1833,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -1776,9 +1883,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: None,
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -1817,13 +1926,8 @@ pub(crate) mod tests {
         let args = external_args("Show With History", "3");
         let upstream = format!("{}/cached.mp4", server.uri());
         seed_play_cache(&state, &args, &upstream, "");
-        // Non-prefetch click → history must be written. The upsert
-        // target is state.history_path, which is /tmp/ani-gui/history
-        // by default — make it a real tempfile so the write
-        // succeeds and we can assert against it.
-        let td = tempfile::tempdir().expect("tempdir");
-        let mut state = state;
-        state.history_path = td.path().join("history");
+        // Non-prefetch click → history must be written, to the
+        // state's own history file.
         let _ = play_with_progress(&state, &args, |_| {}).await.expect("ok");
         // The history file must exist with one row referencing the
         // seeded show_id.
@@ -2361,9 +2465,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("race-1".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2428,9 +2534,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("cap-1".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2482,9 +2590,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("dub-2".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2541,9 +2651,11 @@ pub(crate) mod tests {
             year: None,
             alt_titles: vec![],
             prefetch: false,
+            record_later: false,
             kitsu_id: Some("dub-1".into()),
             version: None,
             guess_row: None,
+            card_row: None,
             guess_id: None,
             caption: None,
         };
@@ -2589,6 +2701,9 @@ mod guess_row_tests;
 #[cfg(test)]
 #[path = "play_played_test.rs"]
 mod played_tests;
+#[cfg(test)]
+#[path = "play_record_later_test.rs"]
+mod record_later_tests;
 #[cfg(test)]
 #[path = "play_records_id_test.rs"]
 mod records_id_tests;

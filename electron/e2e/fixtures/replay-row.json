@@ -1,0 +1,35 @@
+{
+  "about": "A play the backend replays from its resolution cache, as the e2e specs seed it (electron/lib/e2e-replay.cjs). backend/src/commands/play_resolution_cache_e2e_row_test.rs holds every field here to what the backend reads.",
+  "key_prefix": "play:v29:",
+  "ttl_seconds": 604800,
+  "insert": "INSERT OR REPLACE INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, ?4)",
+  "row": {
+    "upstream_url": "",
+    "referer": "",
+    "media_kind": "hls",
+    "show_id": "hianime:e2e-replay-show-1",
+    "show_title": "E2E Replay Show",
+    "played": null,
+    "subtitles": []
+  },
+  "sample": {
+    "request": {
+      "title": "Continue Test Show",
+      "mode": "sub",
+      "episode": "6",
+      "year": "2024",
+      "episode_count": "12",
+      "subtype": "TV"
+    },
+    "key": "play:v29:Continue Test Show:sub:6:2024:12:TV",
+    "versioned": {
+      "request": {
+        "title": "A Show",
+        "mode": "dub",
+        "episode": "2",
+        "version": "uncensored"
+      },
+      "key": "play:v29:A Show:dub:2:-:-:-:uncensored"
+    }
+  }
+}

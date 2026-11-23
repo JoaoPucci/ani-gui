@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { altTitlesFromKitsu, type KitsuAnimeRef } from '$lib/api';
+import { altTitlesFromKitsu } from '$lib/api';
 import {
 	claimPlay,
 	playArgsFor,
@@ -9,6 +9,7 @@ import {
 	runOwnedPlay
 } from './owned-play';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 /** A route's visit counter, as the pages keep it: it advances on every
  *  change of the show id, including a round trip back. */
 function routeVisits() {
@@ -197,7 +198,7 @@ describe('a play whose page was destroyed', () => {
 });
 
 describe('playArgsFor', () => {
-	const show = {
+	const show = kitsuRefAnswer({
 		id: '42',
 		canonical_title: 'Show',
 		episode_count: 12,
@@ -205,7 +206,7 @@ describe('playArgsFor', () => {
 		start_date: '2019-04-01',
 		titles: { en: 'Show EN' },
 		abbreviated_titles: []
-	} as unknown as KitsuAnimeRef;
+	});
 
 	it('builds the play request from the show as it was at the click', () => {
 		const args = playArgsFor({
@@ -291,6 +292,11 @@ describe("playArgsFor — a guessed card's row", () => {
 		expect('guess_row' in playArgsFor(base)).toBe(false);
 	});
 
+	it("names the card's row of a session no guess opened when given, and only then", () => {
+		expect(playArgsFor({ ...base, cardRow: 'hianime:show-1' }).card_row).toBe('hianime:show-1');
+		expect('card_row' in playArgsFor(base)).toBe(false);
+	});
+
 	it("names the guessed card's guess when given, and only then", () => {
 		const args = playArgsFor({ ...base, guessId: '42', guessRow: 'hianime:show-1' });
 		expect(args.guess_id).toBe('42');
@@ -306,6 +312,20 @@ describe('playedRecord', () => {
 		expect(playedRecord(args, '42', false, {})).toEqual({
 			args: { ...args, kitsu_id: '42' },
 			mirror: true
+		});
+	});
+
+	it("neither records nor mirrors a card's play the backend kept off its line", () => {
+		// A player mounted again after "Keep watching this" plays the old
+		// show before it read the pick back: the line names another show.
+		expect(playedRecord(args, '42', false, { line_kept: true })).toEqual({
+			args,
+			mirror: false
+		});
+		// The session's own args name the page's show: that id goes too.
+		expect(playedRecord({ ...args, kitsu_id: '42' }, '42', false, { line_kept: true })).toEqual({
+			args,
+			mirror: false
 		});
 	});
 
@@ -365,7 +385,7 @@ describe('playMode', () => {
 });
 
 describe('recordPlayed', () => {
-	const show = { episode_count: 12, status: 'finished' } as unknown as KitsuAnimeRef;
+	const show = kitsuRefAnswer({ episode_count: 12, status: 'finished' });
 	const args = { title: 'Show', episode: '5', mode: 'sub' } as const;
 
 	it('stamps the watch and mirrors it to the trackers for the clicked show', async () => {

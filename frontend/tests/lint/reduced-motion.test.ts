@@ -72,6 +72,8 @@ import postcss, { type AtRule, type Container, type Declaration, type Root } fro
 import { parse } from 'svelte/compiler';
 import { describe, expect, it } from 'vitest';
 
+import { ruleMessages } from './rule-messages';
+
 const FRONTEND = fileURLToPath(new URL('../..', import.meta.url));
 const SRC = join(FRONTEND, 'src');
 const MOTION_DIR = join(SRC, 'lib', 'motion');
@@ -445,14 +447,13 @@ describe('reduced motion: script', () => {
 		['the media query itself', `export const q = '(prefers-reduced-motion: reduce)';\n`]
 	];
 
+	// One ESLint for every case: building one per case reloads the
+	// project's config and every plugin it names each time.
+	const eslint = new ESLint({ cwd: FRONTEND });
+
 	async function lint(code: string, filePath: string): Promise<string[]> {
-		const eslint = new ESLint({ cwd: FRONTEND });
 		const [result] = await eslint.lintText(code, { filePath });
-		return result.messages
-			.filter(
-				(msg) => msg.ruleId === 'no-restricted-imports' || msg.ruleId === 'no-restricted-syntax'
-			)
-			.map((msg) => msg.message);
+		return ruleMessages(result, filePath, ['no-restricted-imports', 'no-restricted-syntax']);
 	}
 
 	it.each(cases)(

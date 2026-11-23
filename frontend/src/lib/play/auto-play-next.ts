@@ -8,7 +8,7 @@
  * The chain stops naturally at the last known episode. When
  * `totalEpisodes` is null (Kitsu lacks an episode count for some
  * sequels/specials), advance anyway and let the upstream
- * cmd_create_session failure surface a play-failure overlay — same
+ * play's failure surface a play-failure overlay — same
  * "best effort" stance as the existing prev/next buttons' hasNext
  * derivation.
  */
@@ -20,6 +20,8 @@ export interface AutoPlayInput {
 	totalEpisodes: number | null;
 	/** The fractional extras the provider lists. */
 	extras?: readonly number[];
+	/** The episode was handed to another player. */
+	handedOff?: boolean;
 }
 
 export type AutoPlayDecision = { advance: true; target: number } | { advance: false };
@@ -28,9 +30,10 @@ export function decideAutoPlayNext({
 	enabled,
 	episodeNum,
 	totalEpisodes,
-	extras = []
+	extras = [],
+	handedOff = false
 }: AutoPlayInput): AutoPlayDecision {
-	if (!enabled) return { advance: false };
+	if (!enabled || handedOff) return { advance: false };
 	const target = nextEpisode(episodeNum, extras);
 	if (!stepAllowed(target, totalEpisodes, extras)) return { advance: false };
 	return { advance: true, target };

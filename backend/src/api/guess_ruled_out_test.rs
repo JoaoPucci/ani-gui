@@ -11,7 +11,7 @@ use tower::ServiceExt;
 
 async fn post(body: serde_json::Value) -> (StatusCode, String) {
     let td = TempDir::new().expect("tempdir");
-    let router = build_api_router(Arc::new(test_app_state(&td)));
+    let router = test_router(Arc::new(test_app_state(&td)));
     let response = router
         .oneshot(
             Request::builder()

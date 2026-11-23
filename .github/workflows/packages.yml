@@ -1,0 +1,491 @@
+name: 'Packages'
+# Builds the three packages a release ships — the Windows NSIS
+# installer, the AppImage and the .deb — the way the release commands
+# build them on a host (`pnpm run package:win` on Windows,
+# `pnpm run package:release` on Linux). It runs two ways:
+#
+#   - Started by hand (Actions › Packages › Run workflow) on any branch,
+#     tag or commit, it uploads the three packages as artifacts with a
+#     SHA256SUMS naming them, so they can be installed on a machine
+#     nobody in CI has, and a release can take its files from one run
+#     on its commit. Only a deliberate run uploads the packages:
+#     release-style builds appearing beside a pull request on their own
+#     would invite someone who does not know what they are to install
+#     one.
+#   - On every pull request it publishes nothing. The filter job
+#     (tools/packages-filter.sh, which
+#     tests/bash/arch/packages_filter.bats runs) decides whether the
+#     pull request changed how a package is built or what it installs;
+#     the builds run only then. The `packages-build` job always
+#     reports, passing when the builds and the AppImage start-up check
+#     passed or were not needed, and is the one check name to require.
+#     A workflow-level path filter would leave a required name waiting
+#     forever on every pull request it skipped.
+#
+# Whenever the AppImage is built, the `catalog` job starts it the way
+# the AppImageHub catalog's test does (tools/appimage-catalog-check.sh):
+# on ubuntu-22.04, offline under firejail, and it has to come up. On a
+# pull request the AppImage reaches that job as a one-day artifact
+# under a name of its own, catalog-check-appimage, not as a package
+# to install. Nothing here installs an ani-gui package or runs the
+# Windows installer, and none is signed, as the hand-built release
+# packages are not.
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >
+          A branch, tag or commit (full or short hash) to build. Empty
+          builds the branch chosen above.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# A newer push to a pull request cancels the run it supersedes; the new
+# run reports the gate for the new head. Runs started by hand never
+# cancel one another.
+concurrency:
+  group: packages-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  filter:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.detect.outputs.build }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      label: ${{ steps.resolve.outputs.label }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve what a run started by hand builds
+        id: resolve
+        # Once, here, so both builds check out the same commit: a branch
+        # name resolved by each job's own checkout could move between
+        # the two. A pull request leaves `sha` empty and both builds
+        # check out the merge GitHub prepares, what would land.
+        if: github.event_name != 'pull_request'
+        env:
+          REF: ${{ inputs.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$REF" ]]; then
+            sha=$(git rev-parse --verify HEAD)
+            name=$REF_NAME
+          else
+            # A tag or a commit hash resolves as given; a branch is
+            # fetched as its remote-tracking ref. Anything else the
+            # checkout did not fetch (a full ref name, a pull request's
+            # ref, a commit only such a ref reaches) is fetched by name.
+            sha=$(git rev-parse --verify --quiet "$REF^{commit}" ||
+              git rev-parse --verify --quiet "origin/$REF^{commit}" ||
+              { git fetch --quiet --no-tags origin "$REF" &&
+                git rev-parse --verify --quiet "FETCH_HEAD^{commit}"; }) || {
+              echo "no branch, tag or commit named $REF" >&2
+              exit 1
+            }
+            name=$REF
+          fi
+          # An artifact name takes no slash and a few other characters.
+          name=${name//[^A-Za-z0-9._-]/-}
+          {
+            printf 'sha=%s\n' "$sha"
+            printf 'label=%s-%s\n' "$name" "${sha:0:9}"
+          } >> "$GITHUB_OUTPUT"
+      - id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: tools/packages-filter.sh "$EVENT" "$BASE_SHA" "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: filter
+    if: needs.filter.outputs.build == 'true'
+    name: Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    outputs:
+      file: ${{ steps.built.outputs.exe }}
+      sha256: ${{ steps.built.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit the filter job resolved for a run started by
+          # hand; empty on a pull request, which builds the merge.
+          ref: ${{ needs.filter.outputs.sha }}
+          # The build runs its dependencies' own scripts; none of them
+          # needs the token in the checkout's git config.
+          persist-credentials: false
+
+      # No Rust cache on Windows: caches save only from master
+      # (tests/arch/ci_caches.sh), and this workflow runs there only
+      # when started there by hand, so a cache of its own would nearly
+      # always miss while a release-mode target directory took a large
+      # share of the repository's cache limit. The pnpm install action
+      # keeps its own rule: a run started by hand on master saves its
+      # store for the next one.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: pnpm install (workspace)
+        uses: ./.github/actions/pnpm-install
+        with:
+          working-directory: .
+          args: --frozen-lockfile
+
+      - name: Which tar the dependency fetcher finds
+        # The fetcher spawns `tar` from PATH, and a Windows host's is
+        # Windows' own bsdtar. GNU tar from Git's tools would read the
+        # drive letter of an archive path as a remote host.
+        run: |
+          Get-Command tar
+          tar --version
+
+      - name: Package the installer (package:win)
+        # The script builds the release backend (the MSVC static-CRT
+        # flags come from backend/.cargo/config.toml, so nothing here
+        # sets RUSTFLAGS), the frontend, stages the bundled Windows
+        # binaries, and runs electron-builder --win. No GitHub token is
+        # in the environment: one would make electron-builder treat the
+        # build as a release to publish.
+        working-directory: electron
+        run: pnpm run package:win
+
+      - name: Record what was built
+        id: built
+        shell: bash
+        working-directory: electron/dist
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          exes=(*-x64-setup.exe)
+          ls -la
+          if [[ ${#exes[@]} -ne 1 ]]; then
+            echo "expected one *-x64-setup.exe in electron/dist, found ${#exes[@]}" >&2
+            exit 1
+          fi
+          {
+            printf 'exe=%s\n' "${exes[0]}"
+            printf 'sha256=%s\n' "$(sha256sum "${exes[0]}" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload the installer
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ani-gui-windows-installer-${{ needs.filter.outputs.label }}
+          path: electron/dist/${{ steps.built.outputs.exe }}
+          if-no-files-found: error
+          # Thirty days, not GitHub's default ninety: long enough to
+          # test a build or cut a release from it, short enough that
+          # some 380 MB per run does not pile up.
+          retention-days: 30
+          # The packages are already compressed.
+          compression-level: 0
+
+  linux:
+    needs: filter
+    if: needs.filter.outputs.build == 'true'
+    name: AppImage and .deb
+    # Pinned rather than ubuntu-latest (26.04 by now), so a runner image
+    # moving on never changes a release build unannounced. Nothing in
+    # the packages links against the runner's C library: the backend is
+    # static musl (checked below), and Electron, the AppImage runtime
+    # and the bundled tools arrive prebuilt. The glibc step reports what
+    # the packaged binaries need, and the catalog job starts the
+    # AppImage on the older glibc the catalog tests with.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      appimage: ${{ steps.built.outputs.appimage }}
+      appimage_sha256: ${{ steps.built.outputs.appimage_sha256 }}
+      deb: ${{ steps.built.outputs.deb }}
+      deb_sha256: ${{ steps.built.outputs.deb_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.filter.outputs.sha }}
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust musl target for the pinned toolchain
+        # The Linux packages carry a backend linked statically against
+        # musl. The target goes on the toolchain rust-toolchain.toml
+        # pins, which cargo uses here.
+        run: rustup target add x86_64-unknown-linux-musl
+      # No Rust cache, on a pull request either: e2e.yml's, which this
+      # job once restored there, is compiled on ubuntu-latest, and an
+      # AppImage built over it here crashed at start-up (a general
+      # protection fault in the backend's cache-helper thread, under
+      # the catalog job) where the same source compiled from scratch,
+      # as a run started by hand compiles it, did not. A pull request
+      # now builds the package a release would.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build tools
+        # musl-gcc for the C the backend compiles in (SQLite, ring);
+        # mksquashfs for the AppImage repack.
+        uses: ./.github/actions/apt-install
+        with:
+          packages: musl-tools squashfs-tools
+
+      - name: pnpm install (workspace)
+        uses: ./.github/actions/pnpm-install
+        with:
+          working-directory: .
+          args: --frozen-lockfile
+
+      - name: Package the AppImage and the .deb (package:release)
+        # No GitHub token in the environment, as on Windows.
+        working-directory: electron
+        run: pnpm run package:release
+
+      - name: The packaged backend needs no system C library
+        # The same assertion e2e.yml makes of its build.
+        working-directory: electron
+        run: |
+          set -euo pipefail
+          backend=dist/linux-unpacked/resources/ani-gui-backend
+          test -f "$backend"
+          kind=$(file -b "$backend")
+          echo "$kind"
+          case "$kind" in
+            *"static-pie linked"* | *"statically linked"*) ;;
+            *)
+              echo "the packaged backend is not statically linked" >&2
+              exit 1
+              ;;
+          esac
+          dynamic=$(readelf -d "$backend")
+          if grep -q NEEDED <<<"$dynamic"; then
+            grep NEEDED <<<"$dynamic"
+            echo "the packaged backend needs shared libraries" >&2
+            exit 1
+          fi
+
+      - name: Report the glibc the packaged binaries need
+        id: glibc
+        # The newest GLIBC_ symbol version any ELF file in the package
+        # tree asks for: a system with an older glibc cannot run it.
+        # Reported, not enforced.
+        working-directory: electron/dist/linux-unpacked
+        run: |
+          set -euo pipefail
+          report=$(find . -type f -print0 | while IFS= read -r -d '' f; do
+            [[ "$(head -c 4 "$f" | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]] || continue
+            v=$(objdump -T "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9.]+' | sed 's/^GLIBC_//' | sort -uV | tail -n 1 || true)
+            printf '%s %s\n' "${v:--}" "$f"
+          done | sort -V)
+          echo "$report"
+          max=$(awk '$1 != "-" { print $1 }' <<<"$report" | sort -V | tail -n 1)
+          printf 'max=%s\n' "$max" >> "$GITHUB_OUTPUT"
+
+      - name: Record what was built
+        id: built
+        working-directory: electron/dist
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          appimages=(*-x86_64.AppImage)
+          debs=(*-amd64.deb)
+          ls -la
+          if [[ ${#appimages[@]} -ne 1 || ${#debs[@]} -ne 1 ]]; then
+            echo "expected one AppImage and one .deb in electron/dist" >&2
+            exit 1
+          fi
+          {
+            printf 'appimage=%s\n' "${appimages[0]}"
+            printf 'appimage_sha256=%s\n' "$(sha256sum "${appimages[0]}" | cut -d' ' -f1)"
+            printf 'deb=%s\n' "${debs[0]}"
+            printf 'deb_sha256=%s\n' "$(sha256sum "${debs[0]}" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload the AppImage
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ani-gui-appimage-${{ needs.filter.outputs.label }}
+          path: electron/dist/${{ steps.built.outputs.appimage }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Hand the AppImage to the start-up check
+        # A pull request publishes no package; the catalog job still
+        # needs the file, on a runner of its own. One day, and a name
+        # that says what it is for; re-running the catalog job alone
+        # after that day finds no file, and the whole run is re-run.
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-check-appimage
+          path: electron/dist/${{ steps.built.outputs.appimage }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload the .deb
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ani-gui-deb-${{ needs.filter.outputs.label }}
+          path: electron/dist/${{ steps.built.outputs.deb }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Summarise the glibc requirement
+        env:
+          MAX: ${{ steps.glibc.outputs.max }}
+        run: |
+          printf 'The Linux packages need glibc %s or newer.\n\n' "$MAX" >> "$GITHUB_STEP_SUMMARY"
+
+  catalog:
+    # The AppImageHub catalog lists the app and tests the AppImage of
+    # every release: on GitHub's ubuntu-22.04 runner (glibc 2.35), in
+    # Xvfb with icewm, under `firejail --net=none`, a window within 30
+    # seconds. v0.14.1 failed it, its backend built against a newer
+    # glibc than the catalog's. This runs that launch on the same
+    # runner image, directly rather than in a container: firejail
+    # inside one cannot make its namespaces and runs the app online.
+    # tools/appimage-catalog-check.sh says what it asks beyond the
+    # catalog's own criterion, and where its firejail differs from the
+    # build the catalog installs.
+    #
+    # Its apt list has no master-saved cache to restore on most runs
+    # (this workflow runs on master only when started there), so the
+    # timeout leaves room for the runners' slow mirror.
+    needs: [filter, linux]
+    name: AppImage starts on the catalog's system
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.filter.outputs.sha }}
+          persist-credentials: false
+
+      - name: What the launch needs
+        # The catalog's tools (its test installs libfuse2 too), and the
+        # libraries Electron loads, most of which the runner image
+        # already has.
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libfuse2 firejail xvfb icewm x11-utils xdotool imagemagick
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0
+            libcairo2 libasound2 libgtk-3-0 libxss1 libxtst6 libsecret-1-0 fonts-dejavu-core
+
+      - name: Download the AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event_name == 'pull_request' && 'catalog-check-appimage' || format('ani-gui-appimage-{0}', needs.filter.outputs.label) }}
+          path: ${{ runner.temp }}/appimage
+
+      - name: Start the AppImage offline under firejail
+        env:
+          APPIMAGE: ${{ runner.temp }}/appimage/${{ needs.linux.outputs.appimage }}
+        run: tools/appimage-catalog-check.sh "$APPIMAGE" "$RUNNER_TEMP/catalog-check"
+
+      - name: Upload the app's log and the screen
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-check-failure
+          path: ${{ runner.temp }}/catalog-check/
+          if-no-files-found: warn
+          retention-days: 14
+
+  checksums:
+    needs: [filter, windows, linux]
+    # A run started by hand, once both builds succeeded (the default
+    # for `needs`), so the file always names all three packages.
+    if: github.event_name != 'pull_request'
+    name: SHA256SUMS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write SHA256SUMS
+        env:
+          EXE: ${{ needs.windows.outputs.file }}
+          EXE_SHA256: ${{ needs.windows.outputs.sha256 }}
+          APPIMAGE: ${{ needs.linux.outputs.appimage }}
+          APPIMAGE_SHA256: ${{ needs.linux.outputs.appimage_sha256 }}
+          DEB: ${{ needs.linux.outputs.deb }}
+          DEB_SHA256: ${{ needs.linux.outputs.deb_sha256 }}
+        run: |
+          set -euo pipefail
+          # The format `sha256sum -c` reads, one line per package.
+          {
+            printf '%s  %s\n' "$EXE_SHA256" "$EXE"
+            printf '%s  %s\n' "$APPIMAGE_SHA256" "$APPIMAGE"
+            printf '%s  %s\n' "$DEB_SHA256" "$DEB"
+          } > SHA256SUMS
+          cat SHA256SUMS
+          if grep -qvE '^[0-9a-f]{64}  [^ /]+$' SHA256SUMS; then
+            echo "a package is missing from SHA256SUMS" >&2
+            exit 1
+          fi
+          {
+            printf '### Packages\n\nUnsigned, and none installed by CI. Whether the AppImage started is the result of the catalog job. SHA-256:\n\n'
+            # Indented four spaces: a Markdown code block.
+            sed 's/^/    /' SHA256SUMS
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload SHA256SUMS
+        uses: actions/upload-artifact@v4
+        with:
+          name: ani-gui-sha256sums-${{ needs.filter.outputs.label }}
+          path: SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+  gate:
+    # The check to require. It reports on every run, whatever the
+    # filter decided: green when the builds and the AppImage start-up
+    # check passed, or when the pull request changed nothing they
+    # depend on and they were skipped; red when the filter failed, when
+    # a build or the check failed or was cancelled, or when they were
+    # skipped although the filter asked for them.
+    needs: [filter, windows, linux, catalog]
+    if: always()
+    name: packages-build
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          FILTER: ${{ needs.filter.result }}
+          BUILD: ${{ needs.filter.outputs.build }}
+          WINDOWS: ${{ needs.windows.result }}
+          LINUX: ${{ needs.linux.result }}
+          CATALOG: ${{ needs.catalog.result }}
+        run: |
+          set -euo pipefail
+          echo "filter: $FILTER (build=$BUILD), windows: $WINDOWS, linux: $LINUX, catalog: $CATALOG"
+          if [[ "$FILTER" != success ]]; then
+            echo "the filter job did not succeed" >&2
+            exit 1
+          fi
+          case "$BUILD" in
+            true) want=success ;;
+            false) want=skipped ;;
+            *)
+              echo "the filter decided nothing: build=$BUILD" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$WINDOWS" != "$want" || "$LINUX" != "$want" || "$CATALOG" != "$want" ]]; then
+            echo "expected both builds and the AppImage start-up check to be $want" >&2
+            exit 1
+          fi

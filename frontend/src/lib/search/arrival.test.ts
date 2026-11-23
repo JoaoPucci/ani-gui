@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import type { KitsuAnimeRef } from '$lib/api';
 import { arrive, emptyView, restoredView } from './arrival';
 import { captureSearch, type SearchSnapshot } from './snapshot';
 
-const ref = (id: string) => ({ id, canonical_title: id }) as KitsuAnimeRef;
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+const ref = (id: string) => kitsuRefAnswer({ id, canonical_title: id });
 
 function saved(q = 'frieren', withResults = true): SearchSnapshot {
 	return captureSearch({
@@ -53,6 +53,14 @@ describe('restoredView', () => {
 
 	it('holds back no cards when no results were saved', () => {
 		expect(restoredView(saved('frieren', false)).restoredIds.size).toBe(0);
+	});
+
+	it('drops a saved filter the page no longer offers', () => {
+		// A search kept by an earlier version could be filtered to music
+		// videos, which search never answers: put back as it was, the
+		// grid would stay empty with no filter on screen to explain it.
+		const kept = { ...saved(), subtypes: ['music', 'TV'] };
+		expect(restoredView(kept).subtypes).toEqual(['TV']);
 	});
 
 	it('does not share the saved filters', () => {

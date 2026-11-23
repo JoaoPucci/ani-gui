@@ -60,8 +60,13 @@ runs:
         ARCHIVES: /var/cache/ci-apt-archives
       run: |
         set -euo pipefail
-        # Distro sources only: see tests/arch/apt_sources.sh.
-        sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
+        # Distro sources only: see tests/arch/apt_sources.sh. Ubuntu
+        # 22.04 predates the deb822 file and lists them on one line.
+        if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-
+        else
+          sudo apt-get update -o Dir::Etc::sourcelist=/etc/apt/sources.list -o Dir::Etc::sourceparts=-
+        fi
         # The runner user owns the directory, so the cache can restore
         # into it and read it back; apt's download sandbox user owns
         # the partial directory, as it does under /var/cache/apt.

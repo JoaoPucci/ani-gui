@@ -19,7 +19,7 @@ use crate::commands::play_native_test_provider::{
 };
 use crate::meta::kitsu::KitsuAnimeRef;
 
-fn state(td: &tempfile::TempDir) -> AppState {
+fn state(td: &tempfile::TempDir) -> crate::scratch::Scratch<AppState> {
     let mut state = super::tests::state_with_proxy_origin();
     state
         .providers
@@ -249,6 +249,7 @@ async fn a_play_that_records_its_id_does_not_drop_a_watch_waiting_on_it() {
         &watch,
         Some("45412"),
         requested,
+        None,
     )
     .await;
     let row = row(&state, &key(STITCHED_SLUG));

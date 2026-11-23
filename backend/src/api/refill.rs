@@ -42,6 +42,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/kitsu/anime/:id", get(get_kitsu_anime_detail))
         .route("/api/kitsu/episodes/:anime_id", get(get_kitsu_episodes))
+        .route("/api/continue/warm", post(post_continue_warm))
         .route("/api/refills/wait", post(post_refills_wait))
         .route("/api/refills/release", post(post_refills_release))
 }
@@ -98,15 +99,34 @@ async fn get_kitsu_episodes(
     Ok(with_refills(Json(eps?), &tickets))
 }
 
+/// Body of `/api/continue/warm`: the Kitsu ids a Continue strip's rows
+/// recorded, in strip order.
 #[derive(Deserialize)]
-struct WaitBody {
-    tickets: Vec<u64>,
+pub(super) struct ContinueWarmBody {
+    pub(super) kitsu_ids: Vec<String>,
+}
+
+/// Warm a Continue strip's stills and banners at once
+/// (`commands::strip_warm`), answering once the warm is done. Home asks
+/// with its page's signal: leaving Home closes the request, which drops
+/// the warm and every lookup only it was waiting on.
+async fn post_continue_warm(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ContinueWarmBody>,
+) -> axum::http::StatusCode {
+    crate::commands::strip_warm::warm_strip(&state, &body.kitsu_ids, None).await;
+    axum::http::StatusCode::NO_CONTENT
+}
+
+#[derive(Deserialize)]
+pub(super) struct WaitBody {
+    pub(super) tickets: Vec<u64>,
 }
 
 #[derive(Serialize)]
-struct Ended {
-    ticket: u64,
-    landed: bool,
+pub(super) struct Ended {
+    pub(super) ticket: u64,
+    pub(super) landed: bool,
 }
 
 async fn post_refills_wait(Json(body): Json<WaitBody>) -> Json<Vec<Ended>> {

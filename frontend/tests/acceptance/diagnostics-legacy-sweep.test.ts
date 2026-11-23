@@ -36,25 +36,27 @@ import DiagnosticsPage from '../../src/routes/diagnostics/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AppInfo, HistoryEntry } from '../../src/lib/api';
+import { appInfoAnswer } from '../answers';
 const SWEPT = '/home/u/.cache/ani-gui/ani-cli';
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
 /** app-info as the backend serialises it, with the sweep result. */
-function appInfo(removed: string[]) {
-	return {
+function appInfo(removed: string[]): AppInfo {
+	return appInfoAnswer({
 		version: '0.12.0',
 		history_path: '/home/u/.local/state/ani-gui/history',
 		proxy_base_url: API_BASE,
 		removed_legacy_paths: removed
-	};
+	});
 }
 
 function serve(removed: string[]) {
 	server.use(
-		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json(appInfo(removed))),
-		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([]))
+		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(appInfo(removed))),
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json<HistoryEntry[]>([]))
 	);
 }
 

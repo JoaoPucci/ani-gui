@@ -19,6 +19,23 @@ describe('signalAppReady', () => {
 		expect(appReady).toHaveBeenCalledOnce();
 	});
 
+	it('says the page has mounted at once, before any frame, and only then waits for two frames', () => {
+		// A window that is not on screen may get no frames at all (native
+		// Wayland without GPU compositing): the main process maps it when
+		// the mounted word is not followed by the rendered one
+		// (electron/lib/app-window.cjs frameWake).
+		const frames: Array<() => void> = [];
+		const raf = (cb: () => void) => frames.push(cb);
+		const calls: string[] = [];
+		signalAppReady(
+			{ aniGui: { appMounted: () => calls.push('mounted'), appReady: () => calls.push('ready') } },
+			raf
+		);
+		expect(calls).toEqual(['mounted']);
+		while (frames.length) frames.shift()?.();
+		expect(calls).toEqual(['mounted', 'ready']);
+	});
+
 	it('does nothing outside the app (browser-only dev, tests)', () => {
 		const frames: Array<() => void> = [];
 		const raf = (cb: () => void) => frames.push(cb);

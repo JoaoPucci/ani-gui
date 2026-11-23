@@ -4,7 +4,8 @@
   the design pass (M3) will replace this entirely.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+	import { beginVisit } from '$lib/navigation/visit';
 	import { resolve } from '$app/paths';
 	import { appInfo, historyClear, historyList, metaCacheClear } from '$lib/api';
 	import {
@@ -24,9 +25,12 @@
 	// The page's actions and what they leave on show live in
 	// $lib/diagnostics/history-actions; this renders its state.
 	let view = $state<DiagnosticsState>({ ...INITIAL_DIAGNOSTICS });
+	// Its reads are cancelled when the page goes ($lib/navigation/visit).
+	const reads = beginVisit();
+	onDestroy(reads.end);
 	const actions = createDiagnosticsActions({
-		appInfo,
-		historyList,
+		appInfo: () => appInfo({ signal: reads.signal }),
+		historyList: () => historyList({ signal: reads.signal }),
 		historyClear,
 		metaCacheClear,
 		describe: describeError,
@@ -267,14 +271,6 @@
 		<p>
 			<a href={resolve('/search')}>{m.diagnostics_open_search_link_text()}</a
 			>{m.diagnostics_open_search_link_hint()}
-		</p>
-	</section>
-
-	<section>
-		<h2>{m.diagnostics_section_test_stream()}</h2>
-		<p>
-			<a href={resolve('/play')}>{m.diagnostics_open_test_stream_link_text()}</a
-			>{m.diagnostics_open_test_stream_link_hint()}
 		</p>
 	</section>
 </main>
