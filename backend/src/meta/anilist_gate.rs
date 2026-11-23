@@ -165,8 +165,9 @@ fn gate_for(url: &str) -> Arc<Gate> {
 
 /// Send one AniList request through its host's gate, labelled `ask` in
 /// its sent line. `send` builds and sends it; it is called once, or
-/// twice when a refusal's window ends inside the caller's budget. The response is returned as it came —
-/// a 429 included — for the transport's own status mapping.
+/// twice when a refusal's window ends inside the caller's budget. The
+/// response is returned as it came — a 429 included — for the
+/// transport's own status mapping.
 ///
 /// # Errors
 /// [`AniError::RateLimited`] when the caller's turn would come past its

@@ -1,7 +1,7 @@
 //! What a request through the gate ([`super`]) is for: the stable label
 //! its sent line carries, so the app's log says which kind of request
 //! spent each request of AniList's budget. A label names the job a
-//! request does — the strip's stills, a tracker's id bridge — and a job
+//! request does — a show's episode stills, a tracker's id bridge — and a job
 //! several screens share carries one label; the line's class tells a
 //! background fill from what the user is looking at. Every transport
 //! takes an [`Ask`] and the label has no default: a new caller names
