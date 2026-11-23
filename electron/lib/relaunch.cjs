@@ -51,9 +51,9 @@
 // Electron has rewritten in this process (lib/child-env.cjs): the
 // restart is planned from the rebuilt one (`restart`, below), and
 // Electron's relaunch, which starts its relauncher from this process's
-// environment at the call, is asked for inside `asUser`. Started from Electron's, the new
-// instance's Electron would keep Unity as the session's desktop and
-// hand it to everything it opens.
+// environment at the call, is asked for inside `asUser`. Started from
+// Electron's, the new instance's Electron would keep Unity as the
+// session's desktop and hand it to everything it opens.
 //
 // The AppImage is recognised by $APPIMAGE and $APPDIR together with
 // this binary living under $APPDIR: another AppImage (an editor run as
