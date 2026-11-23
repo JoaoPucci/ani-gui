@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { launcherScript } = require("../lib/linux-launcher.cjs");
 
 // electron-builder afterPack hook (Linux only).
 //
@@ -15,8 +16,10 @@ const path = require("node:path");
 // launcher. (The splash's Restart relaunches too, lib/relaunch.cjs, but on
 // the display platform it already runs on: the crash was the switch.)
 //
-// So: rename the packed `ani-gui` ELF to `ani-gui.bin` and drop a tiny `ani-gui`
-// shell wrapper in its place that exports the hint and execs the real binary.
+// So: rename the packed `ani-gui` ELF to `ani-gui.bin` and drop a small `ani-gui`
+// shell wrapper in its place (lib/linux-launcher.cjs) that exports the hint and
+// execs the real binary — or, started from a terminal, runs it off that
+// terminal and relays its output (the script says why).
 // Every launch path goes through this one file — the .deb desktop `Exec`, the
 // `/usr/local/bin/ani-gui` symlink, and the AppImage `AppRun` all exec
 // `ani-gui` — so one wrapper covers them all. Idempotent and self-locating.
@@ -35,21 +38,7 @@ module.exports = async function afterPack(context) {
 
   fs.renameSync(real, renamed);
 
-  const wrapper = `#!/bin/sh
-# ani-gui launcher — select native Wayland before Electron's Ozone init.
-# \`=auto\` resolves to Wayland under a Wayland session and X11 otherwise, so
-# this is a no-op on X11. Setting it here (pre-init) avoids the app.relaunch()
-# re-exec that crashed on Wayland. Honors a value the user already exported.
-# \`--enable-wayland-ime\` keeps IME composition (IBus/Fcitx — Japanese/Chinese/
-# Korean) working under native Wayland; Chromium does not infer it from the
-# ozone hint. It's safe here because every launch, a Restart's relaunch
-# included, starts on the platform the hint picks: nothing re-execs into
-# another one.
-: "\${ELECTRON_OZONE_PLATFORM_HINT:=auto}"
-export ELECTRON_OZONE_PLATFORM_HINT
-HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/${exe}.bin" --enable-wayland-ime "$@"
-`;
+  const wrapper = launcherScript(exe);
 
   fs.writeFileSync(real, wrapper, { mode: 0o755 });
   // `mode` on writeFileSync is masked by the process umask, so under a

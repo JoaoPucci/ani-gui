@@ -836,3 +836,6 @@ async fn two_app_states_filling_the_same_show_at_once_each_look_it_up() {
         thumbs_for_show_with_anilist_base(&b, "1555", Some(&base)),
     );
 }
+
+#[path = "anilist_eps_batch_test.rs"]
+mod batch;

@@ -121,6 +121,12 @@ The suite under `electron/e2e/` drives the packaged app
 (`electron/dist/linux-unpacked/`). Every spec launches it through
 `electron/e2e/launch.ts`, which mutes it and refuses to open it on a
 display someone may be looking at (`electron/lib/e2e-display.cjs`).
+A spec that has to own what the app's stdout and stderr lead to — a
+pipe it closes, a terminal it hangs up (`terminal-closed.spec.ts`) —
+launches it with `spawnPackagedApp` from the same helper, as a plain
+child process rather than through Playwright's driver, with the same
+switches, display check, environment and policy guard (over the app's
+output alone, since Playwright is not attached to its pages).
 
 The same helper keeps the backend off the network. A spec can set its
 stubs only once the app is up, by which time the first page has
@@ -153,6 +159,13 @@ listener on the window's session, as it has to add the secret header
 data as unreachable. `tests/arch/e2e_stub_server.sh` keeps
 Playwright's in-place answer out of `electron/`.
 
+Every spec takes `test` and `expect` from `electron/e2e/policy-guard.ts`,
+not from `@playwright/test`, and `tests/arch/e2e_policy_guard.sh`
+checks that each spec imports from it. The launch helper guards every
+app it starts: it reads the app's output for content security policy
+violations, the first page's included. The guard's `test` then fails
+a test on any violation it did not declare with `expectViolation`.
+
 A spec that plays a stream starts it as a viewer does, by clicking the
 home page's Continue card (`electron/e2e/real-play.ts`), and the play
 runs through the backend: its play route, its session and its stream
@@ -167,7 +180,15 @@ writes the row itself and asks the play route directly, before it
 holds the resolve lane that route travels on. The row
 is written with Node's built-in `node:sqlite` module, so the suite and
 the Electron helper tests (`electron/lib/*.test.cjs`) need Node 22.13 or
-later (CI runs them on Node 22). The row's key prefix,
+later (CI runs them on Node 22). On Linux, the AppImage launcher's
+tests (`apprun-sandbox.test.cjs`) also need `python3` (3.9 or
+later): they run AppRun, and its stop handler on its own, under a
+small subreaper written in Python, which stands in for a container
+PID 1 that never reaps orphans, so the suite itself leaves none
+behind there. For each launch it counts the children the launch ended
+without waiting for. The launch's binary there is a stub that leaves
+no process behind, so the count covers AppRun's own children, not
+Chromium's helper processes. The row's key prefix,
 insert statement, lifetime and fields are kept in
 `electron/e2e/fixtures/replay-row.json`, and the backend's tests check
 that file against what the cache reads
@@ -189,8 +210,11 @@ removed at once. `smoke.spec.ts` checks that the profile is gone after
 the app quits. Two specs manage their profile themselves, removing it
 in their own teardown and, if the launch fails, at once: the keyring
 spec, whose profile also holds its session bus, and the splash-stuck
-spec, whose restarted app outlives the launch. A worker that is killed
-before its app exits leaves the profile behind.
+spec, whose restarted app outlives the launch. `terminal-closed.spec.ts`
+launches through `spawnPackagedApp`, which takes no profile: the spec
+looks at the profile after the app has exited (for the single-instance
+lock) and only then hands it to the helper's `removeAfterExit`. A worker
+that is killed before its app exits leaves the profile behind.
 
 The Node tests that make temporary directories (`electron/lib/`,
 `tests/tools/`, `tests/complexity/`) remove them in their own
@@ -224,13 +248,22 @@ picked the desktop's Wayland compositor — throws before any window
 opens, saying how to run the suite.
 
 A spec stops the app it launched through `stopApp` in
-`electron/e2e/launch.ts`, and nothing else but the one exception
+`electron/e2e/launch.ts`, and nothing else but the exceptions
 below. Playwright starts the app
 in a process group of its own; `electron/lib/own-group.cjs` sends
-SIGTERM to that group, then SIGKILL to the same group if the app is
-still there, and only while the group is provably the app's: its main
-process not yet reaped, leading the group, running the binary it was
-launched from. What the app leaves in its group as it exits is killed in the
+SIGTERM to the app's main process alone, then SIGKILL to its group if
+the app is still there, and only while the group is provably the app's:
+its main process not yet reaped, leading the group, running the binary
+it was launched from. SIGTERM to the whole group would kill Chromium's
+helpers in the same instant as the main process, and the app would
+usually end by that signal instead of quitting
+(`electron/lib/termination-signals.cjs`, which keeps Chromium from
+aborting as it quits without its GPU process, a SIGTRAP the host's
+crash reporter is called for, when it sees the GPU process die
+first). An app that ends by a signal the stop did not send
+crashed as it quit, or, before the stop, crashed or was killed from
+outside it, and `stopApp` throws, failing the spec; the cold-launch retry's cleanup (`stopDeadApp`) discards that
+error, as it does any other from stopping the launch it gives up on. What the app leaves in its group as it exits is killed in the
 turn its exit is reported; after that nothing is signalled, since an
 emptied group's id can be handed to someone else. The backend runs
 outside that group and stops itself when the app's end of its stdin
@@ -248,6 +281,50 @@ only. The launch helper accepts Xvfb only on a GitHub Actions runner
 (`GITHUB_ACTIONS=true`), and refuses any Wayland session there.
 `smoke.spec.ts` checks that the app landed on Wayland in the headless
 session and on X11 in CI.
+
+`terminal-closed.spec.ts` stops its apps itself, under the same
+rules. The app it starts on a pipe is its own child, leading a group of
+its own: it is stopped with `own-group.cjs`'s `stopOwnGroup` directly,
+since it is not a Playwright launch, and `spawnPackagedApp` kills what
+it leaves in its group in the turn its exit is reported, or the whole
+group if the test worker exits while it is still unreaped. On a
+terminal, the launcher it starts is the child of the terminal fixture
+(`electron/e2e/fixtures/terminal/on-a-terminal.py`, which needs
+`python3`): the fixture signals the launcher's group only before it
+has reaped the launcher, kills what is left in the group once the
+launcher has exited and before reaping it, and kills the whole group
+if the spec's end of its stdin closes first, as it does when the test
+worker exits. The app itself is the launcher's child, in a session of
+its own outside that group (`electron/lib/linux-launcher.cjs`): a
+killed launcher leaves it a SIGTERM where `setpriv` supports
+`--pdeathsig`, and an app that does not quit on it outlives the test.
+So do the launcher's two output relays (`cat`, each in a session of its
+own) until the app and its helpers have closed their pipes.
+
+`electron/lib/linux-launcher.test.cjs` runs the launcher with a
+stand-in for the app's binary (`electron/lib/fixtures/app-stub.py`),
+on that terminal fixture too, so it also needs `python3`; it is
+skipped off Linux. Every process it signals is the launcher it
+started, by pid or group, or the stand-in, by the pid the stand-in
+recorded. Its AppImage cases start the launcher behind a stand-in for
+the AppImage runtime (`electron/lib/fixtures/appimage-runtime.py`),
+which deletes the packed binary, as an unmount would, once nothing
+holds the pipe end it passed on fd 3; its watcher runs in a session of
+its own and exits by itself once that has happened, or after 60 s.
+
+One defect is visible only on Wayland. Under native Wayland with
+software compositing (a virtual machine, a GPU that failed or is
+blocklisted, `--disable-gpu`) a window that is not on screen gets no
+animation frames, and the app's window is made hidden and revealed once
+its page has drawn two of them. `reveal-without-frames.spec.ts` launches
+the app with `--disable-gpu` (the launch helper's `switches`) and checks
+that the boot completes and the splash hands over to the window. In the
+headless GNOME Shell session the hidden window really gets no frames,
+so the spec fails there if nothing maps the window, and it also checks
+that the wake mapped it (`electron/lib/app-window.cjs`). On CI's Xvfb,
+X11 keeps hidden windows ticking with or without a GPU, so the same
+spec passes there whether the wake works or not: CI cannot see this
+defect, and only the local run of the packaged suite covers it.
 
 One process is not launched by the helper: the app the splash's Restart
 starts again (`splash-stuck.spec.ts`). It is outside the test's process
@@ -294,6 +371,81 @@ Every PR runs all gating workflows; merge blocks until they're green:
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |
+| `packages.yml` | every PR; the builds run only when the PR touches `electron/package.json`, `electron/build-resources/**`, `electron/scripts/fetch-{windows,linux}-deps.mjs`, `electron/scripts/repack-appimage.mjs`, `electron/lib/{dep-staging,linux-launcher,appimage-tree,sandbox-probe}.cjs`, an `electron/electron-builder.*` config, an `.npmrc` (root or `electron/`), `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, `backend/.cargo/**`, `rust-toolchain.toml`, `.github/actions/{pnpm,apt}-install/`, its filter, `tools/appimage-catalog-check.sh` or the workflow — decided by `tools/packages-filter.sh`, which `tests/bash/arch/packages_filter.bats` runs, from the PR's own changes since it branched; also started by hand | yes, its `packages-build` job, which passes when the builds and the AppImage start-up check passed or were not needed |
+
+### Packages built in CI
+
+`packages.yml` builds the Windows NSIS installer on `windows-latest`
+with `pnpm run package:win`, and the AppImage and the `.deb` on
+`ubuntu-24.04` with `pnpm run package:release`, the commands a release
+host runs. The Ubuntu runner is pinned so a new runner image never
+changes a release build unannounced. Nothing in the Linux packages
+links against the runner's C library (the backend is static musl, which
+the job asserts, and Electron, the AppImage runtime and the bundled
+tools arrive prebuilt); the job's summary reports the newest glibc any
+packaged binary needs.
+
+Every AppImage it builds is then started the way the AppImageHub
+catalog's test starts the released one: on an `ubuntu-22.04` runner
+(glibc 2.35), in Xvfb at 800x600 with icewm, under `firejail
+--noprofile --net=none --appimage`, with no network. The job, "AppImage
+starts on the catalog's system", runs `tools/appimage-catalog-check.sh`,
+which fails unless a window of the app's own class appears within 30
+seconds and is still there 20 seconds later, the app's log shows its
+backend ready and its first page rendered, and no startup failure is
+logged; the catalog itself asks only for a visible window, which the
+splash or the failed-startup dialog would give it. When the check
+fails, the job keeps the app's log and a screenshot as the
+`catalog-check-failure` artifact. A
+release whose AppImage needs a newer glibc than the catalog's, as
+v0.14.1's did, fails here rather than in the catalog. The firejail is
+Ubuntu 22.04's own (0.9.66), where the catalog installs a 2023 build of
+its own over it, so a failure particular to either firejail build
+would show in one and not the other.
+`tests/bash/arch/appimage_catalog_check.bats` holds the script's
+verdicts against stand-ins for the X server, the window manager,
+firejail and the app.
+
+On a pull request it publishes no package: the AppImage goes to the
+start-up check as a one-day artifact named `catalog-check-appimage`,
+and nothing else is uploaded. Its `packages-build` job always
+reports, so it is the one name the master ruleset requires: a
+required name from a workflow-level path filter would wait forever on
+every pull request the filter skipped. A Windows runner that GitHub
+cancels fails that job and blocks the merge until the run is re-run,
+as with the macOS leg of `rust.yml`.
+
+Started by hand it uploads the packages. They are unsigned, as the
+hand-built release packages are. Beyond the AppImage's start-up check
+nothing in CI installs a package or runs the app from one, so the
+Windows installer and the `.deb` are still checked by hand on a real
+machine. To build a branch, tag or commit:
+
+1. On GitHub, open the repository's **Actions** tab and choose
+   **Packages** in the list of workflows on the left.
+2. Click **Run workflow** (top right of the run list). Choose the branch
+   under "Use workflow from", or type a branch, tag or commit hash in
+   the `ref` box, then click the green **Run workflow** button. Both
+   builds use the one commit that ref named as the run began building.
+3. Open the new run once it finishes (the Windows build is the slow
+   one). Its summary page lists four artifacts
+   under **Artifacts**, each named after the ref and the commit:
+   `ani-gui-windows-installer-…`, `ani-gui-appimage-…`, `ani-gui-deb-…`
+   and `ani-gui-sha256sums-…`. Clicking one downloads it as a zip
+   holding the one file. They are kept for thirty days (GitHub's default
+   is ninety; a run's packages come to some 380 MB).
+4. Unzip them into one folder and run
+   `sha256sum -c --ignore-missing SHA256SUMS` there to check them
+   against the hashes the build recorded (`--ignore-missing` lets a
+   folder hold only some of them). On Windows,
+   `Get-FileHash <file> -Algorithm SHA256` in PowerShell prints the
+   hash to compare with the file's line (in capitals; the comparison
+   ignores case). The Windows installer is
+   unsigned, so SmartScreen warns before it runs: More info, then Run
+   anyway.
+
+For a release, run it on the release commit and upload the three
+packages to the GitHub release.
 
 ## The season picker
 
@@ -438,7 +590,11 @@ and assert the negative then. Where the action would begin before a
 call returns, such as a click whose handler would send its request
 straight away, count it where the request is made rather than where a
 handler answers it, and the negative can be read as soon as the call
-returns.
+returns. Where the subject waits on a timer of its own before it
+acts, as the topbar's live search waits for the typing to pause, the
+witness is that timer's end: `frontend/tests/acceptance/scheduled-timers.ts`
+follows the timers an action arms until each has fired or been
+cleared, and what the subject asks on them is recorded as it asks.
 
 A 0 ms timer is a sleep of the same kind wherever the page's requests
 pass through MSW: one turn of the event loop is not known to carry

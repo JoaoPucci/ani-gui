@@ -16,7 +16,8 @@
 	import { localDay } from '$lib/watch-order/entry';
 	import { franchisePage, franchiseTrail } from '$lib/watch-order/franchise-page';
 	import { latestRead } from '$lib/watch-order/latest-read';
-	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { loadWatchOrder, rereadRows, type WatchOrderData } from '$lib/watch-order/loader';
+	import { onHistoryLinked } from '$lib/history/link-deps';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { settledOrder } from '$lib/watch-order/page-model';
 
@@ -46,7 +47,14 @@
 		void attempt;
 		reads.start((signal) => loadWatchOrder(current, watchOrderSources, signal));
 	});
+	// A history link answered while the page is on screen reads the rows
+	// again against the franchise drawn, which stays drawn meanwhile.
+	const stopHearing = onHistoryLinked(() => {
+		const shown = data;
+		if (shown) reads.refresh((signal) => rereadRows(shown, watchOrderSources, signal));
+	});
 	onDestroy(() => {
+		stopHearing();
 		reads.stop();
 		pageReads.end();
 	});

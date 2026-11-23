@@ -147,8 +147,13 @@ fn the_windows_build_carries_its_own_c_runtime() {
     // MSVC only, matching the cargo config it verifies: a GNU
     // toolchain links against msvcrt.dll, which Windows ships,
     // and keeps its default linkage.
+    //
+    // The linkage is fixed when the test binary is built; it is read
+    // through black_box so the check stays a test that fails at run
+    // time rather than a constant a lint rejects.
+    let crt_static = std::hint::black_box(cfg!(target_feature = "crt-static"));
     assert!(
-        cfg!(target_feature = "crt-static"),
+        crt_static,
         "the CRT is linked dynamically; a clean Windows has no vcruntime140.dll"
     );
 }

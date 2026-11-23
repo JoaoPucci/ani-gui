@@ -73,6 +73,14 @@
       "cargo-mutants": "cargo-mutants (Rust)",
       "stryker": "stryker-js (TS lib only)"
     },
+    "packages.yml": {
+      "catalog": "AppImage starts on the catalog's system",
+      "checksums": "SHA256SUMS",
+      "filter": "filter",
+      "gate": "packages-build",
+      "linux": "AppImage and .deb",
+      "windows": "Windows installer"
+    },
     "required-mirrors.yml": {
       "dead-links": "Dead Link Checker",
       "trailing-ws": "Find Trailing Whitespace"

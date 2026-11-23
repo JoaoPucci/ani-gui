@@ -55,6 +55,14 @@ describe('restoredView', () => {
 		expect(restoredView(saved('frieren', false)).restoredIds.size).toBe(0);
 	});
 
+	it('drops a saved filter the page no longer offers', () => {
+		// A search kept by an earlier version could be filtered to music
+		// videos, which search never answers: put back as it was, the
+		// grid would stay empty with no filter on screen to explain it.
+		const kept = { ...saved(), subtypes: ['music', 'TV'] };
+		expect(restoredView(kept).subtypes).toEqual(['TV']);
+	});
+
 	it('does not share the saved filters', () => {
 		const s = saved();
 		restoredView(s).subtypes.push('movie');

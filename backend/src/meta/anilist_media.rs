@@ -181,6 +181,10 @@ async fn banner_lookup(
 #[cfg(test)]
 pub(crate) const ANILIST_NOT_FOUND_BODY: &str = r#"{"errors":[{"message":"Not Found.","status":404,"locations":[{"line":1,"column":20}]}],"data":{"Media":null}}"#;
 
+#[path = "anilist_banner_batch.rs"]
+mod banner_batch;
+pub(crate) use banner_batch::banner_coalesced;
+
 #[cfg(test)]
 #[path = "anilist_media_test.rs"]
 mod tests;

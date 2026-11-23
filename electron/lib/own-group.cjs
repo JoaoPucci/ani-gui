@@ -11,6 +11,18 @@
 // and the backend shuts itself down once the app's end of its stdin
 // closes, however the app ended (lib/backend-spawn.cjs).
 //
+// The stop asks the main process alone to quit (SIGTERM to its pid), as
+// a user's kill of the app does, and leaves its helpers for it to bring
+// down. SIGTERM to the whole group kills Chromium's zygote and GPU
+// process in the same instant as it reaches the main process. The app
+// then usually ends by that SIGTERM rather than quitting, its profile
+// lock left behind (lib/termination-signals.cjs); when
+// Chromium gets there first, the main process finds its GPU process
+// gone, fails to start another through the dead zygote, and aborts as
+// it quits ("GPU process isn't usable. Goodbye.", a SIGTRAP the host's
+// crash reporter is called for). Only SIGKILL, which nothing handles
+// and which leaves no core, goes to the group.
+//
 // A group id is only worth signalling while it is provably the app's:
 //
 //   - While Node has not reaped the main process. `exitCode` and
@@ -116,17 +128,21 @@ function within(promise, ms) {
  * Stop the process group `child` leads — the app a spec launched — and
  * resolve with how it ended:
  *
- *   - 'exited': it had already exited and been reaped. Nothing is
- *     signalled; its group id can no longer be shown to be the app's.
- *   - 'stopped': it exited after SIGTERM to the group.
+ *   - 'exited': it had already exited and been reaped, by its own quit
+ *     (an end by a signal throws, as below). Nothing is signalled; its group id
+ *     can no longer be shown to be the app's.
+ *   - 'stopped': it exited after SIGTERM to the leader, or was found
+ *     exiting and exited without one.
  *   - 'killed': it outlived SIGTERM by `termMs`, and exited after
- *     SIGKILL to the same group — or, found exiting by then, without
- *     one.
+ *     SIGKILL to its group — or, found exiting by then, without one.
  *
  * Whatever the app leaves in its group when it exits is killed in the
  * turn its exit is reported. Throws, signalling nothing further, when
  * the process is not the leader this module may signal (see
- * `leaderState`), or when it outlives SIGKILL by `killMs`.
+ * `leaderState`), or when it outlives SIGKILL by `killMs`. Throws too,
+ * once it has gone, when it ended by a signal the stop did not send:
+ * it crashed as it quit, or before the stop it crashed or was killed
+ * from outside it.
  *
  * `kill`, `readFile` and `readLink` are process.kill, fs.readFileSync
  * and fs.readlinkSync; tests replace them.
@@ -143,12 +159,29 @@ async function stopOwnGroup(
 	} = {},
 ) {
 	const io = { exe, readFile, readLink };
-	const first = leaderState(child, io);
-	if (first === 'exited') return 'exited';
+	const sent = new Set();
+	// How the leader ended, once it has. A signal the stop did not send
+	// is a failure: before the stop asked it to quit, when nothing was
+	// sent yet, a crash or a kill from outside the stop (Playwright's own
+	// close SIGKILLs the group when it gives up); after, a crash as it
+	// quit.
+	const ended = (how) => {
+		const by = child.signalCode;
+		if (by && !sent.has(by)) {
+			throw new Error(
+				sent.size === 0
+					? `process ${pid} ended by ${by} before the stop asked it to quit: a crash, or a kill from outside the stop`
+					: `process ${pid} ended by ${by}, a signal the stop did not send: it crashed as it quit`,
+			);
+		}
+		return how;
+	};
 	const pid = child.pid;
-	const signal = (sig) => {
+	const first = leaderState(child, io);
+	if (first === 'exited') return ended('exited');
+	const signal = (sig, target = -pid) => {
 		try {
-			kill(-pid, sig);
+			kill(target, sig);
 		} catch (err) {
 			if (!err || err.code !== 'ESRCH') throw err;
 		}
@@ -166,12 +199,18 @@ async function stopOwnGroup(
 			resolve();
 		});
 	});
-	if (first === 'running') signal('SIGTERM');
-	if (await within(gone, termMs)) return 'stopped';
+	if (first === 'running') {
+		sent.add('SIGTERM');
+		signal('SIGTERM', pid);
+	}
+	if (await within(gone, termMs)) return ended('stopped');
 	const second = leaderState(child, io);
-	if (second === 'exited') return 'stopped';
-	if (second === 'running') signal('SIGKILL');
-	if (await within(gone, killMs)) return 'killed';
+	if (second === 'exited') return ended('stopped');
+	if (second === 'running') {
+		sent.add('SIGKILL');
+		signal('SIGKILL');
+	}
+	if (await within(gone, killMs)) return ended('killed');
 	throw new Error(`process group ${pid} outlived SIGKILL by ${killMs} ms`);
 }
 
