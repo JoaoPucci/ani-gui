@@ -96,7 +96,7 @@ const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
 const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
-const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
+const { restart } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { backendRelay, redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
@@ -561,14 +561,15 @@ const splash = splashController({
   onRestart: () =>
     // The new instance starts from the user's environment, not
     // Electron's (lib/child-env.cjs, lib/relaunch.cjs).
-    relaunch(
-      relaunchPlan({
+    restart(
+      {
         platform: process.platform,
-        env: userEnv(),
+        launch: LAUNCH_ENV,
+        now: process.env,
         execPath: process.execPath,
         argv: process.argv,
         pid: process.pid,
-      }),
+      },
       { app, spawn, logError: console.error, asUser },
     ),
   // Above the splash's title. A dev run is the one that loads the Vite

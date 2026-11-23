@@ -49,9 +49,9 @@
 //
 // Both start the new instance from the user's environment, not the one
 // Electron has rewritten in this process (lib/child-env.cjs): the
-// caller plans the restart from the rebuilt one, and Electron's relaunch,
-// which starts its relauncher from this process's environment at the
-// call, is asked for inside `asUser`. Started from Electron's, the new
+// restart is planned from the rebuilt one (`restart`, below), and
+// Electron's relaunch, which starts its relauncher from this process's
+// environment at the call, is asked for inside `asUser`. Started from Electron's, the new
 // instance's Electron would keep Unity as the session's desktop and
 // hand it to everything it opens.
 //
@@ -61,6 +61,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { childEnv } = require("./child-env.cjs");
 
 /** What the packaged Linux launchers put before the person's
  *  arguments on every launch: the wrapper script both packages run
@@ -144,4 +145,15 @@ function relaunch(
   child.unref();
 }
 
-module.exports = { LAUNCHER_SWITCHES, WAIT_THEN_EXEC, appImageOf, relaunch, relaunchPlan, userArgs };
+/**
+ * Restart, as the splash's stuck state asks for it: planned from the
+ * user's environment, rebuilt from the launch's (`launch`) and this
+ * process's (`now`) by lib/child-env.cjs, then arranged by `relaunch`
+ * with `deps`.
+ */
+function restart({ platform, launch, now, execPath, argv, pid }, deps) {
+  const env = childEnv({ platform, launch, now });
+  relaunch(relaunchPlan({ platform, env, execPath, argv, pid }), deps);
+}
+
+module.exports = { LAUNCHER_SWITCHES, WAIT_THEN_EXEC, appImageOf, relaunch, relaunchPlan, restart, userArgs };
