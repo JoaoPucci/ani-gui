@@ -107,14 +107,16 @@ fn a_refused_try_logs_its_cause() {
     }
 }
 
-/// On macOS an open in a lock directory a release is removing can fail
-/// with "invalid argument" rather than "not found": seen on macOS CI,
-/// where a contender's open of `.ani-gui-locks/Busy Show Episode 1.mp4`
-/// failed with code 22 while three others took and released the lock,
-/// and the waiter was refused. It is a loss to that removal, retried
-/// under the cap on losses in a row like any other. Elsewhere the code
-/// means what it says — Linux answers an open in a removed directory
-/// with "not found" — and stays a refusal.
+/// On macOS an open of the lock file can fail with "invalid argument"
+/// during contention: seen on macOS CI, where a contender's open of
+/// `.ani-gui-locks/Busy Show Episode 1.mp4` failed with code 22 while
+/// three others took and released the lock — releases that remove the
+/// file and then the directory — and the waiter was refused. Other
+/// runs open the same path without error, so the name is not the
+/// cause. It is a loss, retried under the cap on losses in a row like
+/// any other. Elsewhere the code means what it says — Linux answers an
+/// open in a removed directory with "not found" — and stays a refusal,
+/// as every other code stays one on both.
 #[cfg(unix)]
 #[test]
 fn an_invalid_argument_is_a_loss_on_macos_only() {
@@ -129,6 +131,17 @@ fn an_invalid_argument_is_a_loss_on_macos_only() {
         !os::lost_to_removal_on(&invalid, false),
         "elsewhere: a refusal"
     );
+    // EPERM, EIO, EBADF, EACCES, EEXIST, ENOTDIR, EISDIR, EMFILE,
+    // ENOSPC and EROFS, which have these codes on Linux and macOS alike.
+    for code in [1, 5, 9, 13, 17, 20, 21, 24, 28, 30] {
+        let e = std::io::Error::from_raw_os_error(code);
+        for macos in [true, false] {
+            assert!(
+                !os::lost_to_removal_on(&e, macos),
+                "code {code} stays a refusal"
+            );
+        }
+    }
 }
 
 #[cfg(unix)]

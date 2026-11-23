@@ -18,7 +18,8 @@ const INSTANCE_LOCK_POLL: std::time::Duration = std::time::Duration::from_millis
 /// race, so a real contention ends in a handful; the cap is for a
 /// volume that answers every open with a refusal that only looks like
 /// a removal (Windows reports a delete in progress and a plain denial
-/// with the same code, macOS a removal in flight and a bad argument),
+/// with the same code; macOS answered an open during contention with
+/// the code it gives a bad argument),
 /// which would otherwise poll to the deadline.
 /// Giving up is the lock's ordinary best-effort failure.
 ///
