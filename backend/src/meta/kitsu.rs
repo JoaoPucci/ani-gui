@@ -476,7 +476,7 @@ pub fn parse_mal_id_from_mappings(body: &[u8]) -> Result<Option<u32>> {
 /// direct `anilist/anime` mapping, which is enough to reach both
 /// providers (AniList directly, MAL via AniList's `idMal`).
 ///
-/// Serialized as the body of the `kitsu:external-ids:v2:k<id>` cache
+/// Serialized in the body of the `kitsu:external-ids:v3:k<id>` cache
 /// row ([`crate::commands::external_ids`]); a field added or renamed
 /// here moves that key's version.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -488,59 +488,19 @@ pub struct ExternalIds {
 }
 
 /// Extract every tracker-relevant mapping from a Kitsu
-/// `/anime/:id?include=mappings` payload in one pass. Non-numeric
-/// external ids and non-anime sites (`anilist/manga`, …) are ignored.
+/// `/anime/:id?include=mappings` payload in one pass
+/// ([`parse_mappings`]'s ids).
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't valid
 /// JSON:API for an anime resource.
 pub fn parse_external_ids_from_mappings(body: &[u8]) -> Result<ExternalIds> {
-    #[derive(Deserialize)]
-    struct Wrap {
-        // The anime document itself: without it the reply is not the
-        // one asked for, and its lack of mappings says nothing.
-        #[serde(rename = "data")]
-        _data: AnimeDoc,
-        #[serde(default)]
-        included: Vec<Resource>,
-    }
-    #[derive(Deserialize)]
-    struct AnimeDoc {
-        #[serde(rename = "id")]
-        _id: String,
-    }
-    #[derive(Deserialize)]
-    struct Resource {
-        #[serde(rename = "type")]
-        type_: String,
-        attributes: Option<Attrs>,
-    }
-    #[derive(Deserialize)]
-    struct Attrs {
-        #[serde(rename = "externalSite")]
-        external_site: Option<String>,
-        #[serde(rename = "externalId")]
-        external_id: Option<String>,
-    }
-    let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
-        detail: format!("kitsu mappings parse: {e}"),
-    })?;
-    let mut ids = ExternalIds::default();
-    for r in parsed
-        .included
-        .into_iter()
-        .filter(|r| r.type_ == "mappings")
-    {
-        let Some(attrs) = r.attributes else { continue };
-        let parsed_id = attrs.external_id.and_then(|s| s.parse::<u32>().ok());
-        match attrs.external_site.as_deref() {
-            Some("myanimelist/anime") => ids.mal = ids.mal.or(parsed_id),
-            Some("anilist/anime") => ids.anilist = ids.anilist.or(parsed_id),
-            _ => {}
-        }
-    }
-    Ok(ids)
+    Ok(parse_mappings(body)?.ids)
 }
+
+#[path = "kitsu_mappings.rs"]
+mod mappings;
+pub use mappings::{parse_mappings, KitsuMappings};
 
 /// Parse `{ "data": [...] }` into a list of episodes. Used for
 /// `/anime/:id/episodes`.
@@ -709,6 +669,15 @@ impl KitsuClient {
     /// - [`AniError::Network`] on transport failure.
     /// - [`AniError::ParseFailed`] on malformed JSON:API.
     pub async fn external_ids_for_kitsu_id(&self, kitsu_id: &str) -> Result<ExternalIds> {
+        Ok(self.mappings_for_kitsu_id(kitsu_id).await?.ids)
+    }
+
+    /// [`Self::external_ids_for_kitsu_id`]'s answer with whether Kitsu
+    /// has a cover for the anime, from the same request.
+    ///
+    /// # Errors
+    /// As [`Self::external_ids_for_kitsu_id`].
+    pub async fn mappings_for_kitsu_id(&self, kitsu_id: &str) -> Result<KitsuMappings> {
         // Kitsu's /mappings endpoint rejects filter[itemType] /
         // filter[itemId] (returns "Filter not allowed"). Walk the
         // anime resource's included mappings array instead — one
@@ -719,7 +688,7 @@ impl KitsuClient {
             .header(reqwest::header::ACCEPT, "application/vnd.api+json")
             .query(&[
                 ("include", "mappings".to_string()),
-                ("fields[anime]", "canonicalTitle".to_string()),
+                ("fields[anime]", "canonicalTitle,coverImage".to_string()),
                 ("fields[mappings]", "externalSite,externalId".to_string()),
             ])
             .send()
@@ -731,7 +700,7 @@ impl KitsuClient {
             });
         }
         let body = resp.bytes().await.map_err(|_| AniError::Network)?;
-        parse_external_ids_from_mappings(&body)
+        parse_mappings(&body)
     }
 
     /// Look up the Kitsu anime that maps to a given MyAnimeList id.

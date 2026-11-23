@@ -57,6 +57,9 @@ mod answer;
 mod pace;
 use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
+#[path = "anilist_gate_place.rs"]
+mod place;
+pub(crate) use place::{handing, place, turn_in, wait_for, Place};
 #[path = "anilist_gate_purpose.rs"]
 mod purpose;
 pub(crate) use purpose::{Ask, Purpose};
@@ -68,8 +71,9 @@ use turn::{sent, Waiting};
 struct Gate {
     pace: Pace,
     ledger: Mutex<Ledger>,
-    /// Requests other than retries waiting for their turn now. While
-    /// any waits, no retry takes a turn.
+    /// Requests other than retries waiting for their turn now, and lanes
+    /// holding lookups for one ([`Place`]). While any waits, no retry
+    /// takes a turn.
     fresh_waiting: AtomicUsize,
     /// The class of each request let go, in the order it was let go:
     /// what a test reads the order of sending from, which a mock
@@ -124,6 +128,7 @@ impl Gate {
                     if class == Class::Retry {
                         ledger.record_retry(&self.pace, now);
                     }
+                    place::turn_taken();
                     #[cfg(test)]
                     self.let_go
                         .lock()
@@ -192,7 +197,10 @@ where
 {
     let gate = gate_for(url);
     let class = current_class();
-    let deadline = Instant::now() + gate.pace.wait_for(class);
+    // A lane's batch keeps the deadline its lookups' wait set in the
+    // lane: its wait for a turn is the one they would have spent here.
+    let own = Instant::now() + gate.pace.wait_for(class);
+    let deadline = place::handed_deadline().map_or(own, |handed| handed.min(own));
     let mut retried = false;
     loop {
         let sent = gate.admit(ask, class, deadline).await?;

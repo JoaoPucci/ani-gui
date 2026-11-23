@@ -31,10 +31,11 @@ impl SharedForTests {
             .clone()
     }
 
-    /// How many requests other than retries wait for their turn now:
-    /// a request counts from its first wait until its turn, its refusal
-    /// once the turn would come past its wait, or its caller dropping
-    /// it.
+    /// How many requests other than retries, and lanes holding lookups
+    /// for a turn, wait for their turn now: a request counts from its
+    /// first wait until its turn, its refusal once the turn would come
+    /// past its wait, or its caller dropping it; a lane from its first
+    /// wait until the request it hands over takes its turn.
     pub(crate) fn waiting(&self) -> usize {
         self.1
             .fresh_waiting

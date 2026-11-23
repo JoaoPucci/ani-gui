@@ -119,7 +119,7 @@ pub(crate) const KITSU_SEARCH: &str = "kitsu:v4:search:";
 /// A Kitsu entry the detail fetch found gone.
 pub(crate) const KITSU_GONE: &str = "kitsu:dead:";
 /// A Kitsu entry's ids on other databases.
-pub(crate) const KITSU_EXTERNAL_IDS: &str = "kitsu:external-ids:v2:k";
+pub(crate) const KITSU_EXTERNAL_IDS: &str = "kitsu:external-ids:v3:k";
 /// A MyAnimeList id's Kitsu entry.
 pub(crate) const KITSU_MAL_MAP: &str = "kitsu:mal-map:v1:";
 /// A show's watched-at stamp.
