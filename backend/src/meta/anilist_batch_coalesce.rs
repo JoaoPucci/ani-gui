@@ -120,29 +120,6 @@ impl<T> Default for Lanes<T> {
 }
 
 impl<T> Lanes<T> {
-    /// How many lookups wait in `lane`'s next batch now, whatever gate
-    /// class they count as. For a test to know every lookup it started
-    /// has joined the lane before it lets the lane's window pass.
-    #[cfg(test)]
-    pub(crate) fn gathered(&self, lane: &str) -> usize {
-        let prefix = format!("{lane}\u{0}");
-        self.open()
-            .iter()
-            .filter(|(key, _)| key.starts_with(&prefix))
-            .map(|(_, lane)| lane.pending.len())
-            .sum()
-    }
-
-    /// How many lanes are open under `lane`, one per gate class.
-    #[cfg(test)]
-    pub(crate) fn opened(&self, lane: &str) -> usize {
-        let prefix = format!("{lane}\u{0}");
-        self.open()
-            .keys()
-            .filter(|key| key.starts_with(&prefix))
-            .count()
-    }
-
     fn open(&self) -> std::sync::MutexGuard<'_, Open<T>> {
         self.open
             .lock()
@@ -247,6 +224,9 @@ pub(crate) async fn coalesced<K: Kind>(
     answer.await.unwrap_or(Err(AniError::Network))
 }
 
+#[cfg(test)]
+#[path = "anilist_batch_lanes_seam.rs"]
+mod lanes_seam;
 #[path = "anilist_batch_turn.rs"]
 mod turn;
 use turn::waits_for_turn;
