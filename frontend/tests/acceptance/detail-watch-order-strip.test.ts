@@ -119,7 +119,7 @@ type HistoryRowFixture = { ep_no: string; id: string; title: string; kitsu_id?: 
 interface ShowOptions {
 	order?: Config['watch_order'];
 	settings?: () => Response;
-	franchise?: () => Response;
+	franchise?: () => Response | Promise<Response>;
 	/** Null: the history read fails. */
 	history?: HistoryRowFixture[] | null;
 	/**
@@ -315,6 +315,33 @@ describe('detail route — the watch-order strip', () => {
 		expect(tile('5')!.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
 		// The franchise itself did not change: one walk, read once.
 		expect(calls.franchise).toBe(1);
+	});
+
+	it('remembers the rows a link wrote for the next visit of the show', async () => {
+		// A show visited again draws its remembered answer in its first
+		// frame ($lib/watch-order/session-memo), before its walk answers:
+		// that answer has the rows the link wrote, not the ones before it.
+		const history: HistoryRowFixture[] = [];
+		useShow({ history });
+		server.use(
+			http.post(`${API_BASE}/api/history/link`, () =>
+				HttpResponse.json<LinkOutcome>({ kitsu_id: '5', linked: [] })
+			)
+		);
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the strip');
+		history.push({ id: 'hianime:saga-origins', title: 'Saga Origins', ep_no: '3', kitsu_id: '5' });
+		await appLinkDeps().link('hianime:saga-origins', ['hianime:saga-origins'], '5');
+		await until(() => tile('5') !== null, 'the watching card from the linked row');
+		unmount(app);
+		app = null;
+
+		// The second visit's walk never answers: only the remembered answer draws.
+		useShow({ history, franchise: () => new Promise<Response>(() => {}) });
+		app = mount(DetailPage, { target });
+		await until(() => strip() !== null, 'the remembered strip');
+		expect(tile('5')).not.toBeNull();
+		expect(tile('5')!.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
 	});
 
 	it("gives a row's progress to the entry the backend names it for, when Kitsu deleted the recorded one", async () => {

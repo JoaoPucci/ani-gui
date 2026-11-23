@@ -40,6 +40,7 @@
 	import { localDay } from '$lib/watch-order/entry';
 	import { latestRead } from '$lib/watch-order/latest-read';
 	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { followLink } from '$lib/watch-order/link-reread';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { settledOrder } from '$lib/watch-order/page-model';
 	import { playerUpNext } from '$lib/watch-order/chain-end';
@@ -231,7 +232,7 @@
 	import { guessedQuery } from '$lib/history/guessed-context';
 	import { InPlaceLinkSession } from '$lib/history/in-place-link.svelte';
 	import { noteSwitch } from '$lib/history/guess-slip';
-	import { appLinkDeps } from '$lib/history/link-deps';
+	import { appLinkDeps, onHistoryLinked } from '$lib/history/link-deps';
 	import { switchShow, type SwitchRequest, type SwitchShowDeps } from '$lib/play/switch-show';
 	import { switchToPick as runPickSwitch } from '$lib/play/pick-switch';
 	import { sessionShow } from '$lib/play/session-show';
@@ -1813,8 +1814,10 @@
 			detail ? { id: detail.id, status: detail.status, episodes: detail.episode_count } : null
 		)
 	);
-	// The counts behind `hasNext` belong to another show: the page,
-	// reused for a new one, still holds the detail it read at mount.
+	// The counts behind `hasNext` belong to another show: a page that
+	// sees its id change still holds the detail it read at mount. The
+	// route mounts a new page for another show (./+layout.svelte), but
+	// this guard predates that and still holds for any page that does.
 	const countsStale = $derived(detail !== null && detail.id !== id);
 	const nextOpen = $derived(stepOpen(hasNext, countsStale, upNextCard !== null));
 	let upNextDismissed = $state(false);
@@ -1852,7 +1855,15 @@
 		}
 		upNextReads.start((signal) => loadWatchOrder(showId, watchOrderSources, signal));
 	});
-	onDestroy(() => upNextReads.stop());
+	// A history link answered while the player is on screen can move a
+	// row onto the next entry ($lib/watch-order/link-reread).
+	const stopHearingLinks = onHistoryLinked(() =>
+		followLink(upNextReads, id, upNextData, watchOrderSources)
+	);
+	onDestroy(() => {
+		stopHearingLinks();
+		upNextReads.stop();
+	});
 
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
 	// local boolean so the inline toggle on the player can flip the

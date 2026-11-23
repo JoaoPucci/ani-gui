@@ -58,8 +58,10 @@ export interface FinaleCard {
  * the entry that really comes next may be missing), the settings not
  * settled (`order` null), `id` outside the run, or nothing after it.
  * `self` is the player's own reading of the entry; without one, or
- * with one read for another show (the page reused for a new show
- * before its detail is read again), the run's entry decides the
+ * with one read for another show (a page that sees its id change
+ * before its detail is read again: the route mounts a new page for
+ * another show, but the guard still holds for any page that does), the
+ * run's entry decides the
  * finale. An entry outside the main story is read on its own chain, as
  * its strip draws it, so the card names the chain's next title, or the
  * main-story title the chain leads into.
