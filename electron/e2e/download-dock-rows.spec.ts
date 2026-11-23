@@ -20,11 +20,17 @@
  * the test: the page's EventSource is replaced, before the first
  * download, by one whose events the test sends, so a download stays
  * running, reports its episode and speed, finishes or fails when the
- * test says. Every API request is stubbed. Each locale is looked at at
- * the smallest window the app allows and a common desktop one, at the
- * display scales Windows offers by default (125 % and 150 %), and with
- * letters spaced a fifth wider, standing in for a wider face on
+ * test says. Every API request is stubbed.
+ *
+ * The popover is a fixed width, so the window sizes (the smallest the
+ * app allows, a common desktop one) check that it stays placed; the
+ * rows inside it are the same at both. The display scales Windows
+ * offers by default (125 % and 150 %) check sub-pixel rounding only:
+ * Chromium on Linux does not rasterize or measure text as Windows
+ * does. Letters spaced a fifth wider stand in for a wider face on
  * another platform (Segoe UI on Windows is not on a Linux runner).
+ * Every locale the app ships is left-to-right, and the geometry is
+ * read that way: a right-to-left locale would fail here, not pass.
  */
 import { type ElectronApplication, type Page } from '@playwright/test';
 import { expect, test } from './policy-guard';
@@ -129,7 +135,6 @@ async function launchOnce(locale: string, onLaunch: (app: ElectronApplication) =
 			return j({ available: true, episode_count: s?.episode_count ?? 12, extra_episodes: [] });
 		}
 		if (p === '/api/kitsu/search') return j([]);
-		if (p.startsWith('/api/play/stream')) return answer(r, { status: 503 });
 		return j(null);
 	});
 
@@ -266,6 +271,7 @@ async function sizeViewport(page: Page, width: number, height: number, scale: nu
 		mobile: false
 	});
 	await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+	await cdp.detach();
 }
 
 async function widerLetters(page: Page, wider: boolean) {
@@ -304,7 +310,6 @@ interface RowGeometry {
 	text: Box;
 	title: Box;
 	ep: Box;
-	epClipped: boolean;
 	mark: Box | null;
 	actions: Box[];
 	report: Box | null;
@@ -341,7 +346,6 @@ function geometry(page: Page) {
 				text: box(li.querySelector('.dl-row-text'))!,
 				title: box(li.querySelector('.dl-row-title'))!,
 				ep: box(ep)!,
-				epClipped: ep.scrollWidth > ep.clientWidth + 0.5,
 				mark: box(
 					li.querySelector(
 						':scope > .dl-row-bar, :scope > span.dl-row-queued, :scope > span.dl-row-error'
@@ -361,7 +365,8 @@ const EPS = 0.75;
 
 /** The row shape the popover promises, asserted of every row. Soft, so
  *  one run reports every view and state that breaks it, with its shot. */
-function assertRows(g: Geometry, at: string) {
+function assertRows(g: Geometry, at: string, count: number) {
+	expect(g.rows.length, `${at}: the rows are on show`).toBe(count);
 	expect.soft(g.overflowX, `${at}: nothing scrolls sideways in the popover`).toBeLessThanOrEqual(0);
 	for (const [i, r] of g.rows.entries()) {
 		const where = `${at}, row ${i} (${r.status}): ${JSON.stringify(r)}`;
@@ -385,8 +390,9 @@ function assertRows(g: Geometry, at: string) {
 			expect.soft(b.left, where).toBeGreaterThanOrEqual(r.row.left - EPS);
 			expect.soft(b.right, where).toBeLessThanOrEqual(r.row.right + EPS);
 		}
-		// The episode follows the title, whole, inside the text.
-		expect.soft(r.epClipped, `${where}: the episode label is whole`).toBe(false);
+		// The episode follows the title, whole, inside the text (which
+		// clips what leaves it), and some of the title stays on show.
+		expect.soft(r.title.right - r.title.left, `${where}: the title shows`).toBeGreaterThan(32);
 		expect.soft(r.ep.left, where).toBeGreaterThanOrEqual(r.title.right - EPS);
 		expect.soft(r.ep.right, where).toBeLessThanOrEqual(r.text.right + EPS);
 		// The text starts the row.
@@ -410,6 +416,16 @@ function assertRows(g: Geometry, at: string) {
 			.soft(Math.max(...marks) - Math.min(...marks), `${at}: the states line up`)
 			.toBeLessThan(1);
 	}
+	// A queued row's label starts where a running row's bar does, so its
+	// title is cut at the same place.
+	const starts = g.rows
+		.filter((r) => r.status === 'running' || r.status === 'queued')
+		.map((r) => r.mark!.left);
+	if (starts.length > 1) {
+		expect
+			.soft(Math.max(...starts) - Math.min(...starts), `${at}: bars and Queued start together`)
+			.toBeLessThan(1);
+	}
 	// Rows with nothing under their line are all one height.
 	const heights = g.rows.filter((r) => !r.report).map((r) => r.rowHeight);
 	expect
@@ -425,7 +441,7 @@ const views = [
 	{ label: 'wider-face', width: 960, height: 600, scale: 1, wider: true }
 ] as const;
 
-async function checkViews(page: Page, name: string) {
+async function checkViews(page: Page, name: string, count: number) {
 	const testInfo = test.info();
 	for (const view of views) {
 		await sizeViewport(page, view.width, view.height, view.scale);
@@ -441,9 +457,10 @@ async function checkViews(page: Page, name: string) {
 			await pop.screenshot({ path: testInfo.outputPath(`${name}-${view.label}-end.png`) });
 			await pop.evaluate((el) => (el.scrollTop = 0));
 		}
-		assertRows(g, at);
+		assertRows(g, at, count);
 	}
 	await widerLetters(page, false);
+	await sizeViewport(page, 1280, 800, 1);
 }
 
 for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
@@ -458,7 +475,7 @@ for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
 			await startDownload(page, locale, SHOWS.chainsaw, true);
 			await expect.poll(() => streamCount(page)).toBe(1);
 			await progress(page, 0, 'Playing episode 1');
-			await checkViews(page, `${locale}-one`);
+			await checkViews(page, `${locale}-one`, 1);
 
 			// Then the rest, one row per state.
 			await startDownload(page, locale, SHOWS.bleach, true); // 1: range, under way, with speed
@@ -478,8 +495,10 @@ for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
 				`status.download.abandoned_claim /tmp/ani-gui-e2e-downloads/${SHOWS.long.canonical_title}/Episode 1.mp4`
 			);
 			await emit(page, 5, 'error', { kind: 'io', key: 'error.io', message: 'claimed' });
-			// Under way with no report yet, until six run at once; the
-			// seventh waits in the queue.
+			// Under way with no report yet, until six run at once
+			// (DOWNLOAD_CONCURRENCY in frontend/src/lib/download/queue.ts:
+			// change it and the stream counts below fail); the seventh
+			// waits in the queue.
 			await startDownload(page, locale, SHOWS.long, false); // 6
 			await startDownload(page, locale, SHOWS.gintama, true); // 7
 			await startDownload(page, locale, SHOWS.frieren, false); // 8
@@ -498,7 +517,7 @@ for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
 			await expect(rows.filter({ has: page.locator(':scope > .dl-row-bar') })).toHaveCount(6);
 			await expect(rows.filter({ has: page.locator(':scope > span.dl-row-error') })).toHaveCount(2);
 			await expect(rows.filter({ has: page.locator(':scope > .dl-row-report') })).toHaveCount(2);
-			await checkViews(page, `${locale}-all`);
+			await checkViews(page, `${locale}-all`, 11);
 		} finally {
 			await stopApp(app);
 		}
