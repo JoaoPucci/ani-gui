@@ -89,3 +89,9 @@ pub(crate) fn parse_banner_page(
 #[cfg(test)]
 #[path = "anilist_banner_batch_test.rs"]
 mod tests;
+
+/// How many banner lookups wait in `lane`'s next batch now.
+#[cfg(test)]
+pub(crate) fn banners_gathered(lane: &str) -> usize {
+    Banner::lanes().gathered(lane)
+}

@@ -263,8 +263,9 @@ impl SharedForTests {
     }
 
     /// How many requests other than retries wait for their turn now:
-    /// a request counts from its first wait to its turn, or until its
-    /// caller drops it.
+    /// a request counts from its first wait until its turn, its refusal
+    /// once the turn would come past its wait, or its caller dropping
+    /// it.
     pub(crate) fn waiting(&self) -> usize {
         self.1
             .fresh_waiting

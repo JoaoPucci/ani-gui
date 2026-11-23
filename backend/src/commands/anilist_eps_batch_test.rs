@@ -313,16 +313,22 @@ async fn a_card_that_stopped_waiting_is_left_out_of_the_page() {
     let anilist = anilist_serving(fake.clone()).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
-    for id in ["9", "3"] {
+    for id in ["9", "1", "2", "3"] {
         let _ = crate::commands::external_ids::external_ids_for(&state, id).await;
     }
-    let dropped = tokio::time::timeout(
-        std::time::Duration::from_millis(1),
-        thumbs_for_show_with_anilist_base(&state, "3", Some(&base)),
-    );
-    let (first, _, a, b) = tokio::join!(
-        thumbs_for_show_with_anilist_base(&state, "9", Some(&base)),
-        dropped,
+    // Every show's mappings known, each lookup reaches the lane in the
+    // turn it is polled. Show 3's caller is dropped once its lookup has
+    // joined the lane, before 1 and 2 ask: before the driver can take
+    // a window, which needs this task to yield.
+    let mut first = std::pin::pin!(thumbs_for_show_with_anilist_base(&state, "9", Some(&base)));
+    assert!(futures_util::poll!(&mut first).is_pending());
+    {
+        let mut dropped =
+            std::pin::pin!(thumbs_for_show_with_anilist_base(&state, "3", Some(&base)));
+        assert!(futures_util::poll!(&mut dropped).is_pending());
+    }
+    let (first, a, b) = tokio::join!(
+        first,
         thumbs_for_show_with_anilist_base(&state, "1", Some(&base)),
         thumbs_for_show_with_anilist_base(&state, "2", Some(&base)),
     );

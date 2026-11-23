@@ -109,6 +109,18 @@ async fn anilist(refusals: Option<u64>, retry_after: u64, answer: &str) -> MockS
     server
 }
 
+/// Pause tokio's clock, and check the pause `anilist` is in still has
+/// more left than a fill's wait for its turn: a fill asked on the paused
+/// clock is then held back, not left waiting for the pause to end.
+fn pause_inside(anilist: &MockServer) {
+    tokio::time::pause();
+    let left = crate::meta::anilist_gate::background_wait(&anilist.uri());
+    assert!(
+        left > ANILIST.background_wait,
+        "the machine took the pause before the next view asked: {left:?} left"
+    );
+}
+
 async fn requests(server: &MockServer) -> usize {
     server.received_requests().await.map_or(0, |r| r.len())
 }
@@ -159,7 +171,7 @@ async fn the_same_show_held_twice_is_retried_once() {
     let first = thumbs(&state, "13", &anilist).await;
     // The second view on a paused clock, which moves only from timer to
     // timer: the pause cannot end before the view asks.
-    tokio::time::pause();
+    pause_inside(&anilist);
     let second = thumbs(&state, "13", &anilist).await;
     tokio::time::resume();
     assert_eq!(first.len(), 1);
@@ -186,7 +198,7 @@ async fn many_held_shows_each_land() {
     // The next two views on a paused clock, which moves only from timer
     // to timer, their mappings known: the pause cannot end before they
     // ask.
-    tokio::time::pause();
+    pause_inside(&anilist);
     for show in ["15", "16"] {
         tickets.extend(thumbs(&state, show, &anilist).await);
     }
@@ -409,29 +421,30 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
         .await;
     let gate = share_for_tests(&anilist.uri(), ANILIST);
     let state = state(&kitsu.uri());
-    // Kitsu's mappings of the next page's shows are known, so its fills
-    // reach AniList's lane without a request on the way.
-    for s in ["42", "43", "44"] {
+    // Kitsu's mappings of every show are known, so each fill reaches
+    // AniList's lane without a request on the way.
+    for s in ["40", "41", "42", "43", "44"] {
         crate::commands::external_ids::external_ids_for(&state, s)
             .await
             .expect("mappings");
     }
 
     let mut left = thumbs(&state, "40", &anilist).await;
+    // From here on a paused clock, which moves only from timer to timer,
+    // every task due at one run before it moves on: 41 is held back
+    // inside the pause, and the leftovers' lane closes, with no time
+    // passing on the way.
+    pause_inside(&anilist);
     left.extend(thumbs(&state, "41", &anilist).await);
     assert_eq!(left.len(), 2, "{left:?}");
     super::release(&left);
 
-    // The next page asks on a paused clock, which moves only from timer
-    // to timer, every task due at one run before it moves on: inside
-    // the pause, late enough that the fresh fills' one-second wait
-    // covers what is left of it and the quarter second the gate keeps
-    // between the two requests — the leftovers' lane long closed — and
-    // with no time passing on the way: none of the pause can run out
-    // while the page asks. The clock runs again once the gate has let
+    // The next page asks inside the pause, late enough that the fresh
+    // fills' one-second wait covers what is left of it and the quarter
+    // second the gate keeps between the two requests: none of the pause
+    // can run out while the page asks. The clock runs again once the gate has let
     // both fresh requests go, so no wait of theirs runs out on a slow
     // machine either.
-    tokio::time::pause();
     let pause = crate::meta::anilist_gate::background_wait(&anilist.uri());
     tokio::time::sleep(pause.saturating_sub(Duration::from_millis(600))).await;
     let fresh = async {

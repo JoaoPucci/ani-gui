@@ -102,21 +102,43 @@ async fn serve(respond: impl wiremock::Respond + 'static, http: &str) -> wiremoc
     server
 }
 
-/// The card for show `i` (0-based) becomes ready `(i + 1) × 250 ms` in,
-/// the way a cold strip's rows land seconds apart — each after the warm
-/// Home sends as its history loads, since a row is ready only once its
-/// match has come back.
-async fn staggered<F, Fut, T>(n: usize, card: F) -> Vec<T>
+/// The card for show `i` (0-based) becomes ready `(i + 1) × 250 ms`
+/// after `sent` — the warm's request seen at AniList — the way a cold
+/// strip's rows land seconds apart, each after the warm Home sends as
+/// its history loads, since a row is ready only once its match has come
+/// back.
+async fn staggered<F, Fut, T>(
+    n: usize,
+    sent: impl std::future::Future<Output = ()>,
+    card: F,
+) -> Vec<T>
 where
     F: Fn(usize) -> Fut,
     Fut: std::future::Future<Output = T>,
 {
+    sent.await;
     let card = &card;
     futures_util::future::join_all((0..n).map(|i| async move {
         tokio::time::sleep(Duration::from_millis(250) * u32::try_from(i + 1).unwrap_or(1)).await;
         card(i).await
     }))
     .await
+}
+
+/// Returns once `server` has received a request that `asked` reads.
+async fn seen<F, Fut>(asked: F)
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Vec<crate::meta::anilist_streaming_eps_fake_test::Asked>>,
+{
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    while asked().await.is_empty() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the warm sent nothing"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
 }
 
 #[tokio::test]
@@ -127,7 +149,8 @@ async fn a_cold_strip_warmed_at_once_fills_its_stills_in_one_request_however_lat
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
     let warm = warm_strip(&state, &ids, Some(&base));
-    let cards = staggered(ids.len(), |i| {
+    let sent = seen(|| asked_for_stills(&anilist));
+    let cards = staggered(ids.len(), sent, |i| {
         crate::commands::anilist_eps_thumbs::thumbs_for_show_with_anilist_base(
             &state,
             &ids[i],
@@ -156,7 +179,8 @@ async fn a_cold_strip_warmed_at_once_reads_its_banners_in_one_request_however_la
     let state = state_with_kitsu_at(&kitsu.uri());
     let base = anilist.uri();
     let warm = warm_strip(&state, &ids, Some(&base));
-    let cards = staggered(ids.len(), |i| {
+    let sent = seen(|| asked_for_banners(&anilist));
+    let cards = staggered(ids.len(), sent, |i| {
         crate::commands::kitsu::kitsu_anime_detail_with_anilist_base(&state, &ids[i], Some(&base))
     });
     let ((), got) = tokio::join!(warm, cards);

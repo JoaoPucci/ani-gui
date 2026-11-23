@@ -115,8 +115,9 @@ async fn lookups_arriving_while_the_first_is_out_go_together() {
         ))
     };
     // The rest arrive in the turn the first opened the lane, its lookup
-    // handed to a task of its own, and before the lane's driver can take
-    // a window: polled in order, on one thread.
+    // handed to a task of its own but not yet sent, and before the lane's
+    // driver can take a window: polled in order, on one thread. The lane
+    // tells no difference between a lookup handed off and one sent.
     let rest = futures_util::future::join_all((2..=5).map(ask));
     let (first, rest) = tokio::join!(ask(1), rest);
     assert_eq!(first.expect("answered"), fake(5).media[0].listing());
@@ -151,8 +152,9 @@ impl wiremock::Respond for SlowSingles {
 async fn a_page_that_cannot_be_read_asks_each_show_s_single_lookup_at_once() {
     // AniList nulls a media element of the page, so each gathered show
     // is asked by its single lookup. Those go together, not one after
-    // another, so every show is answered inside a caller's budget: all
-    // four are out at once, each answer held past the test.
+    // another, so none waits on the others' answers: all four are out
+    // at once, each answer held past the test. Which answer reaches
+    // which show is `a_page_that_cannot_be_read_hands_its_shows_to_their_single_lookups`'s.
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .and(wiremock::matchers::body_string_contains("malIds"))
@@ -371,7 +373,8 @@ async fn a_lookup_arriving_while_a_batch_is_out_does_not_wait_for_it() {
             Some(&base),
         ))
     };
-    let a = ask(1);
+    // A stays asked for throughout: its caller still waits while B asks.
+    let mut a = std::pin::pin!(ask(1));
     let a_out = async {
         let deadline = tokio::time::Instant::now() + IN_TIME;
         while asked_of(&server).await.is_empty() {
@@ -380,13 +383,14 @@ async fn a_lookup_arriving_while_a_batch_is_out_does_not_wait_for_it() {
         }
     };
     tokio::select! {
-        _ = a => panic!("A was answered"),
+        _ = &mut a => panic!("A was answered"),
         () = a_out => {}
     }
     let b = tokio::time::timeout(IN_TIME, ask(2))
         .await
         .expect("B waited for A's batch");
     assert_eq!(b.expect("answered"), fake(2).media[1].listing());
+    assert!(futures_util::poll!(&mut a).is_pending(), "A was still out");
     assert_eq!(
         asked_of(&server).await,
         vec![Asked::ByMal(1), Asked::ByMal(2)]
@@ -421,8 +425,12 @@ async fn a_batch_every_caller_left_is_not_sent() {
     };
     assert!(ask(1).await.is_ok());
     let queued = crate::held::until("the batch waits for its turn", || gate.waiting() == 1);
+    // Gathered, so the two go as one batch whether or not the first's
+    // lane is still open.
     tokio::select! {
-        _ = futures_util::future::join(ask(2), ask(3)) => panic!("answered inside the gap"),
+        _ = crate::meta::anilist_batch::gathered(futures_util::future::join(ask(2), ask(3))) => {
+            panic!("answered inside the gap")
+        }
         () = queued => {}
     }
     // Its callers gone, the batch leaves the gate's queue unsent.
@@ -486,7 +494,16 @@ fn a_lane_whose_runtime_went_away_opens_again() {
     let lane = "runtime-gone";
     let first = runtime();
     let client = reqwest::Client::new();
+    let (still, standing) = std::sync::mpsc::channel::<()>();
     let out = first.block_on(async {
+        // The clock stands still until the request is out, so the
+        // runtime goes while its driver is mid-window however long the
+        // request takes to arrive: a blocking task keeps a paused clock
+        // from moving on.
+        tokio::time::pause();
+        tokio::task::spawn_blocking(move || {
+            let _ = standing.recv();
+        });
         tokio::select! {
             _ = in_background(streaming_listing_coalesced(
                 &client,
@@ -497,6 +514,12 @@ fn a_lane_whose_runtime_went_away_opens_again() {
             () = gate.asked() => true,
         }
     });
+    assert_eq!(
+        <super::Streaming as crate::meta::anilist_batch::Kind>::lanes().opened(lane),
+        1,
+        "the lane was still open when its runtime went"
+    );
+    drop(still);
     assert!(out, "the first lookup was answered");
     drop(first);
     gate.release();
