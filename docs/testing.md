@@ -396,7 +396,10 @@ backend ready, and no startup failure is logged; the catalog itself
 asks only for a visible window. When it fails, the job keeps the app's
 log and a screenshot as the `catalog-check-failure` artifact. A
 release whose AppImage needs a newer glibc than the catalog's, as
-v0.14.1's did, fails here rather than in the catalog.
+v0.14.1's did, fails here rather than in the catalog. The firejail is
+Ubuntu 22.04's own (0.9.66), where the catalog installs a 2023 build of
+its own over it, so a failure particular to either firejail build
+would show in one and not the other.
 
 On a pull request it publishes no package: the AppImage goes to the
 start-up check as a one-day artifact named `catalog-check-appimage`,
