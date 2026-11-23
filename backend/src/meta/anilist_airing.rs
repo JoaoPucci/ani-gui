@@ -74,7 +74,8 @@ pub async fn airing_status(
     };
     let url = base_override.unwrap_or(ANILIST_API);
     let body = serde_json::json!({ "query": AIRING_GQL, "variables": variables });
-    let bytes = post_graphql_public(client, url, &body).await?;
+    let ask = crate::meta::anilist_gate::Ask::one(crate::meta::anilist_gate::Purpose::Airing);
+    let bytes = post_graphql_public(client, url, &body, ask).await?;
     parse_airing_response(&bytes)
 }
 

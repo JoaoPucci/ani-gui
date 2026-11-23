@@ -436,3 +436,36 @@ async fn a_batch_whose_single_translation_fails_keeps_the_rest_and_remembers_not
             .is_none()
     );
 }
+
+#[test]
+fn a_rail_batchs_single_translation_is_sent_as_the_rails() {
+    // The single translation a MAL id several media record falls back
+    // to is the Watch Later rail's request, and its sent line says so —
+    // not the tracker id bridge the same query serves for a write.
+    let lines = crate::meta::anilist_gate::sent_tests::sent_lines_of(|| async {
+        let anilist = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("MediaIdsByMals"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[{"id":137728,"idMal":51039},{"id":196613,"idMal":51039}]}}}"#,
+            ))
+            .mount(&anilist)
+            .await;
+        Mock::given(method("POST"))
+            .and(body_string_contains("MediaIdByMal("))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"id":137728}}}"#),
+            )
+            .mount(&anilist)
+            .await;
+        let state = state();
+        media_ids_for_mals(&state, &[51039], Some(&anilist.uri()))
+            .await
+            .expect("answered");
+    });
+    assert_eq!(lines.len(), 2, "{lines:#?}");
+    for line in &lines {
+        assert!(line.contains("purpose=watch_later_ids "), "{line}");
+        assert!(line.contains("shows=1 "), "{line}");
+    }
+}

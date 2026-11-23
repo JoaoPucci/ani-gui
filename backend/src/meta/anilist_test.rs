@@ -533,6 +533,7 @@ async fn post_graphql_public_retries_once_on_429() {
         &reqwest::Client::new(),
         &server.uri(),
         &serde_json::json!({}),
+        crate::meta::anilist_gate::Ask::unkeyed(crate::meta::anilist_gate::Purpose::Trending),
     )
     .await
     .expect("the retry after a single 429 must succeed");
@@ -552,6 +553,7 @@ async fn post_graphql_public_gives_up_after_one_429_retry() {
         &reqwest::Client::new(),
         &server.uri(),
         &serde_json::json!({}),
+        crate::meta::anilist_gate::Ask::unkeyed(crate::meta::anilist_gate::Purpose::Trending),
     )
     .await
     .expect_err("persistent 429 must still fail");
@@ -584,6 +586,7 @@ async fn post_graphql_public_does_not_retry_a_wait_it_cannot_honour() {
         &reqwest::Client::new(),
         &server.uri(),
         &serde_json::json!({}),
+        crate::meta::anilist_gate::Ask::unkeyed(crate::meta::anilist_gate::Purpose::Trending),
     )
     .await
     .expect_err("a 429 with a long wait fails at once");
@@ -613,6 +616,7 @@ async fn post_graphql_public_does_not_retry_other_upstream_errors() {
         &reqwest::Client::new(),
         &server.uri(),
         &serde_json::json!({}),
+        crate::meta::anilist_gate::Ask::unkeyed(crate::meta::anilist_gate::Purpose::Trending),
     )
     .await
     .expect_err("500 must fail without a retry");

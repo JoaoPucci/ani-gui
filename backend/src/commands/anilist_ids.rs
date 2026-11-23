@@ -30,6 +30,7 @@ use crate::app::AppState;
 use crate::cache::ttl::{ANILIST_ID_MAP_MISS_TTL, ANILIST_ID_MAP_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put, SqlitePool};
 use crate::error::Result;
+use crate::meta::anilist_gate::Purpose;
 
 fn media_id_key(mal_id: u32) -> String {
     format!("{}{mal_id}", crate::cache::families::ANILIST_MEDIA_FOR_MAL)
@@ -73,11 +74,26 @@ pub(crate) async fn media_id_for_mal(
     mal_id: u32,
     anilist_base: Option<&str>,
 ) -> Result<Option<u32>> {
+    media_id_for_mal_as(state, mal_id, anilist_base, Purpose::TrackerIds).await
+}
+
+/// [`media_id_for_mal`], asked for `purpose` when AniList is asked.
+///
+/// # Errors
+/// As [`media_id_for_mal`].
+async fn media_id_for_mal_as(
+    state: &AppState,
+    mal_id: u32,
+    anilist_base: Option<&str>,
+    purpose: Purpose,
+) -> Result<Option<u32>> {
     let key = media_id_key(mal_id);
     if let Some(known) = cached_id(&state.cache_pool, &key) {
         return Ok(known);
     }
-    let id = crate::meta::anilist::media_id_for_mal(&state.meta_http, mal_id, anilist_base).await?;
+    let id =
+        crate::meta::anilist::media_id_for_mal_as(&state.meta_http, mal_id, anilist_base, purpose)
+            .await?;
     remember_id(&state.cache_pool, &key, id);
     Ok(id)
 }
@@ -144,13 +160,16 @@ pub(crate) async fn media_ids_for_mals(
             // is the single translation's answer, never the batch's
             // order. A single translation that fails leaves the id out,
             // and kept nowhere, for the next load to ask again.
-            Some(_) => match media_id_for_mal(state, mal_id, anilist_base).await {
-                Ok(media_id) => media_id,
-                Err(err) => {
-                    tracing::debug!(mal_id, error = ?err, "anilist: single translation failed");
-                    continue;
+            Some(_) => {
+                match media_id_for_mal_as(state, mal_id, anilist_base, Purpose::WatchLaterIds).await
+                {
+                    Ok(media_id) => media_id,
+                    Err(err) => {
+                        tracing::debug!(mal_id, error = ?err, "anilist: single translation failed");
+                        continue;
+                    }
                 }
-            },
+            }
         };
         if listed.get(&mal_id).is_none_or(|ids| ids.len() < 2) {
             remember_id(&state.cache_pool, &media_id_key(mal_id), media_id);

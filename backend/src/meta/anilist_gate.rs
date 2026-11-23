@@ -57,6 +57,9 @@ mod answer;
 mod pace;
 use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
+#[path = "anilist_gate_purpose.rs"]
+mod purpose;
+pub(crate) use purpose::{Ask, Purpose};
 #[path = "anilist_gate_turn.rs"]
 mod turn;
 pub(crate) use turn::{as_retry, current_class, in_background, in_class};
@@ -158,8 +161,8 @@ fn gate_for(url: &str) -> Arc<Gate> {
         .unwrap_or_else(|| Arc::new(Gate::new(ANILIST)))
 }
 
-/// Send one AniList request through its host's gate. `send` builds and
-/// sends it; it is called once, or twice when a refusal's window ends
+/// Send one AniList request through its host's gate, labelled `ask` in
+/// its sent line. `send` builds and sends it; it is called once, or twice when a refusal's window ends
 /// inside the caller's budget. The response is returned as it came —
 /// a 429 included — for the transport's own status mapping.
 ///
@@ -167,11 +170,12 @@ fn gate_for(url: &str) -> Arc<Gate> {
 /// [`AniError::RateLimited`] when the caller's turn would come past its
 /// budget (nothing was sent); [`AniError::Network`] when sending
 /// failed.
-pub(crate) async fn send<F, Fut>(url: &str, send: F) -> Result<reqwest::Response>
+pub(crate) async fn send<F, Fut>(url: &str, ask: Ask, send: F) -> Result<reqwest::Response>
 where
     F: Fn() -> Fut,
     Fut: Future<Output = reqwest::Result<reqwest::Response>>,
 {
+    let _ = ask;
     let gate = gate_for(url);
     let class = current_class();
     let deadline = Instant::now() + gate.pace.wait_for(class);
@@ -244,3 +248,7 @@ impl Drop for SharedForTests {
 #[cfg(test)]
 #[path = "anilist_gate_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "anilist_gate_sent_test.rs"]
+pub(crate) mod sent_tests;

@@ -20,6 +20,7 @@
 use serde::Deserialize;
 
 use crate::error::{AniError, Result};
+use crate::meta::anilist_gate::{Ask, Purpose};
 
 #[path = "anilist_parse.rs"]
 mod parse;
@@ -147,6 +148,7 @@ pub(crate) async fn post_graphql_public(
     client: &reqwest::Client,
     url: &str,
     body: &serde_json::Value,
+    ask: crate::meta::anilist_gate::Ask,
 ) -> Result<bytes::Bytes> {
     // The same query sent again before the first answered — two views
     // filling the same show — waits for that answer instead of spending
@@ -155,7 +157,7 @@ pub(crate) async fn post_graphql_public(
     // waiting on.
     let key = request_key(crate::meta::anilist_gate::current_class(), url, body);
     PUBLIC_IN_FLIGHT
-        .run(key, || post_graphql_public_once(client, url, body))
+        .run(key, || post_graphql_public_once(client, url, body, ask))
         .await
 }
 
@@ -179,6 +181,7 @@ async fn post_graphql_public_once(
     client: &reqwest::Client,
     url: &str,
     body: &serde_json::Value,
+    ask: crate::meta::anilist_gate::Ask,
 ) -> Result<bytes::Bytes> {
     let send = || {
         client
@@ -193,7 +196,7 @@ async fn post_graphql_public_once(
     // at 30 req/min) and the app's own fan-out — trending, episode
     // thumbs, airing lookups, availability seeds — can burst past it
     // right after launch. The gate owns what is done about that.
-    let resp = crate::meta::anilist_gate::send(url, send).await?;
+    let resp = crate::meta::anilist_gate::send(url, ask, send).await?;
     crate::meta::anilist_media::graphql_body(resp).await
 }
 
@@ -217,7 +220,7 @@ pub async fn trending(
         "query": TRENDING_GQL,
         "variables": { "perPage": limit },
     });
-    let bytes = post_graphql_public(client, url, &body).await?;
+    let bytes = post_graphql_public(client, url, &body, Ask::unkeyed(Purpose::Trending)).await?;
     parse_trending(&bytes)
 }
 
@@ -238,7 +241,7 @@ pub async fn banner_for_mal_id(
         "query": BANNER_BY_MAL_GQL,
         "variables": { "idMal": mal_id },
     });
-    let bytes = post_graphql_public(client, url, &body).await?;
+    let bytes = post_graphql_public(client, url, &body, Ask::one(Purpose::Banner)).await?;
     parse_banner_response(&bytes)
 }
 
@@ -261,6 +264,19 @@ pub async fn media_id_for_mal(
     mal_id: u32,
     base_override: Option<&str>,
 ) -> Result<Option<u32>> {
+    media_id_for_mal_as(client, mal_id, base_override, Purpose::TrackerIds).await
+}
+
+/// [`media_id_for_mal`], sent for `purpose`.
+///
+/// # Errors
+/// As [`media_id_for_mal`].
+pub(crate) async fn media_id_for_mal_as(
+    client: &reqwest::Client,
+    mal_id: u32,
+    base_override: Option<&str>,
+    purpose: Purpose,
+) -> Result<Option<u32>> {
     let url = base_override.unwrap_or(ANILIST_API);
     let body = serde_json::json!({
         "query": MEDIA_ID_BY_MAL_GQL,
@@ -268,7 +284,7 @@ pub async fn media_id_for_mal(
     });
     // Shared transport: same headers as every other AniList call, plus
     // the bounded 429 retry this hand-rolled copy previously lacked.
-    let bytes = post_graphql_public(client, url, &body).await?;
+    let bytes = post_graphql_public(client, url, &body, Ask::one(purpose)).await?;
     parse_media_id_response(&bytes)
 }
 
@@ -298,7 +314,7 @@ pub async fn mal_id_for_media_id(
         "query": MAL_ID_BY_MEDIA_GQL,
         "variables": { "id": media_id },
     });
-    let bytes = post_graphql_public(client, url, &body).await?;
+    let bytes = post_graphql_public(client, url, &body, Ask::one(Purpose::TrackerIds)).await?;
     parse_mal_id_response(&bytes)
 }
 
@@ -344,7 +360,8 @@ pub async fn media_listed_for_mals(
                 "query": MEDIA_IDS_BY_MALS_GQL,
                 "variables": { "idMals": chunk },
             });
-            let bytes = post_graphql_public(client, url, &body).await?;
+            let ask = Ask::shows(Purpose::WatchLaterIds, chunk.len());
+            let bytes = post_graphql_public(client, url, &body, ask).await?;
             if page_has_next(&bytes)? {
                 return Ok(Page::Cut);
             }
@@ -374,7 +391,7 @@ pub async fn media_ids_recording_mal(
         "query": MEDIA_IDS_BY_MALS_GQL,
         "variables": { "idMals": [mal_id] },
     });
-    let bytes = post_graphql_public(client, url, &body).await?;
+    let bytes = post_graphql_public(client, url, &body, Ask::one(Purpose::TrackerMap)).await?;
     if page_has_next(&bytes)? {
         return Err(overflowing(&[mal_id]));
     }
