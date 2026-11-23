@@ -105,7 +105,11 @@ async fn fetch_batch(
                 "query": query,
                 "variables": { var: chunk },
             });
-            let bytes = post_graphql_public(client, url, &body).await?;
+            let ask = crate::meta::anilist_gate::Ask::shows(
+                crate::meta::anilist_gate::Purpose::Airing,
+                chunk.len(),
+            );
+            let bytes = post_graphql_public(client, url, &body, ask).await?;
             let page = parse_batch(&bytes, by_mal)?;
             Ok(if page.cut {
                 Page::Cut

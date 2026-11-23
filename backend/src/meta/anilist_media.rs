@@ -167,7 +167,8 @@ async fn banner_lookup(
         }),
     };
     let url = base_override.unwrap_or(ANILIST_API);
-    let bytes = post_graphql_public(client, url, &body).await?;
+    let ask = crate::meta::anilist_gate::Ask::one(crate::meta::anilist_gate::Purpose::Banner);
+    let bytes = post_graphql_public(client, url, &body, ask).await?;
     if media_is_absent(&bytes) {
         return Ok(None);
     }
@@ -184,6 +185,8 @@ pub(crate) const ANILIST_NOT_FOUND_BODY: &str = r#"{"errors":[{"message":"Not Fo
 #[path = "anilist_banner_batch.rs"]
 mod banner_batch;
 pub(crate) use banner_batch::banner_coalesced;
+#[cfg(test)]
+pub(crate) use banner_batch::{banners_batch, banners_gathered};
 
 #[cfg(test)]
 #[path = "anilist_media_test.rs"]

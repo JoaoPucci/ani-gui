@@ -65,7 +65,7 @@ fn announce(lines: &[String]) -> std::io::Result<()> {
 
 fn main() -> std::process::ExitCode {
     // Logging — RUST_LOG honoured, default keeps the noise down.
-    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "ani_gui=info".into());
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| ani_gui::DEFAULT_LOG_FILTER.into());
     tracing_subscriber::fmt()
         // A log line that cannot be written is a line lost, nothing
         // more. Left on, the logger reports a failed write with
