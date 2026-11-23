@@ -32,7 +32,7 @@ vi.mock('$app/navigation', () => ({
 
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { EPISODE_WAIT_CAP_MS } from '../../src/lib/history/card-look';
+import { EPISODE_WAIT_CAP_MS, EPISODE_WAIT_CEILING_MS } from '../../src/lib/history/card-look';
 import { sessionLooks } from '../../src/lib/history/look-book';
 import { m } from '../../src/lib/paraglide/messages';
 import { savePosition } from '../../src/lib/play/watch-position';
@@ -577,5 +577,91 @@ describe('Continue Watching card artwork', () => {
 
 		episodes.release([episode(2, THUMB)]);
 		await until(() => look(OTHER.id) === 'image', 'the remaining card to settle');
+	});
+});
+
+describe("Continue Watching card artwork while the strip's warm is out", () => {
+	// A row that recorded its show's Kitsu id: Home warms that show's
+	// stills with the whole strip, and the card is matched by the id.
+	const RECORDED = { ...ROW, kitsu_id: '1' };
+
+	function warmedRow(opts: {
+		warm: () => Promise<HttpResponse<null>>;
+		episodes: () => Promise<KitsuEpisode[]>;
+	}) {
+		return homeHandlers({ history: [RECORDED] }, [
+			http.post(`${API_BASE}/api/continue/warm`, opts.warm),
+			http.get(`${API_BASE}/api/kitsu/anime/:id`, () =>
+				HttpResponse.json<KitsuAnimeRef>(show('1', 'Cowboy Bebop'))
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, async () =>
+				HttpResponse.json<KitsuEpisode[]>(await opts.episodes())
+			)
+		]);
+	}
+
+	it('waits past the cap for a cold launch, and lands on the thumbnail the warm filled', async () => {
+		// A cold launch: the warm asks AniList for the whole strip and the
+		// card's own episode read comes back with it, well past the cap.
+		const warm = held<HttpResponse<null>>();
+		const episodes = held<KitsuEpisode[]>();
+		server.use(...warmedRow({ warm: () => warm.answer, episodes: () => episodes.answer }));
+		app = mount(HomePage, { target });
+		await until(() => resumeButton() !== null, 'the matched card');
+		const looks = watchLooks();
+		await sleep(EPISODE_WAIT_CAP_MS + 500);
+		expect(look()).toBe('pending');
+		warm.release(new HttpResponse(null, { status: 204 }));
+		await sleep(100);
+		episodes.release([episode(4, THUMB)]);
+		await until(() => look() === 'image', 'the card to settle');
+		expect(imageSource()).toBe(THUMB);
+		looks.stop();
+		expect(looks.seen).toEqual([
+			'pending | - |',
+			`image | ${THUMB} | Cowboy Bebop Episode title 4`
+		]);
+	});
+
+	it('settles on the poster at the cap when the warm has already answered', async () => {
+		const episodes = held<KitsuEpisode[]>();
+		server.use(
+			...warmedRow({
+				warm: async () => new HttpResponse(null, { status: 204 }),
+				episodes: () => episodes.answer
+			})
+		);
+		app = mount(HomePage, { target });
+		await until(() => resumeButton() !== null, 'the matched card');
+		await until(() => look() === 'image', 'the wait to run out', EPISODE_WAIT_CAP_MS + 1000);
+		expect(imageSource()).toBe(POSTER);
+		episodes.release([episode(4, THUMB)]);
+	});
+
+	it('settles on the poster as soon as a warm out past the cap fails', async () => {
+		const warm = held<HttpResponse<null>>();
+		const episodes = held<KitsuEpisode[]>();
+		server.use(...warmedRow({ warm: () => warm.answer, episodes: () => episodes.answer }));
+		app = mount(HomePage, { target });
+		await until(() => resumeButton() !== null, 'the matched card');
+		await sleep(EPISODE_WAIT_CAP_MS + 300);
+		warm.release(new HttpResponse(null, { status: 500 }));
+		await until(() => look() === 'image', 'the card to settle', 1000);
+		expect(imageSource()).toBe(POSTER);
+		episodes.release([episode(4, THUMB)]);
+	});
+
+	it('settles on the poster at the ceiling when the warm never answers', async () => {
+		const warm = held<HttpResponse<null>>();
+		const episodes = held<KitsuEpisode[]>();
+		server.use(...warmedRow({ warm: () => warm.answer, episodes: () => episodes.answer }));
+		app = mount(HomePage, { target });
+		await until(() => resumeButton() !== null, 'the matched card');
+		await sleep(EPISODE_WAIT_CEILING_MS - 600);
+		expect(look()).toBe('pending');
+		await until(() => look() === 'image', 'the ceiling', 2000);
+		expect(imageSource()).toBe(POSTER);
+		warm.release(new HttpResponse(null, { status: 204 }));
+		episodes.release([episode(4, THUMB)]);
 	});
 });
