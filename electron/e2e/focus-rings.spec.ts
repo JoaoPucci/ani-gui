@@ -20,8 +20,6 @@
  *   - The buttons of a segmented control (Sub/Dub, the settings'
  *     choices) sit inside a rounded track that clips what overflows
  *     it, and it cut their rings.
- *   - A control the keyboard scrolls into view stops flush with the
- *     window's edge, and its ring hangs past it.
  *
  * Layout is the subject, so this runs in the packaged app's Chromium.
  * The keyboard moves focus through every stop on Home, a show's page
@@ -30,7 +28,10 @@
  * the focused control's ring is read from its computed style:
  *
  *   - no control's own ring leaves the window or is cut by a box that
- *     clips what overflows it;
+ *     clips what overflows it. Above and below, the window counts only
+ *     for a control that stays put as the page scrolls (the rail, the
+ *     topbar): one that scrolls with the page meets the window's edge
+ *     wherever the scroll leaves it, as on any page;
  *   - a control whose chip carries the ring (`::before`) draws none of
  *     its own, and the chip's ring is inside the window;
  *   - the rail's mark rings the way the rail's links do.
@@ -166,6 +167,8 @@ interface Stop {
 	chipRing: Box | null;
 	/** Its own ring's look, to compare one control's with another's. */
 	look: { outline: string; boxShadow: string; borderRadius: string };
+	/** (`outline` is its style alone: its colour is the text's, and
+	 *  differs between controls that draw no outline.) */
 	/** The boxes, the window's first, that clip what overflows them. */
 	clips: { name: string; box: Box }[];
 	/** Whether this is one of the window's buttons, the rail's mark, or
@@ -223,12 +226,25 @@ function readStop(page: Page): Promise<Stop | null> {
 				chipReach
 			);
 		}
+		// The window's edges. The page never scrolls sideways, so a ring
+		// past the window's side is cut for good. Above and below, a
+		// control that scrolls with the page is cut only where the scroll
+		// has left it, as on any page; one that stays put (in the sticky
+		// rail or topbar) is cut wherever it is.
+		let pinned = false;
+		for (let a: HTMLElement | null = el; a; a = a.parentElement) {
+			const position = getComputedStyle(a).position;
+			if (position === 'fixed' || position === 'sticky') pinned = true;
+		}
 		const clips: { name: string; box: Box }[] = [
 			{
-				name: `the window (scrolled ${Math.round(window.scrollY)}, ${Math.round(
-					document.documentElement.scrollHeight - window.innerHeight - window.scrollY
-				)} px left below)`,
-				box: { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }
+				name: 'the window',
+				box: {
+					left: 0,
+					right: window.innerWidth,
+					top: pinned ? 0 : -Infinity,
+					bottom: pinned ? window.innerHeight : Infinity
+				}
 			}
 		];
 		for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
@@ -254,7 +270,11 @@ function readStop(page: Page): Promise<Stop | null> {
 			name: `${el.tagName.toLowerCase()}.${[...el.classList].join('.')} "${label}"`,
 			ring: own === null ? null : grow(rect, own),
 			chipRing,
-			look: { outline: cs.outline, boxShadow: cs.boxShadow, borderRadius: cs.borderRadius },
+			look: {
+				outline: cs.outlineStyle,
+				boxShadow: cs.boxShadow,
+				borderRadius: cs.borderRadius
+			},
 			clips,
 			kind: el.classList.contains('winctl-btn')
 				? 'winctl'
