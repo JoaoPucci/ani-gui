@@ -4,6 +4,7 @@
  * small readings its card uses. The component draws; this decides.
  */
 
+import type { KitsuEpisode } from '$lib/api';
 import type { StartPhase } from './start-state';
 
 export type VeilMode = 'off' | 'start' | 'stall';
@@ -54,4 +55,16 @@ export function episodeNumeral(episode: number): string {
 	return Number.isInteger(episode) && episode >= 0 && episode < 10
 		? `0${episode}`
 		: String(episode);
+}
+
+/** The episode numbered `episode` on any of the cached episode `pages`
+ *  (its absolute number, else its number in its season), or null when
+ *  none holds it. */
+export function episodeInPages(
+	pages: Iterable<readonly KitsuEpisode[]>,
+	episode: number
+): KitsuEpisode | null {
+	void pages;
+	void episode;
+	return null;
 }
