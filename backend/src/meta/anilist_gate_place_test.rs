@@ -7,7 +7,9 @@ use std::time::Duration;
 use proptest::prelude::*;
 
 use super::*;
-use crate::meta::anilist_gate::{share_for_tests, Pace, ANILIST};
+use crate::meta::anilist_gate::{share_for_tests, Ask, Pace, Purpose, ANILIST};
+
+const ASK: Ask = Ask::unkeyed(Purpose::Trending);
 
 proptest! {
     #[test]
@@ -50,6 +52,7 @@ async fn a_handed_place_is_given_up_as_the_request_takes_its_turn() {
             &reqwest::Client::new(),
             &uri,
             &serde_json::json!({}),
+            ASK,
         )
         .await;
         assert_eq!(watched.waiting(), 0, "given up with the turn");
@@ -79,6 +82,7 @@ async fn a_turn_comes_in_the_gap_and_past_the_wait_is_none() {
         &reqwest::Client::new(),
         &uri,
         &serde_json::json!({}),
+        ASK,
     ))
     .await;
     // Thirty seconds to the next turn: past a background fill's wait.
@@ -108,7 +112,7 @@ async fn a_request_handed_a_deadline_its_turn_comes_past_is_turned_away_at_once(
     let body = serde_json::json!({});
     let post = || {
         crate::meta::anilist_gate::in_background(crate::meta::anilist::post_graphql_public(
-            &client, &uri, &body,
+            &client, &uri, &body, ASK,
         ))
     };
     assert!(post().await.is_ok());
