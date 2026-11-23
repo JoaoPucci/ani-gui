@@ -64,6 +64,22 @@ describe('extraOnPage', () => {
 });
 
 describe('parseHistoryEpisode', () => {
+	it("reads the vectors the backend's `row_episode` is held to (switch_episode_test.rs)", () => {
+		const vectors: [string, number | null][] = [
+			['6', 6],
+			['7.5', 7.5],
+			['1-12', 1],
+			['', null],
+			['0', null],
+			['x', null],
+			['.5', null],
+			['7.5.3', 7.5],
+			['  12 extra', 12],
+			['6.', 6]
+		];
+		for (const [raw, want] of vectors) expect(parseHistoryEpisode(raw)).toBe(want);
+	});
+
 	it('reads a history row by the episode it starts with', () => {
 		expect(parseHistoryEpisode('7.5')).toBe(7.5);
 		expect(parseHistoryEpisode('7')).toBe(7);

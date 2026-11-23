@@ -5,6 +5,10 @@
 // app's window is not mapped until the splash has painted
 // (revealMaximized), so the two never compete for the top, whether or
 // not the platform honours always-on-top (native Wayland does not).
+// The one exception is a window that gets no frames while hidden
+// (native Wayland without GPU compositing): it is woken, mapped behind
+// the splash, so its page can render, and the splash is restacked on
+// top of it (lib/app-window.cjs wakeHidden, restack below).
 // It closes as the app's window shows, in that window's reveal
 // (main.js), with bootApp's close in lib/startup.cjs as the fallback.
 // A splash the user closes first cancels the launch (onDismissed).
@@ -14,7 +18,7 @@
 
 const path = require("node:path");
 
-const { APP_BACKGROUND } = require("./app-window.cjs");
+const { APP_BACKGROUND, windowIcon } = require("./app-window.cjs");
 const { STALL_MS, STEPS } = require("./splash-progress.cjs");
 const { NOT_A_CRASH, SPLASH_RELOADS, stuckWatch } = require("./splash-stuck.cjs");
 
@@ -67,9 +71,11 @@ function isSplashPage(url) {
   }
 }
 
-/** The splash window's options. */
-function splashWindowOptions() {
+/** The splash window's options: on the task bar under the app's icon
+ *  (windowIcon), like the window it stands in for. */
+function splashWindowOptions({ platform = process.platform, packaged = true } = {}) {
   return {
+    icon: windowIcon(platform, packaged),
     width: 480,
     height: 300,
     frame: false,
@@ -95,7 +101,7 @@ function splashWindowOptions() {
 
 /**
  * The splash's lifecycle. `createWindow(options)` makes the window
- * (main.js passes `new BrowserWindow`).
+ * (main.js passes the guarded window maker, lib/guarded-window.cjs).
  *
  * - `show` opens it, marked, and shows it once it has painted.
  * - `close` closes it: the boot's window has shown, so it is not the
@@ -142,6 +148,11 @@ function splashController({
   // Restart was chosen: arrange the relaunch (lib/relaunch.cjs), before
   // this launch ends. Throws when it cannot.
   onRestart = () => {},
+  // Whether this is the installed app rather than a dev session
+  // (Electron's app.isPackaged), and the platform: together they decide
+  // the splash's icon (lib/app-window.cjs windowIcon).
+  packaged = true,
+  platform = process.platform,
 }) {
   const state = fresh();
   state.version = version;
@@ -192,6 +203,10 @@ function splashController({
   let signalled = false;
   let win = null;
   let backstop = null;
+  // The bound on the splash's first paint (show).
+  let paintTimer = null;
+  // A restack waiting for the splash to have the focus back.
+  let restacking = false;
   // Reloads of a crashed splash page so far.
   let reloads = 0;
   // Rejects once the splash has lost its page while it stands in for
@@ -328,7 +343,7 @@ function splashController({
       const query = splashPageQuery({ version, stallTexts: texts, generic, words });
       let splash;
       try {
-        splash = createWindow(splashWindowOptions());
+        splash = createWindow(splashWindowOptions({ platform, packaged }));
       } catch (err) {
         logError("[main] could not show the splash:", err);
         log("[main] splash not opened: the window could not be made");
@@ -350,8 +365,24 @@ function splashController({
         windowShown = true;
         signal();
       });
-      splash.once("ready-to-show", () => {
-        if (!suppressed && win === splash && !splash.isDestroyed()) splash.show();
+      // Shown at its first paint, or SPLASH_PAINT_WAIT_MS after its page
+      // loaded when no paint came by then: a window that is not on screen
+      // may never paint (native Wayland without GPU compositing), and the
+      // splash would then appear only when it went stuck. Its window
+      // paints the page's own ink meanwhile.
+      let asked = false;
+      const reveal = () => {
+        if (asked || suppressed || over || win !== splash || splash.isDestroyed()) return;
+        asked = true;
+        splash.show();
+      };
+      splash.once("ready-to-show", reveal);
+      splash.webContents.once("did-finish-load", () => {
+        paintTimer = setTimeout(() => {
+          paintTimer = null;
+          if (!asked) log(`[main] splash shown without a paint ${SPLASH_PAINT_WAIT_MS} ms after its page loaded (${since()})`);
+          reveal();
+        }, SPLASH_PAINT_WAIT_MS);
       });
       splash.on("closed", () => {
         // Load-bearing: a splash destroyed while its shown signal is
@@ -360,6 +391,7 @@ function splashController({
         markUp();
         if (win === splash) {
           clearTimeout(backstop);
+          clearTimeout(paintTimer);
           stuck.stop();
         }
         const byUser = win === splash && !over;
@@ -439,6 +471,7 @@ function splashController({
     close() {
       over = true;
       clearTimeout(backstop);
+      clearTimeout(paintTimer);
       stuck.stop();
       if (alive()) {
         state.closed = true;
@@ -498,6 +531,31 @@ function splashController({
     dismissed() {
       return dismissedByUser || chosen !== null;
     },
+    // Put the splash back on top of a window woken behind it
+    // (lib/app-window.cjs wakeHidden): native Wayland honours no
+    // always-on-top, and mapping a window again stacks it on top. Only a
+    // splash on screen and still standing in; it takes the focus back
+    // from the woken window, which had just taken it.
+    // One at a time: hide() and show() land asynchronously on Wayland,
+    // and a focus the woken window takes again meanwhile starts nothing
+    // until the splash has had the focus back, or RESTACK_SETTLE_MS has
+    // passed (a compositor may refuse to activate it).
+    restack() {
+      if (restacking || over || !alive() || !win.isVisible()) return;
+      restacking = true;
+      const target = win;
+      let settle = null;
+      const release = () => {
+        clearTimeout(settle);
+        target.removeListener("focus", release);
+        restacking = false;
+      };
+      target.once("focus", release);
+      settle = setTimeout(release, RESTACK_SETTLE_MS);
+      log(`[main] splash put back on top of the woken window (${since()})`);
+      target.hide();
+      target.show();
+    },
     standsIn() {
       return state.opened && !over && alive() === true;
     },
@@ -550,6 +608,7 @@ function splashController({
       over = true;
       suppressed = true;
       clearTimeout(backstop);
+      clearTimeout(paintTimer);
       stuck.stop();
       state.suppressed = true;
       // Put away: it can no longer be on screen, so nothing waits on it.
@@ -619,6 +678,14 @@ function lastSplashState() {
   return { ...current };
 }
 
+/** How long after its page loaded the splash shows without having
+ *  painted (show), when ready-to-show has not come by then. */
+const SPLASH_PAINT_WAIT_MS = 250;
+
+/** The longest a restack waits for the splash to have the focus back
+ *  before another may run (restack). */
+const RESTACK_SETTLE_MS = 500;
+
 /** The longest the app's window waits for the splash to paint. The
  *  splash is a light static page and paints well within this; the bound
  *  is for one that never does. With the minimum time on screen after a
@@ -655,9 +722,22 @@ const SPLASH_COMPLETE_HOLD_REDUCED_MS = 150;
  * `afterShow` — the splash's close, at the moment the window is up. A
  * window gone meanwhile is left alone, and so is a launch `cancelled`
  * by the user closing the splash first.
+ *
+ * A window a wake already mapped (lib/app-window.cjs wakeHidden) is
+ * maximized again only if the desktop dropped it, shown (which raises
+ * and focuses it), and handed over through `onUp` at once: the `show`
+ * event the listeners onMapped attaches wait for comes with a hidden
+ * window's map, and this one is mapped already.
  */
-function revealMaximized(win, { onMapped, afterShow, cancelled = () => false }) {
+function revealMaximized(win, { onMapped, onUp = () => {}, afterShow, cancelled = () => false }) {
   if (win.isDestroyed() || cancelled()) return;
+  if (win.isVisible()) {
+    if (!win.isMaximized()) win.maximize();
+    win.show();
+    onUp();
+    afterShow();
+    return;
+  }
   win.maximize();
   onMapped();
   win.show();
@@ -669,6 +749,8 @@ module.exports = {
   SPLASH_COMPLETE_HOLD_REDUCED_MS,
   SPLASH_MIN_ON_SCREEN_MS,
   SPLASH_MIN_ON_SCREEN_REDUCED_MS,
+  RESTACK_SETTLE_MS,
+  SPLASH_PAINT_WAIT_MS,
   SPLASH_SHOW_WAIT_MS,
   revealMaximized,
   SPLASH_MARK,

@@ -137,7 +137,7 @@ Mechanical rules, enforced by `tests/arch/no_reacquired_script.sh` and `tests/ar
 - Every user-visible string goes through Paraglide. The `no-hardcoded-strings` ESLint rule enforces this; it allowlists only `aria-*`, `data-testid`, and dev-only strings.
 - Use logical CSS properties (`margin-inline-start`, not `margin-left`) so adding RTL locales later is translation-only.
 - No DOM-snapshot tests. Assert behavior: rendered text via `i18n.m`, role queries, user events.
-- hls.js is used as a singleton inside `Player.svelte`; no `new Hls()` outside that component.
+- hls.js is used as a singleton inside the player page (`routes/play/[id]/+page.svelte`); no `new Hls()` outside it.
 
 ## 7. Design direction guard rails
 
@@ -356,6 +356,12 @@ reminder, never a constraint the design has to respect.
 
 ### Choosing between options
 
+The rules under this heading are defaults that serve quality, security
+and good sense, not ends in themselves. Any of them can be questioned
+with a reason. When following one would cost one of those, say so and
+put it to the maintainer before acting. The rule holds until the
+maintainer agrees.
+
 When a change can be made more than one way, rank the options on
 correctness, safety, maintainability and the user's experience,
 weighed together rather than in a fixed order.
@@ -387,10 +393,7 @@ Where the code a change adds lives, and so its language, is one of
 these choices. Logic — the app's decisions about its data and the
 rules it follows whatever the screen shows: matching, naming,
 grouping, ranking and validating its data, and its maths — belongs in
-the Rust backend by default. That includes repeating a decision the
-backend already makes, outside the backend. A check at a trust
-boundary, or the handling of an answer that fails or is not the shape
-expected, is not such a repeat. New logic is not written in another
+the Rust backend by default. New logic is not written in another
 language because the code it touches is there; "it was already written
 that way" is not a reason for where new logic goes. A different choice
 needs a reason specific to that logic, naming what Rust would cost
@@ -418,7 +421,8 @@ above. Where any of its logic would land outside the Rust backend,
 the choice and its reason go to the maintainer before it is built, as
 the stack paragraph describes, and the pull request repeats them.
 Showing a decision on screen does not make it such a piece. A
-well-reasoned exception is the rule working, not breaking.
+well-reasoned exception, agreed with the maintainer, is the rule
+working, not breaking.
 
 Code doing a job the backend cannot do — starting it, building or
 packaging the app, checking it — is written where that job runs, in
@@ -460,10 +464,14 @@ how the transport gap reached a release.
 `tests/arch/windows_deps.sh` is that counterpart now. Add a bundled
 dependency to one fetcher and the other check goes red. Both are
 static, though: they assert that a package is *configured* to carry
-what it needs, not that a built installer does. Nothing builds the
-Windows installer in CI, so on that side the configuration is the only
-thing under guard — which is worth knowing before trusting a green
-run about a platform nobody is building.
+what it needs, not that a built installer does. CI builds the Windows
+installer only for some changes — `.github/workflows/packages.yml`
+builds it when a pull request changes how a package is built, and on a
+run started by hand — and nothing in CI ever installs or runs it. On
+every other change the configuration is the only thing under guard,
+and even a build proves only that the dependencies fetched and the
+package assembled — which is worth knowing before trusting a green run
+about a platform nobody in CI is running.
 
 When a platform genuinely cannot be served in the same change — a
 deferral, so the maintainer's call under §14 — the obligation moves

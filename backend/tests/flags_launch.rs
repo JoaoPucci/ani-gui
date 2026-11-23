@@ -54,12 +54,13 @@ fn through(cmd: &mut std::process::Command, proxy: &str) {
     cmd.env_remove("NO_PROXY").env_remove("no_proxy");
 }
 
-async fn flags(base: &str) -> serde_json::Value {
+async fn flags(base: &str, secret: &str) -> serde_json::Value {
     reqwest::Client::builder()
         .no_proxy()
         .build()
         .expect("client")
         .get(format!("{base}/api/flags"))
+        .header("x-ani-gui-internal-secret", secret)
         .send()
         .await
         .expect("flags")
@@ -95,7 +96,7 @@ async fn a_test_run_makes_no_request_for_the_flags_file() {
     );
     through(&mut cmd, &url);
     let backend = common::start(cmd);
-    let body = flags(&backend.api_base).await;
+    let body = flags(&backend.api_base, &backend.secret).await;
     let heard = heard_raw(&rx, Duration::from_secs(3));
     stop(backend);
     assert_eq!(body["origin"], "test", "{body}");
@@ -129,7 +130,7 @@ async fn test_run_with(files: &[(&str, &str)]) -> (serde_json::Value, Option<Str
     through(&mut cmd, &url);
     cmd.env("ANI_GUI_TEST_FLAGS_FILE", home.path().join(files[0].0));
     let backend = common::start(cmd);
-    let body = flags(&backend.api_base).await;
+    let body = flags(&backend.api_base, &backend.secret).await;
     let heard = heard_raw(&rx, Duration::from_secs(2));
     stop(backend);
     (body, heard)

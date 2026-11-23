@@ -48,7 +48,7 @@ async fn send(
     uri: &str,
     body: &str,
 ) -> axum::response::Response {
-    crate::api::build_api_router(state)
+    crate::api::test_router(state)
         .oneshot(
             Request::builder()
                 .method(method)
@@ -117,4 +117,32 @@ async fn a_wait_on_a_ticket_never_issued_answers_it_ended_unlanded() {
         got,
         serde_json::json!([{ "ticket": 18_446_744_073_709_551_615_u64, "landed": false }])
     );
+}
+
+#[tokio::test]
+async fn a_continue_warm_answers_once_it_is_done() {
+    // The strip's ids whose rows are all kept: nothing to ask, and the
+    // route answers with no body.
+    let state = test_state();
+    for id in ["12", "21"] {
+        meta_cache_put(
+            &state.cache_pool,
+            &crate::commands::anilist_eps_thumbs::anilist_eps_thumbs_key(id),
+            &serde_json::to_string(
+                &crate::meta::anilist_streaming_eps::StreamingListing::default(),
+            )
+            .expect("json"),
+            3600,
+        )
+        .expect("seed");
+        crate::commands::anilist_banner_memo::remember_warmed(&state.cache_pool, id, None);
+    }
+    let resp = send(
+        state.clone(),
+        "POST",
+        "/api/continue/warm",
+        r#"{"kitsu_ids":["12","21","not an id"]}"#,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 }

@@ -1,6 +1,6 @@
 {
 	"name": "ani-gui",
-	"version": "0.17.0",
+	"version": "0.18.1",
 	"description": "Browse and watch anime",
 	"homepage": "https://github.com/pucci/ani-gui",
 	"author": {
@@ -33,7 +33,7 @@
 	"devDependencies": {
 		"@playwright/test": "^1.59.1",
 		"electron": "^33.2.0",
-		"electron-builder": "^25.1.8",
+		"electron-builder": "^26.18.0",
 		"fast-check": "^4.7.0"
 	},
 	"build": {
@@ -51,6 +51,7 @@
 			"package.json",
 			"lib/**/*.cjs",
 			"splash/**/*",
+			"build-resources/icon.png",
 			"!lib/**/*.test.cjs",
 			"node_modules/**/*"
 		],
@@ -70,8 +71,10 @@
 			"artifactName": "${productName}-${version}-${arch}.${ext}",
 			"maintainer": "ani-gui contributors <dev@thirdmovement.net>",
 			"desktop": {
-				"GenericName": "Anime Viewer",
-				"Keywords": "anime;video;streaming;player;"
+				"entry": {
+					"GenericName": "Anime Viewer",
+					"Keywords": "anime;video;streaming;player;"
+				}
 			},
 			"extraResources": [
 				{
@@ -81,12 +84,21 @@
 				{
 					"from": "build-resources/linux/bin",
 					"to": "bin"
+				},
+				{
+					"from": "build-resources/licenses",
+					"to": "licenses",
+					"filter": [
+						"curl-impersonate.txt",
+						"yt-dlp.txt"
+					]
 				}
 			]
 		},
 		"deb": {
 			"afterInstall": "build-resources/deb-after-install.sh",
 			"afterRemove": "build-resources/deb-after-remove.sh",
+			"appArmorProfile": "build-resources/apparmor-profile",
 			"depends": [
 				"curl",
 				"sed",
@@ -94,7 +106,8 @@
 				"coreutils"
 			],
 			"recommends": [
-				"ffmpeg"
+				"ffmpeg",
+				"ca-certificates"
 			]
 		},
 		"win": {
@@ -119,6 +132,10 @@
 				{
 					"from": "build-resources/win/bin",
 					"to": "bin"
+				},
+				{
+					"from": "build-resources/licenses",
+					"to": "licenses"
 				}
 			]
 		},

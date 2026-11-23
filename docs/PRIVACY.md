@@ -195,6 +195,19 @@ ani-gui keeps the following on your computer only:
   in `remote-flags.json` under your OS's cache directory. It holds
   only the maintainer's switches, nothing about you.
 
+**Uninstalling on Windows.** The uninstaller asks whether to delete
+your ani-gui settings, cache and watch history. Answered Yes, it
+removes the app's data folders under `thirdmovement\ani-gui` in
+`%APPDATA%` and `%LOCALAPPDATA%`, then each `thirdmovement` folder that
+is left empty, and the app's folder in `%APPDATA%\ani-gui`, which holds
+the local browser storage, the window size and the encrypted OAuth
+tokens. Answered No, those stay for a later install. Either way it
+removes the copy of the installer it keeps in
+`%LOCALAPPDATA%\ani-gui-updater`. Releases up to and including 0.18.0
+left `%APPDATA%\ani-gui`, that installer copy and the emptied
+`thirdmovement` folders behind even on Yes. On Linux, removing the
+package leaves your data in place.
+
 ## What ani-gui transmits to public services
 
 Most requests follow what you open: a page fetches what it shows, and
@@ -213,7 +226,7 @@ the list again when the saved copy is six hours old or more. For each
 kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, and the streaming
-  catalogue playback resolves against: hianime (reached at hianime.at). anidb.app was asked first
+  catalogue playback resolves against: hianime (reached at hianime.fm). anidb.app was asked first
   until it was retired in October 2026, and nothing contacts it now.
   Searches and episode listings are asked for as you browse and play;
   the rows of shows on the home page and the search page, and a show

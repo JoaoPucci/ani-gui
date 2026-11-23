@@ -9,8 +9,9 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn proxy_with_tracks(referer: &str, tracks: Vec<SubtitleTrack>) -> (Router, String) {
     let sessions = SessionTable::new();
-    let mut session = StreamSession::new(
+    let mut session = StreamSession::new_with_kind(
         url::Url::parse("https://cdn.example/master.m3u8").expect("master url"),
+        crate::proxy::MediaKind::Hls,
         referer.to_string(),
     );
     session.subtitles = tracks;

@@ -29,12 +29,19 @@ import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AiringStatus, Config, HistoryRowByKitsu, KitsuAnimeRef } from '../../src/lib/api';
 const KITSU_ID = '7';
 const BANNER = 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/7.jpg';
 const show = () => ({
 	...kitsuRef(KITSU_ID, 'Mushishi', 26),
 	status: 'finished',
-	poster_image: { large: 'https://media.kitsu.app/anime/7/poster_image/large.jpg' },
+	poster_image: {
+		tiny: null,
+		small: null,
+		medium: null,
+		large: 'https://media.kitsu.app/anime/7/poster_image/large.jpg',
+		original: null
+	},
 	cover_image: {
 		tiny: null,
 		small: null,
@@ -64,15 +71,26 @@ beforeEach(() => {
 	document.body.appendChild(target);
 	server.use(
 		...homeHandlers({}, [
-			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([show()]))
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([show()])
+			)
 		]),
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
-		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () => HttpResponse.json(show())),
-		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: 26, next_episode: null, next_airing_at: null, upcoming: [] })
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
+		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+			HttpResponse.json<KitsuAnimeRef>(show())
 		),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
-		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/tmp'))
+		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+			HttpResponse.json<AiringStatus>({
+				aired: 26,
+				next_episode: null,
+				next_airing_at: null,
+				upcoming: []
+			})
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
+			HttpResponse.json<HistoryRowByKitsu | null>(null)
+		),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/tmp'))
 	);
 });
 

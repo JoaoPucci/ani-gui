@@ -2,7 +2,10 @@
 //!
 //! Its own file, like the crate's other property modules.
 
-use super::{candidate_names, fetch_args, redacted_url, scrub_stderr, split_trailer, FetchRequest};
+use super::{
+    candidate_names, fetch_args, fetch_args_trusting, redacted_url, scrub_stderr, split_trailer,
+    trust_args, FetchRequest,
+};
 
 proptest::proptest! {
     /// Expansion is exactly the suffix table applied in order: one
@@ -248,5 +251,42 @@ proptest::proptest! {
     ) {
         let text = format!("{body}\n{status}");
         proptest::prop_assert_eq!(split_trailer(&text), (body.as_str(), status.as_str(), ""));
+    }
+}
+
+proptest::proptest! {
+    /// The trust flags are an insertion and nothing more: for every
+    /// request, target and combination of stores, they appear once, as
+    /// one contiguous run ahead of the `-w` trailer format and the URL,
+    /// and taking them back out leaves exactly the argv with none. The
+    /// URL stays the final operand throughout.
+    #[test]
+    fn the_trust_flags_ride_ahead_of_the_trailer_and_disturb_nothing_else(
+        url in "https://[a-z]{1,10}\\.[a-z]{2,4}/[a-z0-9/-]{0,20}",
+        headers in proptest::collection::vec(("[A-Za-z-]{1,20}", "[^\\r\\n]{0,40}"), 0..4),
+        target in proptest::option::of("[a-z]{1,12}[0-9]{0,4}"),
+        held in proptest::bool::ANY,
+        native in proptest::bool::ANY,
+        bundle in proptest::bool::ANY,
+    ) {
+        let mut req = FetchRequest::get(url.as_str());
+        if held {
+            req = req.held_to_origin();
+        }
+        for (name, value) in &headers {
+            req = req.header(name.clone(), value.clone());
+        }
+        let trust = trust_args(native, bundle);
+        let bare = fetch_args_trusting(&req, target.as_deref(), &[]);
+        let args = fetch_args_trusting(&req, target.as_deref(), &trust);
+        proptest::prop_assert_eq!(args.len(), bare.len() + trust.len());
+        proptest::prop_assert_eq!(args.last().map(String::as_str), Some(url.as_str()));
+        let w = args.iter().rposition(|a| a == "-w").expect("the trailer format");
+        let start = w - trust.len();
+        let want: Vec<String> = trust.iter().map(|s| (*s).to_string()).collect();
+        proptest::prop_assert_eq!(&args[start..w], want.as_slice());
+        let mut stripped = args.clone();
+        stripped.drain(start..w);
+        proptest::prop_assert_eq!(stripped, bare);
     }
 }

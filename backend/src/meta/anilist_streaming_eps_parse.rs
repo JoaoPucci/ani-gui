@@ -28,26 +28,38 @@ pub fn parse_streaming_episodes_response(body: &[u8]) -> Result<StreamingListing
         #[serde(rename = "Media")]
         media: crate::meta::present::Present<Media>,
     }
-    #[derive(Deserialize)]
-    struct Media {
-        #[serde(default)]
-        episodes: Option<u32>,
-        #[serde(default)]
-        status: Option<String>,
-        #[serde(rename = "streamingEpisodes")]
-        streaming_episodes: crate::meta::present::Present<Vec<StreamingEpisode>>,
-    }
-    #[derive(Deserialize)]
-    struct StreamingEpisode {
-        title: Option<String>,
-        thumbnail: Option<String>,
-    }
     let parsed: Wrap = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
         detail: format!("anilist streamingEpisodes response: {e}"),
     })?;
-    let Some(media) = parsed.data.media.into_inner() else {
-        return Ok(StreamingListing::default());
-    };
+    Ok(parsed
+        .data
+        .media
+        .into_inner()
+        .map(listing_of)
+        .unwrap_or_default())
+}
+
+/// One media node of a `streamingEpisodes` answer: the shape the single
+/// lookup and each node of a batched page share.
+#[derive(Deserialize)]
+pub(super) struct Media {
+    #[serde(default)]
+    episodes: Option<u32>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(rename = "streamingEpisodes")]
+    streaming_episodes: crate::meta::present::Present<Vec<StreamingEpisode>>,
+}
+
+#[derive(Deserialize)]
+struct StreamingEpisode {
+    title: Option<String>,
+    thumbnail: Option<String>,
+}
+
+/// The listing one media node reads as: see
+/// [`parse_streaming_episodes_response`] for which entries it keeps.
+pub(super) fn listing_of(media: Media) -> StreamingListing {
     let mut listing = StreamingListing {
         episodes: media.episodes,
         finished: media.status.as_deref() == Some("FINISHED"),
@@ -66,7 +78,7 @@ pub fn parse_streaming_episodes_response(body: &[u8]) -> Result<StreamingListing
             entry.thumbnail = e.thumbnail;
         }
     }
-    Ok(listing)
+    listing
 }
 
 /// Split an AniList streaming-episode title like `"Episode 1 - …"`

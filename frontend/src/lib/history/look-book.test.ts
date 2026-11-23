@@ -10,14 +10,17 @@ import {
 } from './card-look';
 import { createLookBook, lookKey, type RememberedCard } from './look-book';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 const proxy = (u: string | null) => (u ? `proxy:${u}` : null);
 
 function ref(id: string, poster: string | null = `https://img/${id}.jpg`): KitsuAnimeRef {
-	return {
+	return kitsuRefAnswer({
 		id,
 		canonical_title: `Show ${id}`,
-		poster_image: poster ? { medium: poster, large: null, small: null, original: null } : null
-	} as unknown as KitsuAnimeRef;
+		poster_image: poster
+			? { tiny: null, small: null, medium: poster, large: null, original: null }
+			: null
+	});
 }
 
 function ep(thumb: string | null, title: string | null = 'An Episode', n = 4): KitsuEpisode {

@@ -124,6 +124,11 @@ pub(crate) const KITSU_EXTERNAL_IDS: &str = "kitsu:external-ids:v2:k";
 pub(crate) const KITSU_MAL_MAP: &str = "kitsu:mal-map:v1:";
 /// A show's watched-at stamp.
 pub(crate) const WATCHED_AT: &str = "watched-at:v1:";
+/// The Continue card a row's play came from, when it landed on another
+/// listing (`commands::guessed_from`).
+pub(crate) const GUESSED_FROM: &str = "guessed-from:v1:";
+/// The Kitsu id the user linked a row to (`commands::linked_note`).
+pub(crate) const LINKED: &str = "history-linked:v1:";
 /// The mark a play leaves beside the reverse mapping it stored.
 pub(crate) const MAPPING_PLAYED: &str = "allmanga2kitsu:played:v1:";
 /// An airing show's status.
@@ -134,6 +139,9 @@ pub(crate) const ANISKIP: &str = "aniskip:v2:";
 pub(crate) const APPENDED: &str = "appended:v2:";
 /// AniList's banner for a Kitsu entry.
 pub(crate) const ANILIST_BANNER: &str = "anilist:banner:v1:k";
+/// AniList's banner for a Kitsu entry, as a Continue strip's warm found
+/// it: read only where the entry's detail has no cover of its own.
+pub(crate) const ANILIST_STRIP_BANNER: &str = "anilist:strip-banner:v1:k";
 /// AniList's episode thumbnails for a Kitsu entry.
 pub(crate) const ANILIST_EPS_THUMBS: &str = "anilist:eps-thumbs:v2:k";
 /// A MyAnimeList id's AniList media id.
@@ -200,11 +208,14 @@ pub fn live() -> Vec<Family> {
         KITSU_EXTERNAL_IDS,
         KITSU_MAL_MAP,
         WATCHED_AT,
+        GUESSED_FROM,
+        LINKED,
         MAPPING_PLAYED,
         AIRING,
         ANISKIP,
         APPENDED,
         ANILIST_BANNER,
+        ANILIST_STRIP_BANNER,
         ANILIST_EPS_THUMBS,
         ANILIST_MEDIA_FOR_MAL,
         ANILIST_MAL_FOR_MEDIA,

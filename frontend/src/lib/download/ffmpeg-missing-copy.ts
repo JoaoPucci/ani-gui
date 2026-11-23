@@ -3,9 +3,11 @@
  *
  * The recovery instructions differ enough between platforms that one
  * shared body string ends up misleading two thirds of users:
- *   - Windows installs ffmpeg via the NSIS installer's bundled fetcher
- *     (`fetch-windows-deps.mjs`). If the user dismissed it without
- *     internet, the right answer is "re-run the installer".
+ *   - The Windows installer downloads ffmpeg at install time
+ *     (`electron/build-resources/installer.nsh`). Missing there means
+ *     that download failed — the install ran offline — or the user
+ *     skipped it with an ffmpeg on PATH that has since gone, and the
+ *     right answer is "re-run the installer online".
  *   - Linux installs ffmpeg via the distro package manager. The
  *     `.deb` declares it as a Recommends so apt picks it up; AppImage
  *     users on a fresh distro hit this modal. Either way the recovery

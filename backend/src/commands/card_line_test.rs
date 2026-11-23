@@ -1,0 +1,298 @@
+//! The line a Continue card stands for, and whether it can be corrected.
+
+use super::*;
+use proptest::prelude::*;
+
+const CARD: &str = "hianime:jojos-bizarre-adventure-2000-5182";
+const PLAYED: &str = "hianime:jojos-bizarre-adventure-2012-708";
+const SERIES_2012: &str = "7158";
+const OVA_2000: &str = "4013";
+
+fn row(id: &str, from: Option<&str>, show: Option<&str>, guess: bool) -> CardRow {
+    CardRow {
+        id: id.into(),
+        guessed_from: from.map(str::to_string),
+        show: show.map(str::to_string),
+        guess,
+        named: false,
+    }
+}
+
+fn line_of(rows: &[CardRow], id: &str) -> String {
+    card_lines(rows)[id].line.clone()
+}
+
+#[test]
+fn the_jojo_card_stands_for_the_2000_line_its_guessed_play_came_from() {
+    let rows = [
+        row(PLAYED, Some(CARD), Some(SERIES_2012), true),
+        row(CARD, None, Some(SERIES_2012), true),
+    ];
+    assert_eq!(line_of(&rows, PLAYED), CARD);
+}
+
+#[test]
+fn once_the_2000_line_is_linked_to_its_show_the_2012_row_is_its_own_card() {
+    let rows = [
+        row(PLAYED, Some(CARD), Some(SERIES_2012), true),
+        row(CARD, None, Some(OVA_2000), false),
+    ];
+    assert_eq!(line_of(&rows, PLAYED), PLAYED);
+    assert_eq!(line_of(&rows, CARD), CARD);
+}
+
+#[test]
+fn once_the_2000_line_records_the_2012_series_the_card_stays_that_line() {
+    // The user's Yes on the player: the 2012 row is still a guess, and
+    // the line answered for records the same show.
+    let rows = [
+        row(PLAYED, Some(CARD), Some(SERIES_2012), true),
+        row(CARD, None, Some(SERIES_2012), false),
+    ];
+    assert_eq!(line_of(&rows, PLAYED), CARD);
+}
+
+#[test]
+fn the_row_stands_for_itself_when_its_line_is_gone_or_not_matched() {
+    let played = row(PLAYED, Some(CARD), Some(SERIES_2012), true);
+    assert_eq!(line_of(std::slice::from_ref(&played), PLAYED), PLAYED);
+    let unmatched = [played.clone(), row(CARD, None, None, true)];
+    assert_eq!(line_of(&unmatched, PLAYED), PLAYED);
+    let shown_unmatched = [
+        row(PLAYED, Some(CARD), None, true),
+        row(CARD, None, None, true),
+    ];
+    assert_eq!(line_of(&shown_unmatched, PLAYED), PLAYED);
+}
+
+#[test]
+fn a_shown_row_that_records_its_own_show_stands_for_itself() {
+    // The 2012 row was played from the 2012 series' page before.
+    let rows = [
+        row(PLAYED, Some(CARD), Some(SERIES_2012), false),
+        row(CARD, None, Some(SERIES_2012), true),
+    ];
+    assert_eq!(line_of(&rows, PLAYED), PLAYED);
+}
+
+#[test]
+fn the_card_of_a_line_the_user_named_stands_for_it_after_its_play_landed_elsewhere() {
+    // The user named the 2012 series for the 2000 line (Yes, or a pick
+    // and "Switch to it now"). The line's next play is the 2012 series'
+    // own stream, on its listing: the 2012 row records its show and is
+    // newer, so Home's one card shows it. The line the card's play came
+    // from is the one the user named: the card stands for it, and its
+    // pill stays to change the show again.
+    let named = CardRow {
+        named: true,
+        ..row(CARD, None, Some(SERIES_2012), false)
+    };
+    let rows = [row(PLAYED, Some(CARD), Some(SERIES_2012), false), named];
+    assert_eq!(
+        card_lines(&rows)[PLAYED],
+        CardLine {
+            line: CARD.into(),
+            correctable: true
+        }
+    );
+}
+
+#[test]
+fn the_card_of_a_named_bare_line_stands_for_it_once_its_play_wrote_the_walked_row() {
+    // A retired provider's bare line, named Young Ladies Don't Play
+    // Fighting Games. Its next play landed on the walked listing with
+    // the same words, which records the show and is newer: the card
+    // shows it, and stands for the line the user named.
+    const BARE: &str = "young-ladies-dont-play-fighting-games-6393";
+    const WALKED: &str = "hianime:young-ladies-dont-play-fighting-games-200";
+    let rows = [
+        row(WALKED, None, Some("44021"), false),
+        CardRow {
+            named: true,
+            ..row(BARE, None, Some("44021"), false)
+        },
+        // Another listing, named for the same show: not the card's line.
+        CardRow {
+            named: true,
+            ..row("hianime:young-ladies-recap-9", None, Some("44021"), false)
+        },
+    ];
+    assert_eq!(
+        card_lines(&rows)[WALKED],
+        CardLine {
+            line: BARE.into(),
+            correctable: true
+        }
+    );
+}
+
+#[test]
+fn a_named_row_shown_stands_for_itself() {
+    let named = |id: &str, from: Option<&str>| CardRow {
+        named: true,
+        ..row(id, from, Some(SERIES_2012), false)
+    };
+    let rows = [named(PLAYED, Some(CARD)), named(CARD, None)];
+    assert_eq!(line_of(&rows, PLAYED), PLAYED);
+}
+
+#[test]
+fn a_named_line_of_another_show_leaves_the_row_its_own() {
+    // The 2000 line was named for the OVA since: the 2012 row is the
+    // 2012 series' own card.
+    let rows = [
+        row(PLAYED, Some(CARD), Some(SERIES_2012), false),
+        CardRow {
+            named: true,
+            ..row(CARD, None, Some(OVA_2000), false)
+        },
+    ];
+    assert_eq!(line_of(&rows, PLAYED), PLAYED);
+}
+
+#[test]
+fn a_row_no_guessed_play_wrote_stands_for_itself() {
+    let rows = [row(CARD, None, Some(SERIES_2012), true)];
+    assert_eq!(line_of(&rows, CARD), CARD);
+    let own = [row(CARD, Some(CARD), Some(SERIES_2012), true)];
+    assert_eq!(line_of(&own, CARD), CARD);
+}
+
+#[test]
+fn a_line_is_correctable_while_a_guess_or_once_named() {
+    let named = CardRow {
+        named: true,
+        ..row("named-1", None, Some("1"), false)
+    };
+    let rows = [
+        row("guess-1", None, Some("1"), true),
+        named,
+        row("own-1", None, Some("1"), false),
+    ];
+    let lines = card_lines(&rows);
+    assert!(lines["guess-1"].correctable);
+    assert!(lines["named-1"].correctable);
+    assert!(!lines["own-1"].correctable);
+}
+
+#[test]
+fn correctable_is_asked_of_the_line_the_card_stands_for() {
+    // The shown 2012 row is a guess; the 2000 line it stands for is one
+    // the user named for the 2012 series (the slip's Yes): the card can
+    // change it again.
+    let rows = [
+        row(PLAYED, Some(CARD), Some(SERIES_2012), true),
+        CardRow {
+            named: true,
+            ..row(CARD, None, Some(SERIES_2012), false)
+        },
+    ];
+    let lines = card_lines(&rows);
+    assert_eq!(
+        lines[PLAYED],
+        CardLine {
+            line: CARD.into(),
+            correctable: true
+        }
+    );
+}
+
+#[test]
+fn the_rows_arrive_as_the_renderer_sends_them() {
+    let rows: Vec<CardRow> = serde_json::from_value(serde_json::json!([
+        { "id": PLAYED, "guessed_from": CARD, "show": SERIES_2012, "guess": true },
+        { "id": CARD, "show": SERIES_2012, "guess": true, "named": false },
+        { "id": "bare-1" }
+    ]))
+    .unwrap();
+    assert_eq!(rows[2], row("bare-1", None, None, false));
+    let wire = serde_json::to_value(card_lines(&rows)).unwrap();
+    assert_eq!(
+        wire[PLAYED],
+        serde_json::json!({ "line": CARD, "correctable": true })
+    );
+}
+
+fn world() -> impl Strategy<Value = (Vec<CardRow>, usize)> {
+    let id = || proptest::sample::select(&["a-1", "b-1", "hianime:a-2", "hianime:b-3"][..]);
+    proptest::collection::vec(
+        (
+            id(),
+            proptest::option::of(id()),
+            proptest::option::of(proptest::sample::select(&["k1", "k2"][..])),
+            any::<bool>(),
+            any::<bool>(),
+        ),
+        1..5,
+    )
+    .prop_map(|raw| {
+        let mut seen = std::collections::HashSet::new();
+        raw.into_iter()
+            .filter(|(id, ..)| seen.insert(*id))
+            .map(|(id, from, show, guess, named)| CardRow {
+                id: id.into(),
+                guessed_from: from.map(str::to_string),
+                show: show.map(str::to_string),
+                guess,
+                named,
+            })
+            .collect::<Vec<_>>()
+    })
+    .prop_flat_map(|rows| {
+        let n = rows.len();
+        (Just(rows), 0..n)
+    })
+}
+
+proptest! {
+    #[test]
+    fn a_card_stands_for_its_line_exactly_when_both_show_as_the_same_show(
+        (rows, at) in world(),
+    ) {
+        let shown = &rows[at];
+        let line = card_lines(&rows)[&shown.id].line.clone();
+        let from = shown.guessed_from.as_deref();
+        // A guessed row stands for the line its play came from; so does
+        // one that records its show, when that line is one the user
+        // named, unless the row shown was named itself.
+        let same = from.is_some_and(|f| f != shown.id)
+            && shown.show.is_some()
+            && rows.iter().any(|r| {
+                Some(r.id.as_str()) == from
+                    && r.show == shown.show
+                    && (shown.guess || (r.named && !shown.named))
+            });
+        if same {
+            prop_assert_eq!(Some(line.as_str()), from);
+        } else {
+            // Else a named line of the shown row's own listing, shown as
+            // the same show, for a row neither guessed nor named, when
+            // there is one; else the row itself.
+            let listed = |r: &CardRow| {
+                r.id != shown.id
+                    && r.named
+                    && r.show.is_some()
+                    && r.show == shown.show
+                    && crate::commands::history_link::card_listing(&r.id, &shown.id)
+            };
+            let has = !shown.guess && !shown.named && rows.iter().any(listed);
+            if has {
+                let r = rows.iter().find(|r| r.id == line).expect("a held row");
+                prop_assert!(listed(r));
+            } else {
+                prop_assert_eq!(&line, &shown.id);
+            }
+        }
+    }
+
+    #[test]
+    fn a_card_is_correctable_exactly_when_its_line_is_a_guess_or_named(
+        (rows, at) in world(),
+    ) {
+        let lines = card_lines(&rows);
+        let shown = &lines[&rows[at].id];
+        let line = rows.iter().find(|r| r.id == shown.line).expect("a held row");
+        prop_assert_eq!(shown.correctable, line.guess || line.named);
+        prop_assert_eq!(lines.len(), rows.len());
+    }
+}
