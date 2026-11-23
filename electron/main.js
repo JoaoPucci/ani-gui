@@ -36,6 +36,13 @@ if (
   return;
 }
 
+// What the user launched the app with, for what the app starts on Linux
+// (lib/child-env.cjs): taken before Chromium's GTK start-up adds to it,
+// which happens after this file's top level has run. Electron's earlier
+// rewrite of the desktop is undone from the copy it keeps.
+const childEnvs = require("./lib/child-env.cjs");
+const LAUNCH_ENV = childEnvs.launchSnapshot(process.env);
+
 const {
   app,
   BrowserWindow,
@@ -65,6 +72,26 @@ const {
   awaitHandshake,
 } = require("./lib/backend-handshake.cjs");
 const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
+
+/** The environment a program the app starts gets (lib/child-env.cjs). */
+function userEnv() {
+  return childEnvs.childEnv({ platform: process.platform, launch: LAUNCH_ENV, now: process.env });
+}
+
+/**
+ * Run `open`, a shell call that starts a program from this process's own
+ * environment (openExternal, openPath), with the user's in place for
+ * the call alone (lib/child-env.cjs).
+ */
+function asUser(open) {
+  return childEnvs.withUserEnv({
+    platform: process.platform,
+    target: process.env,
+    launch: LAUNCH_ENV,
+    open,
+  });
+}
+const openExternal = (url) => asUser(() => shell.openExternal(url));
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
@@ -252,7 +279,7 @@ const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: loggedRedacted });
 const makeWindow = guardedWindowMaker({
   BrowserWindow,
   app: APP_DOCUMENT,
-  openExternal: (url) => shell.openExternal(url),
+  openExternal,
   logError: loggedRedacted,
 });
 
@@ -416,7 +443,9 @@ async function spawnBackend() {
     spawn,
     bin: resolveBackendBinary(),
     platform: process.platform,
-    env: process.env,
+    // The user's environment, which the external player and Syncplay it
+    // spawns inherit (lib/child-env.cjs).
+    env: userEnv(),
     track: (child) => {
       backendChild = child;
       reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
@@ -944,7 +973,7 @@ ipc.handle("ani-gui:reveal-in-folder", async (_event, dirPath) => {
   if (!isRevealableDirectory(dirPath, { pathModule: path, statSync: fs.statSync })) return false;
   // Use openPath for directories (showItemInFolder targets a file
   // and selects it). Returns '' on success per Electron docs.
-  const err = await shell.openPath(dirPath);
+  const err = await asUser(() => shell.openPath(dirPath));
   return err === "";
 });
 
@@ -1065,7 +1094,7 @@ ipc.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   // the rejection so we shut down the listener and surface a launch
   // error immediately.
   try {
-    await shell.openExternal(authUrl);
+    await openExternal(authUrl);
   } catch (err) {
     // server.stop() rejects server.promise with
     // "cancelled". We're about to bail without awaiting it, so attach
@@ -1181,7 +1210,7 @@ ipc.handle("ani-gui:account:clear-token", async (_event, provider) => {
 ipc.handle("ani-gui:open-external", async (_event, url) => {
   if (typeof url !== "string") return false;
   if (!/^https?:\/\//.test(url)) return false;
-  await shell.openExternal(url);
+  await openExternal(url);
   return true;
 });
 
@@ -1282,6 +1311,8 @@ app.whenReady().then(() => {
     platform: process.platform,
     exec: execText,
     appendSwitch: (name) => app.commandLine.appendSwitch(name),
+    // GSettings applies per-desktop overrides: read as the user's desktop.
+    env: userEnv(),
   });
   return bootApp({
     spawnBackend: async () => {
