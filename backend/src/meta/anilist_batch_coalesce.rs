@@ -63,9 +63,7 @@ use tokio::sync::oneshot;
 
 use super::{batch_each, Kind, Want};
 use crate::error::{AniError, Result};
-use crate::meta::anilist_gate::{
-    current_class, handing, in_class, place, turn_in, wait_for, Class, Place,
-};
+use crate::meta::anilist_gate::{current_class, in_class, turn_in};
 use tokio::time::Instant;
 
 /// How long a lane gathers lookups before its batch goes out: under the
@@ -249,175 +247,14 @@ pub(crate) async fn coalesced<K: Kind>(
     answer.await.unwrap_or(Err(AniError::Network))
 }
 
-/// Whether a lookup of `class` whose turn comes in `turn` waits for it in
-/// its lane: a background lookup the gate would hold back, inside its
-/// wait.
-pub(crate) fn waits_for_turn(class: Class, turn: Option<Duration>) -> bool {
-    class == Class::Background && turn.is_some_and(|wait| !wait.is_zero())
-}
-
-/// What a lane waiting for the gate's turn does next, `left` of its
-/// lookups' wait: `Some(nap)` to look again after `nap`, `None` to hand
-/// its batch to the gate now — once it would not wait for the turn, once
-/// the turn is [`CLOSED_POLL`] away or nearer, and once the turn comes
-/// past `left`, which the gate then turns away.
-pub(crate) fn next_look(class: Class, turn: Option<Duration>, left: Duration) -> Option<Duration> {
-    let turn = turn.filter(|_| waits_for_turn(class, turn))?;
-    if turn <= CLOSED_POLL || turn > left {
-        return None;
-    }
-    Some((turn - CLOSED_POLL).min(CLOSED_POLL))
-}
-
-/// When a held batch's wait for a turn runs out: `budget` after its wait
-/// began, or after its last lookup joined, whichever is later — so no
-/// lookup in it is turned away sooner than it would have been alone.
-pub(crate) fn batch_deadline(started: Instant, last_join: Instant, budget: Duration) -> Instant {
-    started.max(last_join) + budget
-}
-
-/// What a lane hands the gate with its batch: the place it held, and
-/// when the lookups' wait for a turn runs out.
-struct Handoff {
-    place: Option<Place>,
-    deadline: Instant,
-}
-
-/// The task gathering one lane's batches.
-struct Driver<K> {
-    lane: String,
-    client: reqwest::Client,
-    base: Option<String>,
-    /// The endpoint, for its gate.
-    url: String,
-    class: Class,
-    /// How long the first batch gathers before it waits for its turn.
-    first_wait: Duration,
-    kind: PhantomData<K>,
-}
-
-impl<K: Kind> Driver<K> {
-    /// Each window, hand what the lane gathered to a task of its own and
-    /// go on gathering: a lookup arriving while a batch is out goes in
-    /// the next window's batch, not after the first one answers.
-    async fn run(self, mut guard: Closing<K>) {
-        let mut wait = self.first_wait;
-        loop {
-            if !wait.is_zero() {
-                tokio::time::sleep(wait).await;
-            }
-            wait = WINDOW;
-            let Some(handoff) = self.until_turn().await else {
-                guard.0 = None;
-                return;
-            };
-            let Some(batch) = self.take() else {
-                guard.0 = None;
-                return;
-            };
-            let (wants, replies): (Vec<Want>, Vec<Reply<K::Out>>) = batch
-                .into_iter()
-                .filter(|(_, reply)| !reply.is_closed())
-                .unzip();
-            let client = self.client.clone();
-            let base = self.base.clone();
-            tokio::spawn(in_class(
-                self.class,
-                handing(
-                    handoff.place,
-                    handoff.deadline,
-                    deliver::<K>(client, base, wants, replies),
-                ),
-            ));
-        }
-    }
-
-    /// Wait, while what the lane gathered would be held back for a turn
-    /// inside its wait, for that turn, holding a place in the gate's
-    /// queue; callers that stop waiting meanwhile are let go. The place,
-    /// if one was taken; `None`, and the lane closed, once nobody waits.
-    ///
-    /// The wait counts against the lookups' own: past what is left of it
-    /// the batch is handed to the gate, with that deadline
-    /// ([`Handoff::deadline`]), which turns it away as it would have
-    /// turned away a lookup waiting there alone. The last
-    /// [`CLOSED_POLL`] is waited in the gate's own queue, where the batch
-    /// takes its turn with no step left before it.
-    async fn until_turn(&self) -> Option<Handoff> {
-        let started = Instant::now();
-        let budget = wait_for(&self.url, self.class);
-        let mut held = None;
-        loop {
-            if !self.still_wanted() {
-                return None;
-            }
-            // Marked held in the step that checks it, so no lookup Kitsu
-            // maps to AniList alone joins it from here. One gathered in
-            // the window goes now, as it went before: held, its page
-            // would wait for the MAL page of lookups that joined after it.
-            let Some(last_join) = self.hold() else {
-                return Some(Handoff {
-                    place: None,
-                    deadline: started + budget,
-                });
-            };
-            let deadline = batch_deadline(started, last_join, budget);
-            let left = deadline.saturating_duration_since(Instant::now());
-            let Some(nap) = next_look(self.class, turn_in(&self.url, self.class), left) else {
-                return Some(Handoff {
-                    place: held,
-                    deadline,
-                });
-            };
-            if held.is_none() {
-                held = Some(place(&self.url));
-            }
-            tokio::time::sleep(nap).await;
-        }
-    }
-
-    /// Mark the lane held for the gate's turn, unless it gathered a
-    /// lookup Kitsu maps to AniList alone; when its last lookup joined,
-    /// if it is held.
-    fn hold(&self) -> Option<Instant> {
-        let mut lanes = K::lanes().open();
-        let open = lanes.get_mut(&self.lane)?;
-        if open.pending.iter().any(|(want, _)| want.mal.is_none()) {
-            return None;
-        }
-        open.held = true;
-        Some(open.last_join)
-    }
-
-    /// Drop the gathered lookups whose callers stopped waiting; whether
-    /// any is left. A lane left with none is closed.
-    fn still_wanted(&self) -> bool {
-        let mut lanes = K::lanes().open();
-        let Some(open) = lanes.get_mut(&self.lane) else {
-            return false;
-        };
-        open.pending.retain(|(_, reply)| !reply.is_closed());
-        if open.pending.is_empty() {
-            lanes.remove(&self.lane);
-            return false;
-        }
-        true
-    }
-
-    /// The lookups gathered since the last batch; `None`, and the lane
-    /// closed, when there are none.
-    fn take(&self) -> Option<Vec<(Want, Reply<K::Out>)>> {
-        let mut lanes = K::lanes().open();
-        let open = lanes.get_mut(&self.lane)?;
-        if open.pending.is_empty() {
-            lanes.remove(&self.lane);
-            return None;
-        }
-        // The next batch gathers for its window first.
-        open.held = false;
-        Some(std::mem::take(&mut open.pending))
-    }
-}
+#[path = "anilist_batch_turn.rs"]
+mod turn;
+use turn::waits_for_turn;
+#[cfg(test)]
+use turn::{batch_deadline, next_look};
+#[path = "anilist_batch_driver.rs"]
+mod driver;
+use driver::Driver;
 
 /// Send one batch, answering each caller as soon as its own answer is in
 /// — a caller that stops waiting keeps what was answered before it left.
