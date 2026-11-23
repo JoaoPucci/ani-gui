@@ -3871,6 +3871,7 @@
 			forced-color-adjust: none;
 			background: Highlight;
 			color: HighlightText;
+			border-color: Highlight;
 		}
 	}
 </style>

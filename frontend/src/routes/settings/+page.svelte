@@ -1210,10 +1210,19 @@
 		.switch input:checked + .switch-track .switch-thumb {
 			background: HighlightText;
 		}
+		/* Where it sat before, 1px inside the track's border. */
+		.switch-thumb {
+			inset-block-start: 1px;
+			inset-inline-start: 1px;
+		}
+		.switch input:checked + .switch-track .switch-thumb {
+			inset-inline-start: calc(2.5rem - (1.375rem - 4px) - 3px);
+		}
 		.seg-btn.active {
 			forced-color-adjust: none;
 			background: Highlight;
 			color: HighlightText;
+			border-color: Highlight;
 		}
 	}
 </style>

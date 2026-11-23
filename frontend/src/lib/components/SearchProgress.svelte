@@ -125,6 +125,9 @@
 		.search-progress-bar {
 			forced-color-adjust: none;
 			background: Highlight;
+			/* Whole, not dimmed as under reduced motion: the theme's
+			   highlight keeps the contrast it promises. */
+			opacity: 1;
 		}
 	}
 </style>
