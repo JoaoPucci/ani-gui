@@ -8,6 +8,11 @@
  * carries every language, on the first pick. A disabled track is never
  * fetched, so only the track shown costs a request.
  *
+ * Hidden only where the caller names one track to leave hidden: a
+ * rendition of the stream's playlist whose fragment is on its way,
+ * whose cues hls.js drops if its track is disabled when the fragment
+ * lands ({@link import('./caption-engine')}).
+ *
  * Only subtitle and captions tracks are the picker's. A track of any
  * other kind — hls.js keeps a `metadata` track for the stream's ID3
  * cues — is left as it is.
@@ -34,15 +39,17 @@ function isCaptionTrack(track: PickableTrack): boolean {
 /**
  * The mode each track takes for `target`, in list order, or `null`
  * where the track is left untouched: a track that is not a subtitle
- * track, or one already in the mode the pick gives it.
+ * track, or one already in the mode the pick gives it. The track at
+ * `hidden`, unless it is the target, is hidden rather than disabled.
  */
 export function captionModes(
 	tracks: readonly PickableTrack[],
-	target: CaptionTarget
+	target: CaptionTarget,
+	hidden?: number
 ): (CaptionMode | null)[] {
 	return tracks.map((track, i) => {
 		if (!isCaptionTrack(track)) return null;
-		const mode: CaptionMode = target === i ? 'showing' : 'disabled';
+		const mode: CaptionMode = target === i ? 'showing' : hidden === i ? 'hidden' : 'disabled';
 		return track.mode === mode ? null : mode;
 	});
 }
@@ -54,10 +61,14 @@ export interface PickableTrackList {
 }
 
 /** Apply {@link captionModes} to a live TextTrackList. */
-export function applyCaptionPick(list: PickableTrackList, target: CaptionTarget): void {
+export function applyCaptionPick(
+	list: PickableTrackList,
+	target: CaptionTarget,
+	hidden?: number
+): void {
 	const tracks: PickableTrack[] = [];
 	for (let i = 0; i < list.length; i++) tracks.push(list[i]);
-	captionModes(tracks, target).forEach((mode, i) => {
+	captionModes(tracks, target, hidden).forEach((mode, i) => {
 		if (mode !== null) list[i].mode = mode;
 	});
 }
