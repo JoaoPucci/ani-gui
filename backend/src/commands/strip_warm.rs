@@ -63,7 +63,8 @@ pub(crate) async fn warm_strip(state: &AppState, kitsu_ids: &[String], anilist_b
     )
     .await;
     // Gathered: the warm's lookups go as one page per kind, none sent
-    // ahead alone. A card's own lookup still opens a lane at once.
+    // ahead alone. A card's own lookup still opens a lane, at once when
+    // the gate would let it go.
     let stills = futures_util::future::join_all(ids.iter().map(|id| {
         crate::commands::anilist_eps_thumbs::thumbs_for_show_with_anilist_base(
             state,

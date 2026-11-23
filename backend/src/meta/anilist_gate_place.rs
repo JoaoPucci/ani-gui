@@ -28,6 +28,12 @@ pub(crate) fn turn_in(url: &str, class: Class) -> Option<Duration> {
     within(at.saturating_duration_since(now), gate.pace.wait_for(class))
 }
 
+/// How long a request of `class` may wait for its turn through `url`'s
+/// gate.
+pub(crate) fn wait_for(url: &str, class: Class) -> Duration {
+    gate_for(url).pace.wait_for(class)
+}
+
 /// `wait`, when a caller allowed `budget` would wait for it.
 pub(crate) fn within(wait: Duration, budget: Duration) -> Option<Duration> {
     (wait <= budget).then_some(wait)
@@ -51,28 +57,42 @@ impl Drop for Place {
     }
 }
 
+/// What a lane hands the requests it sends.
+struct Handed {
+    place: Option<Place>,
+    deadline: Option<Instant>,
+}
+
 tokio::task_local! {
-    /// The place the requests sent here hold until the first of them
-    /// takes its turn.
-    static HANDED: RefCell<Option<Place>>;
+    static HANDED: RefCell<Handed>;
 }
 
 /// Run `f`, keeping `place` until the first request it sends takes its
 /// turn, or until `f` ends: the lane's lookups handed to the gate keep
 /// the place they held in the lane, with no moment between in which a
-/// retry could take the turn.
-pub(crate) async fn handing<F: Future>(
-    place: Option<Place>,
-    _deadline: Instant,
-    f: F,
-) -> F::Output {
-    HANDED.scope(RefCell::new(place), f).await
+/// retry could take the turn. That first request waits for its turn no
+/// later than `deadline`, what is left of the wait its lookups spent in
+/// the lane.
+pub(crate) async fn handing<F: Future>(place: Option<Place>, deadline: Instant, f: F) -> F::Output {
+    let handed = Handed {
+        place,
+        deadline: Some(deadline),
+    };
+    HANDED.scope(RefCell::new(handed), f).await
+}
+
+/// The deadline a request sent here was handed, taken by the first.
+pub(super) fn handed_deadline() -> Option<Instant> {
+    HANDED
+        .try_with(|handed| handed.borrow_mut().deadline.take())
+        .ok()
+        .flatten()
 }
 
 /// A request sent here has taken its turn: the place it was handed is
 /// given up, in the same step.
 pub(super) fn turn_taken() {
-    let _ = HANDED.try_with(|place| place.borrow_mut().take());
+    let _ = HANDED.try_with(|handed| handed.borrow_mut().place.take());
 }
 
 #[cfg(test)]

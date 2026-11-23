@@ -59,7 +59,7 @@ use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
 #[path = "anilist_gate_place.rs"]
 mod place;
-pub(crate) use place::{handing, place, turn_in, Place};
+pub(crate) use place::{handing, place, turn_in, wait_for, Place};
 #[path = "anilist_gate_turn.rs"]
 mod turn;
 pub(crate) use turn::{as_retry, current_class, in_background, in_class};
@@ -68,8 +68,9 @@ use turn::{sent, Waiting};
 struct Gate {
     pace: Pace,
     ledger: Mutex<Ledger>,
-    /// Requests other than retries waiting for their turn now. While
-    /// any waits, no retry takes a turn.
+    /// Requests other than retries waiting for their turn now, and lanes
+    /// holding lookups for one ([`Place`]). While any waits, no retry
+    /// takes a turn.
     fresh_waiting: AtomicUsize,
     /// The class of each request let go, in the order it was let go:
     /// what a test reads the order of sending from, which a mock
@@ -190,7 +191,10 @@ where
 {
     let gate = gate_for(url);
     let class = current_class();
-    let deadline = Instant::now() + gate.pace.wait_for(class);
+    // A lane's batch keeps the deadline its lookups' wait set in the
+    // lane: its wait for a turn is the one they would have spent here.
+    let own = Instant::now() + gate.pace.wait_for(class);
+    let deadline = place::handed_deadline().map_or(own, |handed| handed.min(own));
     let mut retried = false;
     loop {
         let sent = gate.admit(class, deadline).await?;
@@ -266,10 +270,11 @@ impl SharedForTests {
             .clone()
     }
 
-    /// How many requests other than retries wait for their turn now:
-    /// a request counts from its first wait until its turn, its refusal
-    /// once the turn would come past its wait, or its caller dropping
-    /// it.
+    /// How many requests other than retries, and lanes holding lookups
+    /// for a turn, wait for their turn now: a request counts from its
+    /// first wait until its turn, its refusal once the turn would come
+    /// past its wait, or its caller dropping it; a lane from its first
+    /// wait until the request it hands over takes its turn.
     pub(crate) fn waiting(&self) -> usize {
         self.1
             .fresh_waiting
