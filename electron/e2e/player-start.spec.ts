@@ -316,9 +316,14 @@ for (const locale of ["en", "pt-BR", "es-419", "ru"]) {
       // The veil lets the pointer through, so a hit test would skip it:
       // for the measurement only, it takes the pointer, and the hit test
       // returns whatever is painted on top.
-      await page.addStyleTag({
-        content:
-          ".start-veil, .start-veil * { pointer-events: auto !important; }",
+      // Set through the CSSOM: the window's content security policy
+      // refuses an inline style sheet, but not an element's style.
+      await page.evaluate(() => {
+        for (const el of document.querySelectorAll<HTMLElement>(
+          ".start-veil, .start-veil *",
+        )) {
+          el.style.setProperty("pointer-events", "auto", "important");
+        }
       });
       await page.waitForTimeout(400);
       const onTop = await play.evaluate((el) => {
