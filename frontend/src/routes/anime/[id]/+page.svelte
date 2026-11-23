@@ -28,6 +28,7 @@
 	import { withFirstHop, type FirstHop } from '$lib/watch-order/arrival';
 	import { rememberedAnswer, visitAnswer } from '$lib/watch-order/session-memo';
 	import { loadWatchOrder, rereadRows, type WatchOrderData } from '$lib/watch-order/loader';
+	import { stripReads } from '$lib/watch-order/strip-reads';
 	import { watchOrderSources } from '$lib/watch-order/sources';
 	import { localDay } from '$lib/watch-order/entry';
 	import { numeral } from '$lib/watch-order/meta';
@@ -516,6 +517,13 @@
 	// what the page holds room for while the walk runs
 	// ($lib/watch-order/arrival).
 	let watchOrderHop = $state<FirstHop | null>(null);
+	// The strip's walk and its rows read again after a history link
+	// ($lib/watch-order/strip-reads), on the shown visit's reads.
+	const strip = stripReads<WatchOrderData>({
+		current: () => watchOrderData,
+		reread: (shown) => showReads.keep(rereadRows(shown, watchOrderSources, showReads.signal)),
+		show: (d) => (watchOrderData = d)
+	});
 	// Only the latest resume lookup started answers ($lib/detail/resume-lookup).
 	const resumeLookups = latestLookup();
 	/** The resume row of `showId`, read under its visit `reads`
@@ -1233,11 +1241,13 @@
 		// ($lib/watch-order/session-memo). The visit's end cancels both,
 		// and the first hop below, so a walk Kitsu is slow to answer does
 		// not hold an API connection for nobody, and an ended visit's
-		// answer is never drawn (visitAnswer, keep).
+		// answer is never drawn (visitAnswer); a history link answered
+		// meanwhile reads the rows again once it lands ($lib/watch-order/strip-reads).
 		const walked = loadWatchOrder(currentId, watchOrderSources, reads.signal).then((w) => {
 			const shown = visitAnswer(currentId, w, reads.signal);
-			if (shown && id === currentId) watchOrderData = shown;
+			return shown && id === currentId ? shown : null;
 		});
+		strip.walk(walked);
 		// The details wait a moment for the walk's first hop, so the
 		// room the strip will take is held from the page's first frame.
 		// A show whose answer is remembered needs no hop, only the order
@@ -1834,17 +1844,8 @@
 		const reads = showReads;
 		readShowResume(id, reads, kitsuAnimeDetail(id, { signal: reads.signal }));
 		// The strip counts the rows the link wrote too; its franchise
-		// is the same ($lib/watch-order/loader).
-		const shown = watchOrderData;
-		const showId = id;
-		if (shown) {
-			void reads.keep(rereadRows(shown, watchOrderSources, reads.signal)).then((w) => {
-				// Remembered for the session too, so a later visit's first
-				// frame draws the rows the link wrote ($lib/watch-order/session-memo).
-				const kept = visitAnswer(showId, w, reads.signal);
-				if (kept && watchOrderData === shown) watchOrderData = kept;
-			});
-		}
+		// is the same ($lib/watch-order/strip-reads).
+		strip.linked();
 	});
 	// The page going cancels the show question's reads still out; a link
 	// still out is saved all the same.

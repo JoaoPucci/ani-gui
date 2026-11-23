@@ -297,6 +297,41 @@ describe('franchise page', () => {
 		expect(calls.franchise).toBe(1);
 	});
 
+	it('follows a link answered while its rows were still being read', async () => {
+		// The rows read went out before the link wrote, so its answer is
+		// the history from before it.
+		const history: HistoryRowFixture[] = [];
+		useFranchise({ history });
+		let release: (() => void) | null = null;
+		let first = true;
+		server.use(
+			http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
+				const { ids } = (await request.json()) as { ids: string[] };
+				const answer = Object.fromEntries(
+					ids.map((k) => [k, history.find((r) => r.kitsu_id === k) ?? null])
+				);
+				if (first) {
+					first = false;
+					await new Promise<void>((r) => (release = r));
+				}
+				return HttpResponse.json<Record<string, HistoryEntry | null>>(answer);
+			}),
+			http.post(`${API_BASE}/api/history/link`, () =>
+				HttpResponse.json<LinkOutcome>({ kitsu_id: '50', linked: [] })
+			)
+		);
+		app = mount(FranchisePage, { target });
+		await until(() => release !== null, 'the rows read');
+		history.push({ id: 'hianime:saga-final', title: 'Saga Final', ep_no: '3', kitsu_id: '50' });
+		await appLinkDeps().link('hianime:saga-final', ['hianime:saga-final'], '50');
+		release!();
+		await until(
+			() => resumeLink()?.textContent?.trim() === m.watchorder_franchise_resume(),
+			'the resume from the linked row'
+		);
+		expect(resumeLink()!.getAttribute('href')).toBe('/anime/50');
+	});
+
 	it('offers to start from the first title when nothing is part-way', async () => {
 		useFranchise();
 		app = mount(FranchisePage, { target });
