@@ -7,8 +7,9 @@ use crate::history::write_atomic;
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use std::path::PathBuf;
 
-fn make_state(history_path: PathBuf) -> AppState {
-    AppState {
+fn make_state(history_path: PathBuf) -> crate::scratch::Scratch<AppState> {
+    let dirs = crate::scratch::dir();
+    let state = AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -19,17 +20,18 @@ fn make_state(history_path: PathBuf) -> AppState {
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path,
         providers: crate::provider_set::ProviderSet::for_tests(),
-        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        image_cache_dir: dirs.images(),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
-        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
-        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        config_path: dirs.config(),
+        state_dir: dirs.state(),
         internal_secret: crate::account::InternalSecret::random(),
         mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
         account_write_locks: crate::commands::account::AccountWriteLocks::new(),
         availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         flags: crate::flags::FlagStore::fixed(crate::flags::DECLARED),
-    }
+    };
+    dirs.hold(state)
 }
 
 #[test]
@@ -1011,13 +1013,12 @@ fn refuse_delete_of(s: &AppState, key: &str) {
 }
 
 /// The same history and cache in a process that has held neither.
-fn restarted(s: &AppState, dir: &std::path::Path) -> AppState {
+fn restarted(s: &AppState, dir: &std::path::Path) -> crate::scratch::Scratch<AppState> {
     let path = dir.join("history-after-restart");
     std::fs::copy(&s.history_path, &path).unwrap();
-    AppState {
-        cache_pool: s.cache_pool.clone(),
-        ..make_state(path)
-    }
+    let mut state = make_state(path);
+    state.cache_pool = s.cache_pool.clone();
+    state
 }
 
 fn delete_fails_then_retries_after_a_restart(s: &AppState, dir: &std::path::Path) {

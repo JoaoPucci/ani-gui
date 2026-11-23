@@ -7,7 +7,10 @@
   Nothing on it counts: the line above the title is the app's version
   (version.js), and under the title a wordless rail of film edge fills
   a stretch for each step of the boot as it lands, with a line under it
-  only when a step stalls (progress.js).
+  only when a step stalls (progress.js). A first page that is late
+  leaves it stuck: the line says so, and Restart and Quit appear under
+  it (progress.js, lib/splash-stuck.cjs). The page's language and its
+  name for assistive technology are the app's (words.js).
 
   The mark is mark.svg alone, and the layout holds for a mark of another
   shape, so a new mark replaces one file.
@@ -42,7 +45,12 @@
       <h1 class="wordmark">ani-gui</h1>
       <p class="readout"><span class="rail" aria-hidden="true"><i></i><i></i><i></i></span><span class="status" role="status"></span></p>
       <script src="progress.js"></script>
+      <div class="actions" hidden>
+        <button type="button" class="act act-restart" data-act="restart"></button>
+        <button type="button" class="act act-quit" data-act="quit"></button>
+      </div>
     </section>
   </main>
+  <script src="words.js"></script>
 </body>
 </html>

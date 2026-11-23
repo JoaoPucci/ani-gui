@@ -227,6 +227,7 @@ async fn a_watch_recorded_while_unread_reads_back_as_the_extra_once_proved() {
         &watch,
         Some(KITSU),
         begun,
+        None,
     )
     .await;
     let read = |state: &crate::app::AppState| {

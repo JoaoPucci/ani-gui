@@ -10,8 +10,9 @@ vi.mock('$lib/api', () => ({}));
 import { createSearchRunner, type SearchRunnerDeps } from './run-search';
 import { MAX_EMPTY_PAGES, type PagingPhase } from './paging';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
 function ref(id: string): KitsuAnimeRef {
-	return { id, canonical_title: `Title ${id}` } as KitsuAnimeRef;
+	return kitsuRefAnswer({ id, canonical_title: `Title ${id}` });
 }
 const ids = (list: KitsuAnimeRef[]) => list.map((h) => h.id);
 
@@ -91,7 +92,12 @@ describe('createSearchRunner paging', () => {
 
 		h.runner.loadMore();
 		await drain();
-		expect(h.searchPage).toHaveBeenLastCalledWith('dragon ball', 20, 'relevance');
+		expect(h.searchPage).toHaveBeenLastCalledWith(
+			'dragon ball',
+			20,
+			'relevance',
+			expect.any(AbortSignal)
+		);
 		expect(h.phases.map((p) => p.kind)).toEqual(['loading', 'idle', 'loading-more', 'idle']);
 		expect(h.latest()).toEqual(['1', '2', '3']);
 	});
@@ -122,7 +128,7 @@ describe('createSearchRunner paging', () => {
 		pages[20] = page(['2'], null);
 		h.runner.loadMore();
 		await drain();
-		expect(h.searchPage).toHaveBeenLastCalledWith('q', 20, 'relevance');
+		expect(h.searchPage).toHaveBeenLastCalledWith('q', 20, 'relevance', expect.any(AbortSignal));
 		expect(h.phase()).toBe('end');
 		expect(h.latest()).toEqual(['1', '2']);
 	});
@@ -183,7 +189,7 @@ describe('createSearchRunner paging', () => {
 	it('asking for more while a page is in flight starts no second request', async () => {
 		const next = defer<KitsuSearchPage>();
 		const searchPage = vi
-			.fn()
+			.fn<NonNullable<SearchRunnerDeps['searchPage']>>()
 			.mockResolvedValueOnce(page(['1'], 20))
 			.mockReturnValueOnce(next.promise);
 		const h = harness({ searchPage });
@@ -205,11 +211,13 @@ describe('createSearchRunner paging', () => {
 
 	it('a new query silences the previous query’s page in flight and starts over', async () => {
 		const stale = defer<KitsuSearchPage>();
-		const searchPage = vi.fn(async (q: string, offset: number) => {
-			if (q === 'a' && offset === 0) return page(['a1'], 20);
-			if (q === 'a') return stale.promise;
-			return page(['b1'], 20);
-		});
+		const searchPage = vi.fn<NonNullable<SearchRunnerDeps['searchPage']>>(
+			async (q: string, offset: number) => {
+				if (q === 'a' && offset === 0) return page(['a1'], 20);
+				if (q === 'a') return stale.promise;
+				return page(['b1'], 20);
+			}
+		);
 		const h = harness({ searchPage });
 		await h.runner.run('a');
 		h.runner.loadMore();
@@ -228,15 +236,17 @@ describe('createSearchRunner paging', () => {
 		// And b pages from its own start, not from where a stopped.
 		h.runner.loadMore();
 		await drain();
-		expect(searchPage).toHaveBeenLastCalledWith('b', 20, 'relevance');
+		expect(searchPage).toHaveBeenLastCalledWith('b', 20, 'relevance', expect.any(AbortSignal));
 	});
 
 	it('a stale page failure does not mark the new query failed', async () => {
 		const stale = defer<KitsuSearchPage>();
-		const searchPage = vi.fn(async (q: string, offset: number) => {
-			if (q === 'a' && offset === 20) return stale.promise;
-			return page([`${q}1`], 20);
-		});
+		const searchPage = vi.fn<NonNullable<SearchRunnerDeps['searchPage']>>(
+			async (q: string, offset: number) => {
+				if (q === 'a' && offset === 20) return stale.promise;
+				return page([`${q}1`], 20);
+			}
+		);
 		const h = harness({ searchPage });
 		await h.runner.run('a');
 		h.runner.loadMore();

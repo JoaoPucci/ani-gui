@@ -2,11 +2,8 @@
 
 use super::*;
 
-fn state() -> AppState {
-    let dir = Box::leak(Box::new(tempfile::tempdir().expect("tmp")));
-    let mut state = crate::commands::play::tests::state_with_proxy_origin();
-    state.history_path = dir.path().join("history");
-    state
+fn state() -> crate::scratch::Scratch<AppState> {
+    crate::commands::play::tests::state_with_proxy_origin()
 }
 
 const SHOW: &str = "hianime:the-show-1";

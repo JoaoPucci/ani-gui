@@ -28,6 +28,8 @@ import DiagnosticsPage from '../../src/routes/diagnostics/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { AppInfo, HistoryEntry } from '../../src/lib/api';
+import { errorAnswer, appInfoAnswer } from '../answers';
 const ROW = { ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' };
 let failing = true;
 let listFails = false;
@@ -44,22 +46,24 @@ beforeEach(() => {
 	listHeld = null;
 	server.use(
 		http.get(`${API_BASE}/api/app-info`, () =>
-			HttpResponse.json({
-				version: '0.15.1',
-				history_path: '/home/u/.local/state/ani-gui/history',
-				proxy_base_url: API_BASE,
-				removed_legacy_paths: []
-			})
+			HttpResponse.json<AppInfo>(
+				appInfoAnswer({
+					version: '0.15.1',
+					history_path: '/home/u/.local/state/ani-gui/history',
+					proxy_base_url: API_BASE,
+					removed_legacy_paths: []
+				})
+			)
 		),
 		http.get(`${API_BASE}/api/history`, async () => {
 			if (listHeld) await listHeld;
 			return listFails
-				? HttpResponse.json({ key: 'error.io.generic', kind: 'io' }, { status: 500 })
-				: HttpResponse.json([ROW]);
+				? errorAnswer(500, { key: 'error.io.generic', kind: 'io' })
+				: HttpResponse.json<HistoryEntry[]>([ROW]);
 		}),
 		http.delete(`${API_BASE}/api/history`, () =>
 			failing
-				? HttpResponse.json({ key: 'error.io.generic', kind: 'io' }, { status: 500 })
+				? errorAnswer(500, { key: 'error.io.generic', kind: 'io' })
 				: new HttpResponse(null, { status: 204 })
 		)
 	);

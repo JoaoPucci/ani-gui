@@ -7,5 +7,6 @@
 	"dialog_latest_label": "Latest",
 	"dialog_close_label": "Close",
 	"dialog_open_releases_label": "Open releases page",
-	"dialog_open_releases_aria_label": "Open the GitHub releases page in your browser"
+	"dialog_open_releases_aria_label": "Open the GitHub releases page in your browser",
+	"dialog_notes_aria_label": "Release notes"
 }

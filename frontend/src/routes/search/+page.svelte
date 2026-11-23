@@ -4,7 +4,8 @@
   The motifs are restraint: serif voice, mono numerals, hairline rules.
 -->
 <script lang="ts">
-	import { onMount, tick, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { beginVisit } from '$lib/navigation/visit';
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { Snapshot } from '@sveltejs/kit';
 	import { page } from '$app/state';
@@ -50,6 +51,7 @@
 	import { arrive, emptyView, type SearchView } from '$lib/search/arrival';
 	import { discoveryView, loadDiscoveryRows, LOADING, type RowLoad } from '$lib/search/discovery';
 	import { subtypeLabel } from '$lib/search/subtype-label';
+	import { SEARCH_TYPE_FILTERS } from '$lib/search/type-filters';
 	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
@@ -106,7 +108,6 @@
 		year: m.search_sort_year,
 		rating: m.search_sort_rating
 	};
-	const SUBTYPES = ['TV', 'movie', 'special', 'OVA', 'ONA', 'music'];
 	let sortKey = $state<SortKey>('relevance');
 	const activeSubtypes = new SvelteSet<string>();
 
@@ -179,21 +180,38 @@
 		};
 	}
 
+	// The page's own reads (the settings and the two discovery rows),
+	// cancelled when it goes, with the search the runner has out; what
+	// they answer after reaches nothing ($lib/navigation/visit).
+	const pageReads = beginVisit();
+	onDestroy(() => {
+		pageReads.end();
+		searchRunner.stop();
+	});
+
 	onMount(() => void loadDiscovery());
 
 	/** Ask for both discovery rows, each landing in its own slot
 	 *  ($lib/search/discovery: loadDiscoveryRows). Also the notice's
-	 *  Try again. */
+	 *  Try again. Every read goes through the page's visit, so none
+	 *  lands after the page has gone. */
 	function loadDiscovery() {
 		rowLoads = [LOADING, LOADING];
+		const signal = pageReads.signal;
 		return loadDiscoveryRows<KitsuAnimeRef, Config>({
 			config: () => config,
-			readConfig: settingsGet,
+			readConfig: () => pageReads.keep(settingsGet({ signal })),
 			keepConfig: (read) => (config = read),
 			pickMode: pickAvailabilityMode,
 			rows: [
-				(mode) => kitsuTrendingAnilist().then((t) => filterAvailable(t, mode)),
-				(mode) => kitsuTopRated().then((t) => filterAvailable(t, mode))
+				(mode) =>
+					pageReads.keep(
+						kitsuTrendingAnilist({ signal }).then((t) => filterAvailable(t, mode, { signal }))
+					),
+				(mode) =>
+					pageReads.keep(
+						kitsuTopRated({ signal }).then((t) => filterAvailable(t, mode, { signal }))
+					)
 			],
 			onRow: (index, row) => (rowLoads[index] = row)
 		});
@@ -299,13 +317,13 @@
 	// The closures below are the page-side adapter, one Svelte
 	// reassignment each.
 	const searchRunner = createSearchRunner({
-		searchPage: kitsuSearchPage,
+		searchPage: (q, offset, order, signal) => kitsuSearchPage(q, offset, order, { signal }),
 		getConfig: async () => {
 			// Same race as loadDiscoveryRows: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
 			// the result so DUB users never search under the 'sub'
 			// fallback twice.
-			if (!config) config = await settingsGet();
+			if (!config) config = await settingsGet({ signal: pageReads.signal });
 			return config;
 		},
 		pickMode: pickAvailabilityMode,
@@ -398,8 +416,8 @@
 			<div class="skel-card" aria-hidden="true">
 				<div class="skel-poster"></div>
 				<div class="skel-body">
-					<span class="skel-title" style="--bar: 85%;">&nbsp;</span>
-					<span class="skel-title" style="--bar: 55%;">&nbsp;</span>
+					<span class="skel-title skel-title-long">&nbsp;</span>
+					<span class="skel-title skel-title-short">&nbsp;</span>
 					<span class="skel-meta">&nbsp;</span>
 				</div>
 			</div>
@@ -484,7 +502,7 @@
 			<div class="control-group">
 				<span class="control-label">{m.search_control_type_label()}</span>
 				<div class="chips" role="group" aria-label={m.search_chips_type_aria_label()}>
-					{#each SUBTYPES as s (s)}
+					{#each SEARCH_TYPE_FILTERS as s (s)}
 						<button
 							type="button"
 							class="chip"
@@ -523,8 +541,8 @@
 			{#each Array.from({ length: 12 }, (_, k) => k) as i (i)}
 				<li class="card card-skeleton" style="--i: {i}">
 					<div class="poster poster-skeleton"></div>
-					<div class="line line-skeleton" style="inline-size: 70%"></div>
-					<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+					<div class="line line-skeleton w-70"></div>
+					<div class="line line-skeleton line-thin w-40"></div>
 				</li>
 			{/each}
 		</ul>
@@ -665,8 +683,8 @@
 				{#each Array.from({ length: 12 }, (_, k) => k) as k (k)}
 					<li class="card card-skeleton" style="--i: {k}">
 						<div class="poster poster-skeleton"></div>
-						<div class="line line-skeleton" style="inline-size: 70%"></div>
-						<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+						<div class="line line-skeleton w-70"></div>
+						<div class="line line-skeleton line-thin w-40"></div>
 					</li>
 				{/each}
 			</ul>
@@ -1020,6 +1038,14 @@
 	.skel-title::before {
 		block-size: 0.75rem;
 	}
+	/* The two title lines' widths, as classes: the window's content
+	   security policy refuses a static style attribute. */
+	.skel-title-long {
+		--bar: 85%;
+	}
+	.skel-title-short {
+		--bar: 55%;
+	}
 	.skel-meta {
 		display: inline-flex;
 		inline-size: 40%;
@@ -1306,5 +1332,15 @@
 	}
 	.chip-clear {
 		border-style: dashed;
+	}
+
+	/* Skeleton line sizes. Classes, not static style attributes: the
+	   renderer's content security policy refuses inline style attributes,
+	   and Svelte parses a static one as markup. */
+	.line.w-40 {
+		inline-size: 40%;
+	}
+	.line.w-70 {
+		inline-size: 70%;
 	}
 </style>

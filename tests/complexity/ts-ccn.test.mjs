@@ -7,7 +7,7 @@
 // dependencies — the tool reads the compiler from them — rather than
 // with tests/tools/, whose runner has no node_modules.
 
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -16,6 +16,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { measure } from '../../tools/ts-ccn.mjs';
+
+/** Every temporary directory a test here makes, removed once the
+ *  file's tests have run, whether they passed or not. */
+const scratchDirs = [];
+function tempDir(prefix) {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+	scratchDirs.push(dir);
+	return dir;
+}
+after(() => {
+	for (const dir of scratchDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const tool = path.join(repoRoot, 'tools/ts-ccn.mjs');
@@ -91,7 +103,7 @@ test('a file with syntax errors reports them', () => {
 });
 
 function scratch(files) {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-ccn-test-'));
+	const dir = tempDir('ts-ccn-test-');
 	for (const [rel, body] of Object.entries(files)) {
 		fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
 		fs.writeFileSync(path.join(dir, rel), body);

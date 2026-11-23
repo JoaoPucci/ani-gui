@@ -15,6 +15,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page } from './page-state.svelte';
 import { homeHandlers, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -33,6 +34,8 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { m } from '../../src/lib/paraglide/messages';
 
+import type { KitsuAnimeRef } from '../../src/lib/api';
+import { errorAnswer } from '../answers';
 const TITLE = 'Cowboy Bebop';
 const HISTORY = [{ ep_no: '3', id: 'allanime-1', title: TITLE }];
 
@@ -43,19 +46,28 @@ const onUnhandled = (reason: unknown) => unhandled.push(reason);
 
 /** What a request to the history endpoints is answered with. */
 type Answer = () => Promise<Response> | Response;
-const refused = () =>
-	HttpResponse.json({ key: 'error.io.generic', kind: 'io' }, { status: 500 }) as Response;
+const refused = () => errorAnswer(500, { key: 'error.io.generic', kind: 'io' }) as Response;
 const unreachable = () => HttpResponse.error() as Response;
 const done = () => new HttpResponse(null, { status: 204 }) as Response;
 
 let clears = 0;
 let deletes: string[] = [];
+let fetches: ReturnType<typeof watchPageFetches>;
+/** The clears and the removes the page has sent, counted as it sends
+ *  them: a handler sees a request only once MSW has carried it there,
+ *  and a second one sent beside the first may not have arrived yet. */
+const clearsSent = () =>
+	fetches.sent.filter((f) => f.method === 'DELETE' && f.path === '/api/history').length;
+const deletesSent = () =>
+	fetches.sent
+		.filter((f) => f.method === 'DELETE' && f.path.startsWith('/api/history/'))
+		.map((f) => decodeURIComponent(f.path.slice('/api/history/'.length)));
 
 function serve(answers: { clear?: Answer; remove?: Answer }) {
 	server.use(
 		...homeHandlers({ history: HISTORY }, [
 			http.post(`${API_BASE}/api/kitsu/search`, () =>
-				HttpResponse.json([kitsuRef('1', TITLE, 26)])
+				HttpResponse.json<KitsuAnimeRef[]>([kitsuRef('1', TITLE, 26)])
 			),
 			http.delete(`${API_BASE}/api/history`, () => {
 				clears += 1;
@@ -75,6 +87,7 @@ beforeEach(() => {
 	clears = 0;
 	deletes = [];
 	unhandled = [];
+	fetches = watchPageFetches();
 	process.on('unhandledRejection', onUnhandled);
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -212,7 +225,7 @@ describe('Clear history on Home, when the clear fails', () => {
 		confirm.click();
 		release();
 		await until(() => dialog() === null, 'the dialog to close');
-		expect(clears).toBe(1);
+		expect(clearsSent()).toBe(1);
 		expect(errorToasts()).toEqual([m.home_clear_history_failed()]);
 	});
 
@@ -282,7 +295,7 @@ describe('Removing a Continue card on Home, when the remove fails', () => {
 		await settle();
 		release();
 		await until(() => dialog() === null, 'the dialog to close');
-		expect(deletes).toEqual(['allanime-1']);
+		expect(deletesSent()).toEqual(['allanime-1']);
 		expect(errorToasts()).toEqual([m.home_delete_failed({ title: TITLE })]);
 	});
 
@@ -318,7 +331,7 @@ describe('Home’s history dialogs while a request is out', () => {
 				[
 					http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
 						const { query } = (await request.json()) as { query: string };
-						return HttpResponse.json(
+						return HttpResponse.json<KitsuAnimeRef[]>(
 							query === OTHER ? [kitsuRef('2', OTHER, 26)] : [kitsuRef('1', TITLE, 26)]
 						);
 					}),

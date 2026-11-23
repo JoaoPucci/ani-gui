@@ -25,10 +25,14 @@
 # the driver — `child_process.spawn` on the packaged path, say — the
 # driver reached under a name that never spells `_electron`, or a
 # Playwright suite outside electron/, which is the only tree scanned.
-# None exists; this check would not notice one. The firstWindow rule
-# likewise misses a spec that takes the splash some other way —
-# `app.windows()[0]`, `app.waitForEvent("window")`, a computed name —
-# and any spec outside electron/.
+# One launch without the driver exists, in the helper itself:
+# spawnPackagedApp, for a spec that has to own the app's stdout and
+# stderr, passes the same switches. Nothing checks that it keeps doing
+# so — smoke.spec.ts asks only a launch made through the driver — and
+# this check would not notice a launch like it anywhere else. The
+# firstWindow rule likewise misses a spec that takes the splash some
+# other way — `app.windows()[0]`, `app.waitForEvent("window")`, a
+# computed name — and any spec outside electron/.
 
 set -eu
 

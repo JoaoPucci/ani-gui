@@ -35,17 +35,19 @@ import {
 	type KitsuAnimeRef
 } from '$lib/api';
 
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+import type * as Api from '$lib/api';
 vi.mock('$lib/api', () => ({
-	allmangaKitsuMapDelete: vi.fn(),
-	allmangaKitsuMapGet: vi.fn(),
-	allmangaKitsuMapPlayed: vi.fn(),
-	kitsuAnimeBySlug: vi.fn(),
-	kitsuAnimeDetail: vi.fn(),
-	kitsuGuessRuledOut: vi.fn(),
-	kitsuResolveAllmangaShowId: vi.fn(),
-	kitsuSearch: vi.fn(),
-	kitsuTitleMatchGet: vi.fn(),
-	kitsuTitleMatchPut: vi.fn()
+	allmangaKitsuMapDelete: vi.fn<typeof Api.allmangaKitsuMapDelete>(),
+	allmangaKitsuMapGet: vi.fn<typeof Api.allmangaKitsuMapGet>(),
+	allmangaKitsuMapPlayed: vi.fn<typeof Api.allmangaKitsuMapPlayed>(),
+	kitsuAnimeBySlug: vi.fn<typeof Api.kitsuAnimeBySlug>(),
+	kitsuAnimeDetail: vi.fn<typeof Api.kitsuAnimeDetail>(),
+	kitsuGuessRuledOut: vi.fn<typeof Api.kitsuGuessRuledOut>(),
+	kitsuResolveAllmangaShowId: vi.fn<typeof Api.kitsuResolveAllmangaShowId>(),
+	kitsuSearch: vi.fn<typeof Api.kitsuSearch>(),
+	kitsuTitleMatchGet: vi.fn<typeof Api.kitsuTitleMatchGet>(),
+	kitsuTitleMatchPut: vi.fn<typeof Api.kitsuTitleMatchPut>()
 }));
 
 interface Case {
@@ -160,7 +162,7 @@ beforeEach(() => {
 			unrecorded.push(`enrichment ${id}`);
 			return null;
 		}
-		return current.enrichment === null ? null : ({ id: current.enrichment } as KitsuAnimeRef);
+		return current.enrichment === null ? null : kitsuRefAnswer({ id: current.enrichment });
 	});
 });
 

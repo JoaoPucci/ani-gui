@@ -16,8 +16,4 @@ export async function apiBase(): Promise<string> {
 	throw new Error('ani-gui apiBase is not configured');
 }
 
-export function internalSecretHeader(): Record<string, string> {
-	const w = (typeof window !== 'undefined' ? window : undefined) as Window | undefined;
-	const secret = w?.aniGui?.internalSecret;
-	return secret ? { 'x-ani-gui-internal-secret': secret } : {};
-}
+export { secretHeaders as internalSecretHeader } from '$lib/backend/secret';

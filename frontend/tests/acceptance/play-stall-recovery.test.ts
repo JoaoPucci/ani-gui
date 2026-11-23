@@ -21,6 +21,7 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { ownedPlays } from './owned-plays';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -33,11 +34,40 @@ vi.mock('$app/navigation', () => ({
 	beforeNavigate: vi.fn(),
 	afterNavigate: vi.fn()
 }));
+// What a recovery for a page left is judged by. It acts on its
+// eviction's answer in the turn that answer settles, and a fresh
+// resolve starts there as a switch, through `runOwnedPlay`: recording
+// both lets a case wait for the page to have acted on the answer
+// rather than for a fixed time.
+const seen = vi.hoisted(() => ({ evictions: [] as Promise<unknown>[] }));
+vi.mock('$lib/api', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/api')>();
+	const evictPlayCache: typeof real.evictPlayCache = (args) => {
+		const answered = real.evictPlayCache(args);
+		seen.evictions.push(answered);
+		return answered;
+	};
+	return { ...real, evictPlayCache };
+});
+vi.mock('$lib/play/owned-play', async (importOriginal) =>
+	(await import('./owned-plays')).trackOwnedPlays(await importOriginal())
+);
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
 
+import type {
+	AiringStatus,
+	AniErrorPayload,
+	AvailabilityResponse,
+	Config,
+	CreateSessionResponse,
+	KitsuAnimeRef,
+	KitsuEpisode,
+	SkipInterval
+} from '../../src/lib/api';
+import { availabilityAnswer, sessionAnswer, wire } from '../answers';
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
 
@@ -70,6 +100,8 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	seen.evictions.length = 0;
+	ownedPlays.length = 0;
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	setParams({ id: KITSU_ID });
@@ -93,43 +125,52 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function kitsuEpisodes(count: number) {
+function kitsuEpisodes(count: number): KitsuEpisode[] {
 	return Array.from({ length: count }, (_, i) => ({
 		id: `ep-${i + 1}`,
 		number: i + 1,
 		relative_number: i + 1,
 		canonical_title: `Episode ${i + 1}`,
-		titles: {},
 		synopsis: null,
 		thumbnail: null,
-		length_minutes: 24,
-		air_date: '2019-01-01'
+		length: 24,
+		airdate: '2019-01-01',
+		season_number: null
 	}));
 }
 
 describe('play route — the stale-stream recovery is visible and lossless', () => {
 	it('toasts the recovery and resumes playback where it stalled', async () => {
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 12,
-					extra_episodes: [],
-					episode_count_approximate: false
+				HttpResponse.json<AiringStatus>({
+					aired: 12,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
 				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+				HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+			),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 12,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([]))
 		);
 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -164,11 +205,13 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		);
 		FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-2',
-				media_url: `${API_BASE}/s/session-2/file.mp4`,
-				media_kind: 'mp4'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-2',
+					media_url: `${API_BASE}/s/session-2/file.mp4`,
+					media_kind: 'mp4'
+				})
+			)
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
 
@@ -188,26 +231,35 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		// rides the recovery's carrier, not the destroyed component,
 		// so the remounted attach still seeks back.
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 12,
-					extra_episodes: [],
-					episode_count_approximate: false
+				HttpResponse.json<AiringStatus>({
+					aired: 12,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
 				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+				HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+			),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 12,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([]))
 		);
 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -253,25 +305,34 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		// user chasing their own VPN through a provider maintenance
 		// window.
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 12,
-					extra_episodes: [],
-					episode_count_approximate: false
+				HttpResponse.json<AiringStatus>({
+					aired: 12,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
 				})
 			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+				HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+			),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 12,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
+			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([]))
 		);
 
 		// A session id no other case uses, so the case reads alone.
@@ -304,7 +365,7 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 			.pop()!;
 		interactive.dispatch(
 			'error',
-			JSON.stringify({ kind: 'upstream', status: 503, key: 'error.network.upstream' })
+			wire<AniErrorPayload>({ kind: 'upstream', status: 503, key: 'error.network.upstream' })
 		);
 		await until(
 			() => (target.textContent ?? '').includes(m.play_play_failure_source_down()),
@@ -314,26 +375,35 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 
 	it('a superseded attach cancels its pending resume seek', async () => {
 		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 			),
 			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 12,
-					extra_episodes: [],
-					episode_count_approximate: false
+				HttpResponse.json<AiringStatus>({
+					aired: 12,
+					next_episode: null,
+					next_airing_at: null,
+					upcoming: []
 				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+				HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+			),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json<AvailabilityResponse>(
+					availabilityAnswer({
+						available: true,
+						episode_count: 12,
+						extra_episodes: [],
+						episode_count_approximate: false
+					})
+				)
 			),
 			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json<SkipInterval[]>([]))
 		);
 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
@@ -355,11 +425,13 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		);
 		FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch(
 			'done',
-			JSON.stringify({
-				session_id: 'session-2',
-				media_url: `${API_BASE}/s/session-2/file.mp4`,
-				media_kind: 'mp4'
-			})
+			wire<CreateSessionResponse>(
+				sessionAnswer({
+					session_id: 'session-2',
+					media_url: `${API_BASE}/s/session-2/file.mp4`,
+					media_kind: 'mp4'
+				})
+			)
 		);
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
 		await until(() => video.src.includes('session-2'), 'the recovered session to attach');
@@ -390,34 +462,47 @@ describe('play route — a recovery for a show the page has left', () => {
 			const held = new Promise<void>((r) => (release = r));
 			let evicting = false;
 			server.use(
-				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
 				http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-					HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+					HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 				),
 				http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-					HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-				),
-				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-				http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-				http.post(`${API_BASE}/api/availability`, () =>
-					HttpResponse.json({
-						available: true,
-						episode_count: 12,
-						extra_episodes: [],
-						episode_count_approximate: false
+					HttpResponse.json<AiringStatus>({
+						aired: 12,
+						next_episode: null,
+						next_airing_at: null,
+						upcoming: []
 					})
+				),
+				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+					HttpResponse.json<KitsuEpisode[]>(kitsuEpisodes(12))
+				),
+				http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+				http.post(`${API_BASE}/api/availability`, () =>
+					HttpResponse.json<AvailabilityResponse>(
+						availabilityAnswer({
+							available: true,
+							episode_count: 12,
+							extra_episodes: [],
+							episode_count_approximate: false
+						})
+					)
 				),
 				http.post(
 					`${API_BASE}/api/play/mark-watched`,
 					() => new HttpResponse(null, { status: 204 })
 				),
-				http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+				http.get(`${API_BASE}/api/download/default-dir`, () =>
+					HttpResponse.json<string | null>('/dl')
+				),
 				http.post(`${API_BASE}/api/play/cache/evict`, async () => {
 					evicting = true;
 					await held;
 					return new HttpResponse(null, { status: 204 });
 				}),
-				http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+				http.get(`${API_BASE}/api/aniskip/:id/:episode`, () =>
+					HttpResponse.json<SkipInterval[]>([])
+				)
 			);
 
 			setUrl(`/play/${KITSU_ID}`, { session: 'session-left', episode: '1', kind: 'mp4' });
@@ -440,8 +525,14 @@ describe('play route — a recovery for a show the page has left', () => {
 				await new Promise((r) => setTimeout(r, 20));
 			}
 			const streamsBefore = FakeEventSource.instances.length;
+			const playsBefore = ownedPlays.length;
 			release();
-			await new Promise((r) => setTimeout(r, 100));
+			// The page has acted on the eviction's answer. A fresh resolve
+			// starts as a switch in that turn; its stream opens later, once
+			// the request's URL is read, so the switch is what is ruled out.
+			await until(() => seen.evictions.length > 0, 'the eviction');
+			await Promise.allSettled([seen.evictions[seen.evictions.length - 1]]);
+			expect(ownedPlays.length, 'no switch is started after the move').toBe(playsBefore);
 			expect(FakeEventSource.instances.length, 'no fresh resolve after the move').toBe(
 				streamsBefore
 			);

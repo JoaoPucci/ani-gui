@@ -6,7 +6,8 @@
   destructive actions.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+	import { beginVisit } from '$lib/navigation/visit';
 	import { resolve } from '$app/paths';
 	import {
 		appInfo,
@@ -55,11 +56,17 @@
 		{ key: 'ru', label: 'Русский', available: true }
 	];
 
+	// The page's reads, cancelled when it goes; nothing they answer
+	// after reaches it ($lib/navigation/visit).
+	const reads = beginVisit();
+	onDestroy(reads.end);
 	onMount(() => {
-		void settingsGet()
+		void reads
+			.keep(settingsGet({ signal: reads.signal }))
 			.then((c) => (cfg = c))
 			.catch((e) => (loadError = describeSettingsFailure(e)));
-		void appInfo()
+		void reads
+			.keep(appInfo({ signal: reads.signal }))
 			.then((i) => (info = i))
 			.catch(() => {
 				/* about section gracefully degrades if app info fails */

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { altTitlesFromKitsu, yearFromKitsuRef, type KitsuAnimeRef } from '$lib/api';
 import { buildPlayArgs } from './play-args';
 
-const show: KitsuAnimeRef = {
+import { kitsuRefAnswer } from '$lib/testing/wire-answers';
+const show: KitsuAnimeRef = kitsuRefAnswer({
 	id: '42',
 	canonical_title: 'The Show',
 	titles: { en: 'The Show', en_jp: 'Za Shou' },
@@ -13,7 +14,7 @@ const show: KitsuAnimeRef = {
 	subtype: 'TV',
 	start_date: '2019-04-07',
 	status: 'finished'
-} as unknown as KitsuAnimeRef;
+});
 
 describe('buildPlayArgs', () => {
 	it("describes the episode by the show's Kitsu record and names the Kitsu id", () => {
@@ -49,6 +50,12 @@ describe('buildPlayArgs', () => {
 		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
 		expect(buildPlayArgs({ ...base, guessRow: 'hianime:show-1' }).guess_row).toBe('hianime:show-1');
 		expect('guess_row' in buildPlayArgs(base)).toBe(false);
+	});
+
+	it("names the card's row of a session no guess opened when given, and only then", () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', show } as const;
+		expect(buildPlayArgs({ ...base, cardRow: 'hianime:show-1' }).card_row).toBe('hianime:show-1');
+		expect('card_row' in buildPlayArgs(base)).toBe(false);
 	});
 
 	it("names a guessed card's guess when a guess asks, and only then", () => {

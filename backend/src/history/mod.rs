@@ -85,7 +85,7 @@ pub struct HistoryEntry {
     /// Episode number the user last watched. Every write since rows
     /// carried [`Self::own_number`] stores the app's own number for it
     /// — the episode the play resolved to, "8" or "7.5" — by
-    /// `play_native_record::write_history` on a fresh resolve,
+    /// `play_native_record::write_history_then` on a fresh resolve,
     /// `play::write_history_on_cache_hit` on a cache hit, and the
     /// watch a handoff or mark-watched records. A row from before holds
     /// the provider's number for it — the slot it resolved to, or the
@@ -111,8 +111,10 @@ pub struct HistoryEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watched_at: Option<i64>,
     /// The Kitsu id of the show the user played: the page the play was
-    /// started from. A write without one keeps the row's; a row from
-    /// before the column, or a play no page stood behind, has none.
+    /// started from, or the show the user linked the row to
+    /// ([`crate::commands::history_link`]). A write without one keeps
+    /// the row's; a row from before the column, or a play no page
+    /// stood behind, has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kitsu_id: Option<String>,
     /// Whether `ep_no` is the app's own number for the episode — the
