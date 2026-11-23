@@ -85,6 +85,7 @@
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
+	import { tileMeta } from '$lib/detail/tile-meta';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { spotlightEpisode } from '$lib/detail/episode-spotlight';
@@ -2295,6 +2296,12 @@
 										num !== null ? epAirState(num, airing) : { unaired: false as const }}
 									{@const capGated =
 										!air.unaired && num !== null && beyondPlayable(num, playableEpisodeCount)}
+									{@const meta = tileMeta({
+										unaired: air.unaired,
+										hasThumb: Boolean(thumb),
+										notListed: capGated && availability !== false,
+										length: ep.length ?? null
+									})}
 									<li
 										class:ep-highlight={num !== null && num === highlightEp}
 										data-ep-num={num ?? ''}
@@ -2364,11 +2371,13 @@
 														)}
 												</span>
 												<span class="ep-meta">
-													{#if air.unaired && thumb}
+													{#if meta?.kind === 'unaired' && air.unaired}
 														<span class="ep-unaired-label">{unairedLabel(air.airsAt)}</span>
-													{:else if !air.unaired && ep.length}<span
+													{:else if meta?.kind === 'not-listed'}
+														<span class="ep-not-listed-label">{m.detail_ep_not_listed()}</span>
+													{:else if meta?.kind === 'length'}<span
 															>{m.detail_episode_length_suffix({
-																minutes: String(ep.length)
+																minutes: String(meta.minutes)
 															})}</span
 														>{/if}
 												</span>
@@ -3339,7 +3348,8 @@
 		:is(.ep-frame-num-key, .ep-frame-num-val) {
 		color: var(--bone-400);
 	}
-	.ep-unaired-label {
+	.ep-unaired-label,
+	.ep-not-listed-label {
 		font-variant-caps: all-small-caps;
 		letter-spacing: 0.04em;
 	}

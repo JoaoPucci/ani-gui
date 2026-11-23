@@ -24,7 +24,15 @@ export interface TileState {
 	length: number | null;
 }
 
-export function tileMeta(state: TileState): TileMeta {
-	void state;
-	return null;
+/**
+ * The meta line for a tile. An unaired episode's airing shows here
+ * under a picture; without one, its placeholder shows it. An episode
+ * past the catalogue is said to be not listed yet, in place of its
+ * length: dimmed colours alone, which a contrast theme replaces, would
+ * not say it. Otherwise the length, when known.
+ */
+export function tileMeta({ unaired, hasThumb, notListed, length }: TileState): TileMeta {
+	if (unaired) return hasThumb ? { kind: 'unaired' } : null;
+	if (notListed) return { kind: 'not-listed' };
+	return length ? { kind: 'length', minutes: length } : null;
 }

@@ -67,6 +67,7 @@
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
 	import { airedCap, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
+	import { tileMeta } from '$lib/detail/tile-meta';
 	import {
 		capGateAnswerFrom,
 		createCapGateProbe,
@@ -4805,6 +4806,12 @@
 							{@const epThumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
 							{@const air = epAirState(n, airing)}
 							{@const capGated = !air.unaired && beyondPlayable(n, playableEpisodeCount)}
+							{@const meta = tileMeta({
+								unaired: air.unaired,
+								hasThumb: Boolean(epThumb),
+								notListed: capGated && showListed !== false,
+								length: ep.length ?? null
+							})}
 							<!-- in: only, no out:. With a 5-col grid, simultaneously
 						     mounting outgoing + incoming cards wraps to two
 						     rows for ~320ms during a page change, pushing the
@@ -4868,14 +4875,17 @@
 											<span class="ep-card-foot-num"
 												>{m.play_episode_card_num({ episode: String(n) })}</span
 											>
-											{#if air.unaired && epThumb}
+											{#if meta?.kind === 'unaired' && air.unaired}
 												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
 												<span class="ep-card-foot-len">{unairedLabel(air.airsAt)}</span>
-											{:else if !air.unaired && ep.length}
+											{:else if meta?.kind === 'not-listed'}
+												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
+												<span class="ep-card-foot-len">{m.detail_ep_not_listed()}</span>
+											{:else if meta?.kind === 'length'}
 												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
 												<span class="ep-card-foot-len"
 													>{m.play_episode_card_length_minutes({
-														minutes: String(ep.length)
+														minutes: String(meta.minutes)
 													})}</span
 												>
 											{/if}
