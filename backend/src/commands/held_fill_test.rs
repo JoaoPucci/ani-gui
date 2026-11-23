@@ -157,7 +157,11 @@ async fn the_same_show_held_twice_is_retried_once() {
     let state = state(&kitsu.uri());
 
     let first = thumbs(&state, "13", &anilist).await;
+    // The second view on a paused clock, which moves only from timer to
+    // timer: the pause cannot end before the view asks.
+    tokio::time::pause();
     let second = thumbs(&state, "13", &anilist).await;
+    tokio::time::resume();
     assert_eq!(first.len(), 1);
     assert_eq!(first, second, "both views wait on one retry");
 
@@ -173,10 +177,20 @@ async fn many_held_shows_each_land() {
     let _gate = share_for_tests(&anilist.uri(), ANILIST);
     let state = state(&kitsu.uri());
 
-    let mut tickets = Vec::new();
-    for show in ["14", "15", "16"] {
+    for show in ["15", "16"] {
+        crate::commands::external_ids::external_ids_for(&state, show)
+            .await
+            .expect("mappings");
+    }
+    let mut tickets = thumbs(&state, "14", &anilist).await;
+    // The next two views on a paused clock, which moves only from timer
+    // to timer, their mappings known: the pause cannot end before they
+    // ask.
+    tokio::time::pause();
+    for show in ["15", "16"] {
         tickets.extend(thumbs(&state, show, &anilist).await);
     }
+    tokio::time::resume();
     assert_eq!(tickets.len(), 3, "{tickets:?}");
     let mut landed = Vec::new();
     while landed.len() < tickets.len() {
@@ -258,8 +272,10 @@ async fn a_fill_no_page_was_served_is_not_retried() {
         Some(&uri),
     )
     .await;
-    tokio::time::sleep(Duration::from_millis(2500)).await;
-    assert_eq!(requests(&anilist).await, 1, "no retry went out");
+    // No retry is queued: none waits to go once the pause ends.
+    let key = super::key(&state, super::Fill::Thumbs, "22", Some(&uri));
+    assert_eq!(super::registry().pending(&key), None, "a retry was queued");
+    assert_eq!(requests(&anilist).await, 1);
     assert_eq!(row(&state, "anilist:eps-thumbs:v2:k22"), None);
 }
 
@@ -391,22 +407,56 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
         .with_priority(2)
         .mount(&anilist)
         .await;
-    let _gate = share_for_tests(&anilist.uri(), ANILIST);
+    let gate = share_for_tests(&anilist.uri(), ANILIST);
     let state = state(&kitsu.uri());
+    // Kitsu's mappings of the next page's shows are known, so its fills
+    // reach AniList's lane without a request on the way.
+    for s in ["42", "43", "44"] {
+        crate::commands::external_ids::external_ids_for(&state, s)
+            .await
+            .expect("mappings");
+    }
 
     let mut left = thumbs(&state, "40", &anilist).await;
     left.extend(thumbs(&state, "41", &anilist).await);
     assert_eq!(left.len(), 2, "{left:?}");
     super::release(&left);
 
-    // Inside the pause, and late enough that the three, a quarter
-    // second apart, all fit in a fill's one-second wait.
-    tokio::time::sleep(Duration::from_millis(1700)).await;
-    let (c, d, e) = tokio::join!(
-        thumbs(&state, "42", &anilist),
-        thumbs(&state, "43", &anilist),
-        thumbs(&state, "44", &anilist),
-    );
+    // The next page asks on a paused clock, which moves only from timer
+    // to timer, every task due at one run before it moves on: inside
+    // the pause, late enough that the fresh fills' one-second wait
+    // covers what is left of it and the quarter second the gate keeps
+    // between the two requests — the leftovers' lane long closed — and
+    // with no time passing on the way: none of the pause can run out
+    // while the page asks. The clock runs again once the gate has let
+    // both fresh requests go, so no wait of theirs runs out on a slow
+    // machine either.
+    tokio::time::pause();
+    let pause = crate::meta::anilist_gate::background_wait(&anilist.uri());
+    tokio::time::sleep(pause.saturating_sub(Duration::from_millis(600))).await;
+    let fresh = async {
+        tokio::join!(
+            thumbs(&state, "42", &anilist),
+            thumbs(&state, "43", &anilist),
+            thumbs(&state, "44", &anilist),
+        )
+    };
+    let queued = async {
+        crate::held::until("both fresh requests wait for their turn", || {
+            gate.waiting() == 2
+        })
+        .await;
+        assert!(
+            !crate::meta::anilist_gate::background_wait(&anilist.uri()).is_zero(),
+            "the pause ended before the page asked"
+        );
+        crate::held::until("the gate lets both fresh requests go", || {
+            gate.let_go().len() == 3
+        })
+        .await;
+        tokio::time::resume();
+    };
+    let ((c, d, e), ()) = tokio::join!(fresh, queued);
     assert!(
         c.is_empty() && d.is_empty() && e.is_empty(),
         "fresh fills answered"
@@ -429,28 +479,33 @@ async fn fills_held_on_a_page_left_go_only_after_the_next_pages_fresh_fills_and_
             "fresh fill {s} was not kept"
         );
     }
+    // The refusal, the two fresh requests, then the two retries, in the
+    // order the gate let them go.
+    use crate::meta::anilist_gate::Class::{Background, Retry};
+    assert_eq!(
+        gate.let_go(),
+        vec![Background, Background, Background, Retry, Retry]
+    );
+    // What each asked for, from the mock's record, which keeps what was
+    // asked but not, for two requests sent close together, their order.
     let ids = asked_ids(&anilist).await;
-    let last_fresh = ids
-        .iter()
-        .rposition(|asked| asked.iter().any(|id| (42..=44).contains(id)))
-        .expect("fresh");
-    let first_retry = ids
-        .iter()
-        .enumerate()
-        .skip(1)
-        .find(|&(_, asked)| asked.iter().any(|id| (40..=41).contains(id)))
-        .map(|(i, _)| i)
-        .expect("a retry");
-    assert!(last_fresh < first_retry, "fresh fills go first: {ids:?}");
-    // The refusal, the first fresh fill alone, the other two in one
-    // request, two retries.
     assert_eq!(ids.len(), 5, "{ids:?}");
-    assert_eq!(ids[0], vec![40]);
-    let mut fresh: Vec<u64> = ids[1].iter().chain(&ids[2]).copied().collect();
-    fresh.sort_unstable();
-    assert_eq!(fresh, vec![42, 43, 44], "{ids:?}");
-    assert_eq!((ids[1].len(), ids[2].len()), (1, 2), "{ids:?}");
-    assert_eq!(&ids[3..], &[vec![40], vec![41]], "{ids:?}");
+    assert_eq!(ids[0], vec![40], "{ids:?}");
+    let (mut fresh, mut retries): (Vec<Vec<u64>>, Vec<Vec<u64>>) = ids[1..]
+        .iter()
+        .cloned()
+        .partition(|asked| asked.iter().any(|id| (42..=44).contains(id)));
+    fresh.sort_by_key(Vec::len);
+    let mut fresh_ids: Vec<u64> = fresh.concat();
+    fresh_ids.sort_unstable();
+    assert_eq!(fresh_ids, vec![42, 43, 44], "{ids:?}");
+    assert_eq!(
+        fresh.iter().map(Vec::len).collect::<Vec<_>>(),
+        vec![1, 2],
+        "{ids:?}"
+    );
+    retries.sort();
+    assert_eq!(retries, vec![vec![40], vec![41]], "{ids:?}");
 }
 
 /// A page that takes a copy of another read's held-back lookup is served
@@ -474,25 +529,25 @@ async fn a_released_ticket_a_page_takes_a_copy_of_is_on_screen_until_it_waits() 
     assert!(on_screen, "served to the page on screen");
 }
 
-/// Kitsu as [`kitsu`] for one show, its mappings answered after
-/// `delay`, so two thumbnail lookups of the show overlap.
-async fn kitsu_slow_mappings(kitsu_id: &str, anilist_id: u32, delay: Duration) -> MockServer {
+/// Kitsu's answer for one show's mappings, as [`kitsu`] gives it.
+fn mappings(kitsu_id: &str, anilist_id: u32) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+        "data": { "id": kitsu_id, "type": "anime", "attributes": { "canonicalTitle": "t" } },
+        "included": [{
+            "id": "1",
+            "type": "mappings",
+            "attributes": { "externalSite": "anilist/anime", "externalId": anilist_id.to_string() }
+        }],
+    }))
+}
+
+/// Kitsu answering one show's mappings with `answer`.
+async fn kitsu_mappings(kitsu_id: &str, answer: impl wiremock::Respond + 'static) -> MockServer {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path(format!("/anime/{kitsu_id}")))
         .and(query_param("include", "mappings"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "data": { "id": kitsu_id, "type": "anime", "attributes": { "canonicalTitle": "t" } },
-                    "included": [{
-                        "id": "1",
-                        "type": "mappings",
-                        "attributes": { "externalSite": "anilist/anime", "externalId": anilist_id.to_string() }
-                    }],
-                }))
-                .set_delay(delay),
-        )
+        .respond_with(answer)
         .mount(&server)
         .await;
     server
@@ -504,7 +559,16 @@ async fn kitsu_slow_mappings(kitsu_id: &str, anilist_id: u32, delay: Duration) -
 /// page asked for, which queues no retry of its own.
 #[tokio::test]
 async fn a_page_sharing_a_held_back_lookup_no_page_asked_for_gets_its_retry() {
-    let kitsu = kitsu_slow_mappings("31", 50, Duration::from_millis(300)).await;
+    // The lookup no page asked for is held at Kitsu's mappings until the
+    // page's lookup has joined it.
+    let kitsu = MockServer::start().await;
+    let (hold, held) = crate::held::gate();
+    Mock::given(method("GET"))
+        .and(path("/anime/31"))
+        .and(query_param("include", "mappings"))
+        .respond_with(crate::held::Held::new(hold, mappings("31", 50)))
+        .mount(&kitsu)
+        .await;
     let anilist = anilist(Some(1), 1, LISTING).await;
     let _gate = share_for_tests(&anilist.uri(), ANILIST);
     let state = state(&kitsu.uri());
@@ -518,8 +582,14 @@ async fn a_page_sharing_a_held_back_lookup_no_page_asked_for_gets_its_retry() {
     };
 
     let page = async {
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        collect(lookup()).await
+        held.asked().await;
+        let mut page = std::pin::pin!(collect(lookup()));
+        assert!(
+            futures_util::poll!(&mut page).is_pending(),
+            "the page waits on the lookup already out"
+        );
+        held.release();
+        page.await
     };
     let (unasked, (_, tickets)) = tokio::join!(lookup(), page);
     assert!(unasked.entries.is_empty());
@@ -535,7 +605,7 @@ async fn a_page_sharing_a_held_back_lookup_no_page_asked_for_gets_its_retry() {
 /// retry of the listing held back on the lookup they shared.
 #[tokio::test]
 async fn two_pages_sharing_a_held_back_lookup_both_get_its_ticket() {
-    let kitsu = kitsu_slow_mappings("32", 51, Duration::from_millis(300)).await;
+    let kitsu = kitsu_mappings("32", mappings("32", 51)).await;
     let anilist = anilist(Some(1), 1, LISTING).await;
     let _gate = share_for_tests(&anilist.uri(), ANILIST);
     let state = state(&kitsu.uri());
