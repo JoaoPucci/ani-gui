@@ -115,8 +115,8 @@ describe('upNextShown', () => {
 	});
 
 	it('does not wait on a next episode counted for another show', () => {
-		// The page reused for a 12-episode show still holds the counts of
-		// the 24-episode show it opened on: episode 13 "fits", but at the
+		// A page whose id moved to a 12-episode show still holds the
+		// counts of the 24-episode show it opened on: episode 13 "fits", but at the
 		// finale this show's franchise found, the step is closed.
 		expect(upNextShown({ ...due, hasNext: stepOpen(true, true, true) })).toBe(true);
 	});
@@ -128,7 +128,7 @@ describe('upNextShown', () => {
 
 describe('stepOpen', () => {
 	it("closes a step counted for another show at this show's finale", () => {
-		// The page reused for a 12-episode show still counts the
+		// A page whose id moved to a 12-episode show still counts the
 		// 24-episode show it opened on: at the finale this show's
 		// franchise found, the step to "episode 13" is not this show's.
 		expect(stepOpen(true, true, true)).toBe(false);
