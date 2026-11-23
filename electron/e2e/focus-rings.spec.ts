@@ -53,7 +53,11 @@
  * soft shadow, a card's resting elevation, is not one. A ring on an
  * element inside the control is one a style rule draws there through a
  * `:focus-visible` in its selector, found through the page's style
- * sheets and the element's `matches`.
+ * sheets and the element's `matches`. A ring the control's focus draws
+ * beside it or around it (through `:focus-visible` or `:focus-within`)
+ * counts as its ring when the control itself does not show one, and a
+ * ring on a control that is hidden (transparent, or without a box) does
+ * not count.
  *
  * Two more tests walk what shows only in some states, at the desktop
  * size: Home with a guessed Continue Watching card, a pinned sign-in
@@ -61,6 +65,15 @@
  * with a download in flight, which shows the download bar; and the
  * player's page with the skip button up and the note on a guessed
  * session. Each requires the walk to reach those controls.
+ *
+ * A forced-colours theme (a Windows contrast theme) drops every box
+ * shadow, so there a ring must be an outline. With the theme emulated,
+ * a last test walks Home, a show's page, Settings and Search at the
+ * desktop size, and the state tests walk their screens again: every
+ * stop must show an outline the eye can see (its own or its chip's on
+ * a visible control, or one its focus draws on an element beside or
+ * inside it), whole, and the window buttons only on their chip. The
+ * smallest and the maximized windows are not walked in that theme.
  *
  * What it does not reach: the Account, About and Debug pages, and the
  * menus, dialogs and popovers other than the link dialog.
@@ -282,10 +295,19 @@ interface Stop {
 	clips: Clip[];
 	/** Which of the controls this change is about it is, if any. */
 	kind: Kind;
-	/** Whether it, its chip or an element its focus rings draws an
-	 *  outline: the ring a forced-colours theme keeps, since it drops
-	 *  every box shadow. */
+	/** Whether an outline the eye can see marks it: its own or its
+	 *  chip's, on a control that is itself visible, or one that its focus
+	 *  draws on an element beside or inside it (a switch's track). That
+	 *  is the ring a forced-colours theme keeps, since it drops every box
+	 *  shadow. */
 	outlined: boolean;
+	/** Whether the control itself shows: rendered, not transparent,
+	 *  with a box. A ring on a hidden control is not seen. */
+	visible: boolean;
+	/** Whether its focus draws a ring (an outline or a shadow with a
+	 *  spread) on a visible element beside it or around it: a switch's
+	 *  track, a slider's frame. */
+	relatedRinged: boolean;
 	/** Where its own outline and its chip's outline lie, if it draws
 	 *  them: what a forced-colours theme shows of its ring. */
 	outlines: Box[];
@@ -446,17 +468,19 @@ function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop |
 			};
 		}
 
-		// Rings the control's focus draws on what it holds: a style rule
-		// whose selector names `:focus-visible` and that sets an outline
-		// or a shadow matches the element, which is not itself focused,
-		// and the element draws a ring. A rule that only moves or grows
-		// it (a scrubber's thumb) draws none.
+		// Rings the control's focus draws on other elements: a style rule
+		// whose selector names `:focus-visible` or `:focus-within` and
+		// that sets an outline or a shadow matches the element, which is
+		// not itself focused, and the element draws a ring. A rule that
+		// only moves or grows it (a scrubber's thumb) draws none. Inside
+		// the control such a ring is a child ring; beside it or around it
+		// (a switch's track, a search field's frame) it is a related one.
 		const focusRules: CSSStyleRule[] = [];
 		const collect = (rules: CSSRuleList) => {
 			for (const r of rules) {
 				if (
 					r instanceof CSSStyleRule &&
-					r.selectorText.includes(':focus-visible') &&
+					(r.selectorText.includes(':focus-visible') || r.selectorText.includes(':focus-within')) &&
 					(r.style.boxShadow !== '' || r.style.outlineStyle !== '')
 				) {
 					focusRules.push(r);
@@ -474,11 +498,36 @@ function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop |
 			}
 		}
 		const lined = (s: CSSStyleDeclaration) => s.outlineStyle !== 'none' && px(s.outlineWidth) > 0;
-		let childOutlined = false;
+		/** Whether an element shows at all: rendered, not transparent,
+		 *  and with a box. A focused input a switch hides is not. */
+		const shows = (e: Element) => {
+			const r = e.getBoundingClientRect();
+			return (
+				e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) &&
+				r.width > 0 &&
+				r.height > 0
+			);
+		};
+		// An outline its focus draws on an element next to it or inside
+		// it: any element under its parent a `:focus-visible` rule
+		// matches.
+		let relatedOutlined = false;
+		let relatedRinged = false;
+		const parent = el.parentElement;
+		const ancestors: HTMLElement[] = [];
+		for (let a = parent; a && a !== document.body; a = a.parentElement) ancestors.push(a);
+		const near = [...ancestors, ...(parent?.querySelectorAll<HTMLElement>('*') ?? [])];
+		for (const d of near) {
+			if (d === el || el.contains(d)) continue;
+			if (!focusRules.some((r) => d.matches(r.selectorText))) continue;
+			if (!shows(d)) continue;
+			const ds = getComputedStyle(d);
+			if (lined(ds)) relatedOutlined = relatedRinged = true;
+			if (shadows(ds).some((s) => s.spread > 0)) relatedRinged = true;
+		}
 		const childRings: Stop['childRings'] = [];
 		for (const d of el.querySelectorAll<HTMLElement>('*')) {
 			if (!focusRules.some((r) => d.matches(r.selectorText))) continue;
-			if (lined(getComputedStyle(d))) childOutlined = true;
 			const by = reach(getComputedStyle(d));
 			if (by === null) continue;
 			childRings.push({
@@ -534,7 +583,9 @@ function readStop(page: Page, selectors: readonly string[] = []): Promise<Stop |
 			rule,
 			room,
 			kind,
-			outlined: outlined || (hasBefore && lined(before)) || childOutlined,
+			outlined: ((outlined || (hasBefore && lined(before))) && shows(el)) || relatedOutlined,
+			visible: shows(el),
+			relatedRinged,
 			outlines: [
 				...(outlined ? [grow(rect, px(cs.outlineWidth) + px(cs.outlineOffset))] : []),
 				...(hasBefore && lined(before)
@@ -626,11 +677,14 @@ const inside = (inner: Box, outer: Box) =>
 	inner.top >= outer.top - 0.5 &&
 	inner.bottom <= outer.bottom + 0.5;
 
-/** Whether a stop draws a ring anywhere: around itself, inside its box,
- *  on its chip or on one element inside it. A soft shadow alone (a
- *  resting elevation) is not a ring. */
+/** Whether a stop shows a ring the eye can see: around itself, inside
+ *  its box or on its chip when it is itself visible, or on an element
+ *  inside, beside or around it. A soft shadow alone (a resting
+ *  elevation) is not a ring. */
 const ringed = (s: Stop) =>
-	s.ring !== null || s.inset !== null || s.chipRing !== null || s.childRings.length > 0;
+	(s.visible && (s.ring !== null || s.inset !== null || s.chipRing !== null)) ||
+	s.childRings.length > 0 ||
+	s.relatedRinged;
 
 function assertStops(
 	stops: Stop[],
@@ -653,10 +707,6 @@ function assertStops(
 				`${at}: the walk reached ${sel} (${stops.map((s) => s.name).join(' | ')})`
 			)
 			.toBe(true);
-	}
-	// What the walk was sent to reach shows a ring.
-	for (const s of stops.filter((s) => s.hits.length > 0)) {
-		expect.soft(ringed(s), `${at}: ${s.name} shows a ring`).toBe(true);
 	}
 	for (const s of stops) {
 		const where = `${at}: ${s.name} ${JSON.stringify(s)}`;
@@ -684,9 +734,9 @@ function assertStops(
 		}
 		if (s.kind === 'winctl') {
 			expect.soft(s.chipRing, `${where}: its chip carries the ring`).not.toBeNull();
-		} else if (s.kind !== 'other') {
-			expect.soft(ringed(s), `${where}: shows a ring`).toBe(true);
 		}
+		// Every control the keyboard reaches shows a ring the eye can see.
+		expect.soft(ringed(s), `${where}: shows a ring`).toBe(true);
 		// A ring drawn inside the box shows against what it is drawn on,
 		// and nothing the control places inside its box covers it.
 		if (s.inset) {
@@ -719,6 +769,52 @@ const views = [
 	{ label: 'smallest', width: 960, height: 600 },
 	{ label: 'desktop', width: 1440, height: 900 }
 ] as const;
+
+/** In a forced-colours theme, which drops every box shadow: every stop
+ *  shows an outline, whole, and a window button only on its chip. */
+function assertForced(
+	stops: Stop[],
+	at: string,
+	required: readonly Kind[],
+	need: readonly string[] = []
+) {
+	expect(stops.length, `${at}: the keyboard reached controls`).toBeGreaterThan(3);
+	const kinds = new Set(stops.map((s) => s.kind));
+	for (const k of required) {
+		expect.soft(kinds.has(k), `${at}: the walk reached a ${k} control`).toBe(true);
+	}
+	for (const sel of need) {
+		expect
+			.soft(
+				stops.some((s) => s.hits.includes(sel)),
+				`${at}: the walk reached ${sel}`
+			)
+			.toBe(true);
+	}
+	for (const s of stops) {
+		const where = `${at}: ${s.name} ${JSON.stringify(s)}`;
+		expect.soft(s.outlined, `${where}: draws an outline`).toBe(true);
+		for (const ring of s.outlines) {
+			for (const c of s.clips) {
+				expect.soft(inside(ring, c.box), `${where}: its outline is cut by ${c.name}`).toBe(true);
+			}
+		}
+		if (s.kind === 'winctl') {
+			expect.soft(s.outlines.length, `${where}: only its chip draws an outline`).toBe(1);
+			expect.soft(s.look.outline, `${where}: the button draws none`).toBe('none');
+		}
+		// The theme is in force: a rail link's own ring, a shadow, is gone.
+		if (s.kind === 'nav') {
+			expect.soft(s.look.boxShadow, `${where}: the theme dropped its shadow`).toBe('none');
+		}
+	}
+}
+
+/** Emulates a forced-colours theme, or none. */
+async function forcedColours(page: Page, on: boolean) {
+	await page.emulateMedia({ reducedMotion: 'reduce', forcedColors: on ? 'active' : 'none' });
+	expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(on);
+}
 
 /** The pages every walk covers, each with how to reach it from Home
  *  and the controls it must reach. */
@@ -999,10 +1095,16 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 			'.toast .action',
 			'.toast .dismiss'
 		];
-		for (const key of ['Tab', 'Shift+Tab'] as const) {
-			const at = `home with Continue Watching, ${key}`;
-			assertStops(await walk(page, key, { selectors: homeNeeds }), at, ['brand'], homeNeeds);
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `home with Continue Watching${forced ? ', forced colours' : ''}, ${key}`;
+				const stops = await walk(page, key, { selectors: homeNeeds });
+				if (forced) assertForced(stops, at, ['brand'], homeNeeds);
+				else assertStops(stops, at, ['brand'], homeNeeds);
+			}
 		}
+		await forcedColours(page, false);
 
 		// The link dialog, opened from the card's pill.
 		await resume.focus();
@@ -1012,15 +1114,16 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 		await expect(dialog.locator('.ls-row').first()).toBeVisible({ timeout: 15_000 });
 		await page.keyboard.press('Tab');
 		await page.keyboard.press('Shift+Tab');
-		for (const key of ['Tab', 'Shift+Tab'] as const) {
-			const at = `the link dialog, ${key}`;
-			assertStops(
-				await walk(page, key, { selectors: ['.ls-row'], fresh: false }),
-				at,
-				[],
-				['.ls-row']
-			);
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `the link dialog${forced ? ', forced colours' : ''}, ${key}`;
+				const stops = await walk(page, key, { selectors: ['.ls-row'], fresh: false });
+				if (forced) assertForced(stops, at, [], ['.ls-row']);
+				else assertStops(stops, at, [], ['.ls-row']);
+			}
 		}
+		await forcedColours(page, false);
 		await page.keyboard.press('Escape');
 		await expect(dialog).toBeHidden();
 
@@ -1037,14 +1140,14 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 		await expect(dlDialog).toBeVisible();
 		await dlDialog.getByRole('button', { name: message('download', 'button_confirm') }).click();
 		await expect(page.locator('.dl-bar-cancel')).toBeVisible({ timeout: 15_000 });
-		for (const key of ['Tab', 'Shift+Tab'] as const) {
-			const at = `a show's page with a download, ${key}`;
-			assertStops(
-				await walk(page, key, { selectors: ['.dl-bar-cancel'] }),
-				at,
-				[],
-				['.dl-bar-cancel']
-			);
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `a show's page with a download${forced ? ', forced colours' : ''}, ${key}`;
+				const stops = await walk(page, key, { selectors: ['.dl-bar-cancel'] });
+				if (forced) assertForced(stops, at, ['seg'], ['.dl-bar-cancel']);
+				else assertStops(stops, at, [], ['.dl-bar-cancel']);
+			}
 		}
 	} finally {
 		await stopApp(app);
@@ -1144,12 +1247,17 @@ async function walkPlayer(origin: string) {
 		await hold();
 		await expect(page.locator('.guess-slip .act').first()).toBeVisible({ timeout: 15_000 });
 		const needs = ['.player-skip-btn', '.guess-slip .act', '.guess-slip .hide'];
-		for (const key of ['Tab', 'Shift+Tab'] as const) {
-			// Held inside the button's window while the walk runs.
-			await hold();
-			await expect(skip).toBeVisible();
-			const at = `the player, ${key}`;
-			assertStops(await walk(page, key, { selectors: needs }), at, [], needs);
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				// Held inside the button's window while the walk runs.
+				await hold();
+				await expect(skip).toBeVisible();
+				const at = `the player${forced ? ', forced colours' : ''}, ${key}`;
+				const stops = await walk(page, key, { selectors: needs });
+				if (forced) assertForced(stops, at, [], needs);
+				else assertStops(stops, at, [], needs);
+			}
 		}
 	} finally {
 		await stopApp(app);
@@ -1162,8 +1270,7 @@ test('in a forced-colours theme every focused control draws an outline', async (
 	try {
 		// A contrast theme (Windows) drops every box shadow, so a ring
 		// drawn only as a shadow is not there; an outline is kept.
-		await page.emulateMedia({ reducedMotion: 'reduce', forcedColors: 'active' });
-		expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true);
+		await forcedColours(page, true);
 		await sizeViewport(page, 1440, 900);
 		for (const p of pagesOf(page)) {
 			await page.locator('a.brand').click();
@@ -1171,24 +1278,7 @@ test('in a forced-colours theme every focused control draws an outline', async (
 			await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 			for (const key of ['Tab', 'Shift+Tab'] as const) {
 				const at = `${p.label}, forced colours, ${key}`;
-				const stops = await walk(page, key);
-				expect(stops.length, `${at}: the keyboard reached controls`).toBeGreaterThan(3);
-				for (const s of stops) {
-					const where = `${at}: ${s.name} ${JSON.stringify(s)}`;
-					expect.soft(s.outlined, `${where}: draws an outline`).toBe(true);
-					// Whole, and once: the window buttons' chip carries it.
-					for (const ring of s.outlines) {
-						for (const c of s.clips) {
-							expect
-								.soft(inside(ring, c.box), `${where}: its outline is cut by ${c.name}`)
-								.toBe(true);
-						}
-					}
-					if (s.kind === 'winctl') {
-						expect.soft(s.outlines.length, `${where}: only its chip draws an outline`).toBe(1);
-						expect.soft(s.look.outline, `${where}: the button draws none`).toBe('none');
-					}
-				}
+				assertForced(await walk(page, key), at, p.required);
 			}
 		}
 	} finally {
