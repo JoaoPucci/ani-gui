@@ -599,6 +599,12 @@ const inside = (inner: Box, outer: Box) =>
 	inner.top >= outer.top - 0.5 &&
 	inner.bottom <= outer.bottom + 0.5;
 
+/** Whether a stop draws a ring anywhere: around itself, inside its box,
+ *  on its chip or on one element inside it. A soft shadow alone (a
+ *  resting elevation) is not a ring. */
+const ringed = (s: Stop) =>
+	s.ring !== null || s.inset !== null || s.chipRing !== null || s.childRings.length > 0;
+
 function assertStops(
 	stops: Stop[],
 	at: string,
@@ -623,12 +629,7 @@ function assertStops(
 	}
 	// What the walk was sent to reach shows a ring.
 	for (const s of stops.filter((s) => s.hits.length > 0)) {
-		expect
-			.soft(
-				s.drawn || s.chipRing !== null || s.childRings.length > 0,
-				`${at}: ${s.name} shows a ring`
-			)
-			.toBe(true);
+		expect.soft(ringed(s), `${at}: ${s.name} shows a ring`).toBe(true);
 	}
 	for (const s of stops) {
 		const where = `${at}: ${s.name} ${JSON.stringify(s)}`;
@@ -657,7 +658,7 @@ function assertStops(
 		if (s.kind === 'winctl') {
 			expect.soft(s.chipRing, `${where}: its chip carries the ring`).not.toBeNull();
 		} else if (s.kind !== 'other') {
-			expect.soft(s.drawn, `${where}: shows a ring`).toBe(true);
+			expect.soft(ringed(s), `${where}: shows a ring`).toBe(true);
 		}
 		// A ring drawn inside the box shows against what it is drawn on,
 		// and nothing the control places inside its box covers it.
