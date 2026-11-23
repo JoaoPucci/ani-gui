@@ -18,11 +18,14 @@ pub use crate::meta::kitsu::FranchiseEntry as WatchEntry;
 pub mod by_start;
 mod components;
 pub mod entry;
+pub mod franchise_page;
 pub mod graph;
+mod no_clear_place;
 pub mod place;
 pub mod progress;
 pub mod rail;
 pub mod run;
+pub mod sections;
 pub mod segments;
 pub mod sequence;
 pub mod strip_view;
@@ -155,3 +158,7 @@ pub(crate) mod strategies;
 #[cfg(test)]
 #[path = "progress_test.rs"]
 mod progress_tests;
+
+#[cfg(test)]
+#[path = "franchise_page_test.rs"]
+mod franchise_page_tests;
