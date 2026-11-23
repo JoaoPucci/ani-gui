@@ -201,6 +201,7 @@ describe('Russian headings end without a full stop', () => {
 		'account.watch_later_failed',
 		'detail.episodes_heading',
 		'diagnostics.section_row_style',
+		'diagnostics.section_start_look',
 		'detail.synopsis_heading',
 		'detail.error_load_headline',
 		'detail.error_no_id_headline',
