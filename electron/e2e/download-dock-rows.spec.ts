@@ -32,7 +32,7 @@
  * Every locale the app ships is left-to-right, and the geometry is
  * read that way: a right-to-left locale would fail here, not pass.
  */
-import { type ElectronApplication, type Page } from '@playwright/test';
+import { type CDPSession, type ElectronApplication, type Page } from '@playwright/test';
 import { expect, test } from './policy-guard';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
@@ -261,17 +261,26 @@ async function startDownload(
 	await expect(dialog).toHaveCount(0);
 }
 
+/** One DevTools session per page, kept open: an override lasts only as
+ *  long as the session that set it. */
+const sessions = new WeakMap<Page, CDPSession>();
+
 /** Lays the page out at `width` × `height` and `scale`. */
 async function sizeViewport(page: Page, width: number, height: number, scale: number) {
-	const cdp = await page.context().newCDPSession(page);
+	let cdp = sessions.get(page);
+	if (!cdp) {
+		cdp = await page.context().newCDPSession(page);
+		sessions.set(page, cdp);
+	}
 	await cdp.send('Emulation.setDeviceMetricsOverride', {
 		width,
 		height,
 		deviceScaleFactor: scale,
 		mobile: false
 	});
-	await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
-	await cdp.detach();
+	await expect
+		.poll(() => page.evaluate(() => [window.innerWidth, window.devicePixelRatio]))
+		.toEqual([width, scale]);
 }
 
 async function widerLetters(page: Page, wider: boolean) {
@@ -416,15 +425,22 @@ function assertRows(g: Geometry, at: string, count: number) {
 			.soft(Math.max(...marks) - Math.min(...marks), `${at}: the states line up`)
 			.toBeLessThan(1);
 	}
-	// A queued row's label starts where a running row's bar does, so its
-	// title is cut at the same place.
-	const starts = g.rows
-		.filter((r) => r.status === 'running' || r.status === 'queued')
-		.map((r) => r.mark!.left);
-	if (starts.length > 1) {
-		expect
-			.soft(Math.max(...starts) - Math.min(...starts), `${at}: bars and Queued start together`)
-			.toBeLessThan(1);
+	// A queued row's label is at least a bar's width: it starts where a
+	// running row's bar does, so its title is cut at the same place,
+	// unless its words need more room, when it starts before the bar.
+	const bars = g.rows.filter((r) => r.status === 'running').map((r) => r.mark!);
+	for (const q of g.rows.filter((r) => r.status === 'queued')) {
+		for (const bar of bars) {
+			const label = q.mark!;
+			const where = `${at}: the Queued label ${JSON.stringify(label)} against a bar ${JSON.stringify(bar)}`;
+			expect
+				.soft(label.right - label.left, where)
+				.toBeGreaterThanOrEqual(bar.right - bar.left - EPS);
+			expect.soft(label.left, where).toBeLessThanOrEqual(bar.left + EPS);
+			if (label.right - label.left <= bar.right - bar.left + EPS) {
+				expect.soft(Math.abs(label.left - bar.left), `${where}: starts with it`).toBeLessThan(1);
+			}
+		}
 	}
 	// Rows with nothing under their line are all one height.
 	const heights = g.rows.filter((r) => !r.report).map((r) => r.rowHeight);
@@ -447,6 +463,11 @@ async function checkViews(page: Page, name: string, count: number) {
 		await sizeViewport(page, view.width, view.height, view.scale);
 		await widerLetters(page, view.wider);
 		const pop = await openDock(page);
+		// The view is the one asked for.
+		expect(
+			await page.evaluate(() => [window.innerWidth, window.devicePixelRatio]),
+			`${name}, ${view.label}: the view`
+		).toEqual([view.width, view.scale]);
 		const g = await geometry(page);
 		const at = `${name}, ${view.label}`;
 		testInfo.annotations.push({ type: 'geometry', description: `${at}: ${JSON.stringify(g)}` });
