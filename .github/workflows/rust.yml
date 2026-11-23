@@ -179,6 +179,40 @@ jobs:
         run: |
           dir=$(sh tools/hostile-tmpdir.sh "$RUNNER_TEMP")
           printf 'TMPDIR=%s\n' "$dir" >> "$GITHUB_ENV"
+      - if: needs.filter.outputs.relevant == 'true' && matrix.os == 'macos-latest'
+        name: TEMPORARY loop the lock contention case
+        working-directory: backend
+        env:
+          RUSTFLAGS: '-D warnings'
+          http_proxy: http://proxy.invalid:9
+          https_proxy: http://proxy.invalid:9
+          all_proxy: http://proxy.invalid:9
+          no_proxy: 127.0.0.1,localhost,::1
+          CARGO_NET_OFFLINE: 'true'
+        run: |
+          bin=$(cargo test --workspace --all-features --lib --no-run --message-format=json 2>/dev/null | python3 -c 'import sys,json
+          for l in sys.stdin:
+              m=json.loads(l)
+              if m.get("reason")=="compiler-artifact" and m.get("executable") and m["target"]["name"]=="ani_gui" and m["profile"]["test"]: print(m["executable"])' | tail -1)
+          echo "binary: $bin"
+          case=commands::download_lock_cleanup_tests::contenders_removing_the_lock_never_hold_it_together
+          for i in $(seq 1 150); do
+            pids=""
+            for p in 1 2 3 4; do
+              "$bin" --exact "$case" > "run-$p.txt" 2>&1 &
+              pids="$pids $!"
+            done
+            n=1
+            for pid in $pids; do
+              if ! wait "$pid"; then
+                cat "run-$n.txt"
+                echo "refused on round $i, copy $n"
+                exit 1
+              fi
+              n=$((n+1))
+            done
+          done
+          echo "600 runs passed"
       - if: needs.filter.outputs.relevant == 'true'
         name: cargo test --workspace
         working-directory: backend
