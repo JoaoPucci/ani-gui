@@ -217,6 +217,27 @@ fn contenders_removing_the_lock_never_hold_it_together() {
     });
 }
 
+/// The lock's log reaches the capture from the blocking pool, where
+/// every try at the lock runs — or the contention case above would
+/// report a refusal with an empty log.
+#[test]
+fn the_lock_log_is_captured_from_the_blocking_pool() {
+    let _deadline = Deadline::arm();
+    let captured = Captured::default();
+    let _every = interest_from_every_thread();
+    let runtime = captured.runtime(2);
+    let dest = tempfile::tempdir().expect("dest");
+    std::fs::write(dest.path().join(".ani-gui-locks"), b"").expect("stage an obstruction");
+    let target = dest.path().join("Logged Show Episode 2.mp4");
+    let got = runtime.block_on(acquire_instance_lock(&target, long_deadline()));
+    assert!(got.is_err(), "an obstruction refuses: {got:?}");
+    assert!(
+        captured.text().contains("download lock refused"),
+        "the refusal is in the captured log: {}",
+        captured.text()
+    );
+}
+
 /// Lock files earlier versions left behind are removed when a download
 /// next uses the folder — but never one somebody still holds.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
