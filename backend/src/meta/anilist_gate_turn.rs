@@ -1,6 +1,6 @@
 //! Whose turn a request takes ([`super`]): the class it counts as, the
 //! rule that a retry stands back while any other request waits, and the
-//! line each request sent logs. Split from [`super`] so each file stays
+//! line each request sent logs, labelled by its [`Ask`]. Split from [`super`] so each file stays
 //! inside the CRAP gate's per-file bar.
 
 use std::future::Future;
@@ -10,6 +10,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use super::pace::{Class, Ledger, Pace};
+use super::purpose::Ask;
 
 tokio::task_local! {
     static CLASS: Class;
@@ -77,28 +78,58 @@ impl Drop for Waiting<'_> {
     }
 }
 
-/// One debug line per request sent: its class, how full the window it
-/// left in is — this send included — against the capacity and the
-/// background share, how many of the window's requests were retries,
-/// how long it waited for its turn, and whether a retry sent before it
-/// made it wait. What the split between the classes is measured from.
+/// One line per request sent, at the default level so the app's log
+/// accounts for every request of AniList's budget: what it is for, how
+/// many shows it carries when it asks about shows — never which — its
+/// class, how full the window it left in is — this send included —
+/// against the capacity and the background share, how many of the
+/// window's requests were retries, how long it waited for its turn, and
+/// whether a retry sent before it made it wait. What the split between
+/// the classes is measured from. A refusal's retry is a send of its own
+/// and logs its own line.
 pub(super) fn sent(
     pace: &Pace,
+    ask: Ask,
     class: Class,
     ledger: &Ledger,
     now: Instant,
     waited: Duration,
     behind_retry: bool,
 ) {
-    tracing::debug!(
+    // Displayed, so the label reads bare: `purpose=stills`.
+    let purpose = ask.purpose.name();
+    let in_window = ledger.in_window(pace, now);
+    let retries_in_window = ledger.retries_in_window(pace, now);
+    let waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
+    let background_capacity = pace.capacity_for(Class::Background);
+    // A request not about shows carries no count, rather than a zero
+    // that would read as an empty page.
+    if let Some(shows) = ask.shows {
+        tracing::info!(
+            provider = "anilist",
+            %purpose,
+            shows,
+            ?class,
+            in_window,
+            retries_in_window,
+            waited_ms,
+            behind_retry,
+            capacity = pace.capacity,
+            background_capacity,
+            "anilist request sent"
+        );
+        return;
+    }
+    tracing::info!(
         provider = "anilist",
+        %purpose,
         ?class,
-        in_window = ledger.in_window(pace, now),
-        retries_in_window = ledger.retries_in_window(pace, now),
-        waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX),
+        in_window,
+        retries_in_window,
+        waited_ms,
         behind_retry,
         capacity = pace.capacity,
-        background_capacity = pace.capacity_for(Class::Background),
+        background_capacity,
         "anilist request sent"
     );
 }

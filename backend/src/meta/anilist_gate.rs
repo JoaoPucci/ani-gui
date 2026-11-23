@@ -96,10 +96,11 @@ impl Gate {
     }
 
     /// Wait for `class`'s turn and take it, or refuse when the turn
-    /// comes after `deadline`. Nothing is recorded until the turn is
+    /// comes after `deadline`; a turn taken logs its line, labelled
+    /// `ask`. Nothing is recorded until the turn is
     /// taken, so a caller dropped while it waits costs nothing.
     /// Returns the instant the turn was taken, for [`Ledger::settle`].
-    async fn admit(&self, class: Class, deadline: Instant) -> Result<Instant> {
+    async fn admit(&self, ask: Ask, class: Class, deadline: Instant) -> Result<Instant> {
         let mut waiting = None;
         let mut behind_retry = false;
         let began = Instant::now();
@@ -116,7 +117,8 @@ impl Gate {
                     if class == Class::Retry {
                         ledger.record_retry(&self.pace, now);
                     }
-                    sent(&self.pace, class, &ledger, now, now - began, behind_retry);
+                    let waited = now - began;
+                    sent(&self.pace, ask, class, &ledger, now, waited, behind_retry);
                     return Ok(now);
                 }
                 if class != Class::Retry
@@ -175,13 +177,12 @@ where
     F: Fn() -> Fut,
     Fut: Future<Output = reqwest::Result<reqwest::Response>>,
 {
-    let _ = ask;
     let gate = gate_for(url);
     let class = current_class();
     let deadline = Instant::now() + gate.pace.wait_for(class);
     let mut retried = false;
     loop {
-        let sent = gate.admit(class, deadline).await?;
+        let sent = gate.admit(ask, class, deadline).await?;
         let resp = send().await;
         gate.ledger().settle(sent, Instant::now());
         let resp = resp.map_err(|_| AniError::Network)?;
