@@ -2965,32 +2965,24 @@ mod tests {
         );
     }
 
-    /// `/api/kitsu/trending-anilist` will get no valid response from
-    /// the unreachable test base; the test pins that the route exists
-    /// and surfaces the
-    /// upstream failure (rather than 404 because we forgot to
-    /// register it).
+    /// `/api/kitsu/trending-anilist` is registered. Asked with a method
+    /// it does not take, so its handler never runs and the test reaches
+    /// no network: a registered path answers 405, a missing one 404.
     #[tokio::test]
-    async fn kitsu_trending_routes_are_registered_and_propagate_failures() {
+    async fn the_anilist_trending_route_is_registered() {
         let td = TempDir::new().expect("tempdir");
         let router = test_router(Arc::new(test_app_state(&td)));
-        for path in ["/api/kitsu/trending-anilist"] {
-            let response = router
-                .clone()
-                .oneshot(
-                    Request::builder()
-                        .method("GET")
-                        .uri(path)
-                        .body(Body::empty())
-                        .expect("req"),
-                )
-                .await
-                .expect("oneshot");
-            assert!(
-                response.status() != StatusCode::NOT_FOUND,
-                "{path} returned 404 — route missing"
-            );
-        }
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/kitsu/trending-anilist")
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 
     /// The secret gate must
