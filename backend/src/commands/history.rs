@@ -111,7 +111,9 @@ pub fn watched_at_all(
 // The resume lookup, beside this file for the per-file complexity bar.
 #[path = "history_by_kitsu.rs"]
 mod by_kitsu;
-pub use by_kitsu::{history_by_kitsu, history_by_kitsu_each, ByKitsuEachArgs};
+pub use by_kitsu::{
+    history_by_kitsu, history_by_kitsu_each, history_by_kitsu_except, ByKitsuEachArgs,
+};
 
 // The read path where a failed cache read is an error, for a caller
 // that writes what it reads; beside this file for the per-file

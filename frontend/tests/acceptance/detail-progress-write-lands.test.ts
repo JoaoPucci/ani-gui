@@ -14,6 +14,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { watchPageFetches } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -55,6 +56,7 @@ let app: ReturnType<typeof mount> | null = null;
 let entry: EntryView = { status: 'planning', progress: 0 };
 let entryReads = 0;
 let progressWrites = 0;
+let fetches: ReturnType<typeof watchPageFetches>;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
@@ -70,6 +72,7 @@ beforeEach(() => {
 	entry = { status: 'planning', progress: 0 };
 	entryReads = 0;
 	progressWrites = 0;
+	fetches = watchPageFetches();
 	for (const item of [...toastStore.items]) toastStore.dismiss(item.id);
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json<Config>(appConfig())),
@@ -143,6 +146,12 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+/** The reads of the show's list entry the page has sent, counted as it
+ *  sends them: a handler sees a request only once MSW has carried it
+ *  there. */
+const entryReadsSent = () =>
+	fetches.sent.filter((f) => f.path === '/api/account/entry/anilist').length;
+
 /** The list control's trigger, by the status it shows. */
 const listShows = (label: string) =>
 	Array.from(target.querySelectorAll('button')).some((b) => (b.textContent ?? '').includes(label));
@@ -163,10 +172,13 @@ describe("detail route — a held progress write for the show lands while it's o
 	it("leaves the entry alone for another show's write", async () => {
 		app = mount(DetailPage, { target });
 		await until(() => listShows(m.detail_list_status_planning()), 'the entry as it was');
-		const before = entryReads;
+		const before = entryReadsSent();
 		await syncWatchedToTrackers(OTHER_ID, 1);
-		await new Promise((r) => setTimeout(r, 100));
-		expect(entryReads).toBe(before);
+		// The write has said it settled. A read of the entry waits only
+		// on the sign-in's bearer before it is sent, so once nothing the
+		// page asked is still out, a read the write set off has been sent.
+		await fetches.settled('the page to settle after the write');
+		expect(entryReadsSent()).toBe(before);
 	});
 });
 

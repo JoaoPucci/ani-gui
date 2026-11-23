@@ -45,12 +45,28 @@ pub fn history_by_kitsu(
     state: &crate::app::AppState,
     kitsu_id: &str,
 ) -> Result<Option<HistoryEntry>> {
+    history_by_kitsu_except(state, kitsu_id, |_| false)
+}
+
+/// [`history_by_kitsu`] among the rows `except` does not name: the
+/// pick's own progress, less the card's listing, for a switch
+/// ([`crate::commands::switch_episode`]).
+///
+/// # Errors
+/// As [`history_by_kitsu`].
+pub fn history_by_kitsu_except(
+    state: &crate::app::AppState,
+    kitsu_id: &str,
+    except: impl Fn(&str) -> bool,
+) -> Result<Option<HistoryEntry>> {
     if kitsu_id.is_empty() {
         return Ok(None);
     }
     // Under the writers' guard, as the list is.
     crate::history::guard::hold(&state.history_path, |_| {
-        history_by_kitsu_held(state, kitsu_id)
+        let rows = identified(state, &except)?;
+        let numbering = Numbering::read(&state.history_path);
+        resumed_from(state, &rows, &numbering, kitsu_id)
     })
 }
 
@@ -76,7 +92,7 @@ pub fn history_by_kitsu_each(
         return Ok(std::collections::BTreeMap::new());
     }
     crate::history::guard::hold(&state.history_path, |_| {
-        let rows = identified(state)?;
+        let rows = identified(state, &|_: &str| false)?;
         let numbering = Numbering::read(&state.history_path);
         ids.iter()
             .map(|id| Ok((id.clone(), resumed_from(state, &rows, &numbering, id)?)))
@@ -84,20 +100,16 @@ pub fn history_by_kitsu_each(
     })
 }
 
-fn history_by_kitsu_held(
+/// The history's rows `except` does not name, each with what the cache
+/// knows of its Kitsu identity, read once however many ids are then
+/// asked about.
+fn identified(
     state: &crate::app::AppState,
-    kitsu_id: &str,
-) -> Result<Option<HistoryEntry>> {
-    let rows = identified(state)?;
-    let numbering = Numbering::read(&state.history_path);
-    resumed_from(state, &rows, &numbering, kitsu_id)
-}
-
-/// The history's rows, each with what the cache knows of its Kitsu
-/// identity, read once however many ids are then asked about.
-fn identified(state: &crate::app::AppState) -> Result<Vec<(HistoryEntry, RowIdentity)>> {
+    except: &impl Fn(&str) -> bool,
+) -> Result<Vec<(HistoryEntry, RowIdentity)>> {
     read_all(&state.history_path)?
         .into_iter()
+        .filter(|entry| !except(&entry.id))
         .map(|entry| {
             let identity = row_identity(state, &entry)?;
             Ok((entry, identity))

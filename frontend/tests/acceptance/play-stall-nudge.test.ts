@@ -30,6 +30,21 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+// A re-resolve starts as a recovery, which asks its eviction as it
+// starts, in the fatal's own handler. Counting the eviction where it is
+// asked lets a case say no re-resolve began as soon as the fatal is
+// dispatched, rather than after a fixed wait for a stream that would
+// open only once the eviction has been answered.
+const seen = vi.hoisted(() => ({ evictions: 0 }));
+vi.mock('$lib/api', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/api')>();
+	const evictPlayCache: typeof real.evictPlayCache = (args) => {
+		seen.evictions += 1;
+		return real.evictPlayCache(args);
+	};
+	return { ...real, evictPlayCache };
+});
+
 // The engine double: the page's whole hls.js surface (isSupported,
 // construct, loadSource/attachMedia, on, startLoad, destroy) with an
 // event registry the test emits through.
@@ -124,6 +139,7 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	seen.evictions = 0;
 	FakeEventSource.instances.length = 0;
 	hlsInstances().length = 0;
 	g.EventSource = FakeEventSource;
@@ -229,7 +245,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		const toast = toastStore.items[toastStore.items.length - 1];
 		expect(toast.message).toBe(m.play_stall_toast_nudge());
 		// Same stream retried — no session swap, no resolve stream.
-		await new Promise((r) => setTimeout(r, 100));
+		expect(seen.evictions, 'no recovery started').toBe(0);
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 
 		// The burst's later nudges retry without stacking toasts.
@@ -258,7 +274,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		hls.emit(events.ERROR, HOST_SLOW_FATAL);
 		hls.emit(events.ERROR, HOST_SLOW_FATAL);
 		expect(hls.startLoadCalls).toBe(4);
-		await new Promise((r) => setTimeout(r, 100));
+		expect(seen.evictions, 'no recovery started').toBe(0);
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 	});
 
@@ -313,7 +329,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 
 		fresh.emit(ERROR, HOST_SLOW_FATAL);
 		expect(fresh.startLoadCalls).toBe(1);
-		await new Promise((r) => setTimeout(r, 100));
+		expect(seen.evictions, 'no recovery started').toBe(0);
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 	});
 
@@ -328,7 +344,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 
 		hls.emit((Hls as unknown as { Events: { ERROR: string } }).Events.ERROR, HOST_SLOW_FATAL);
 		expect(hls.startLoadCalls).toBe(1);
-		await new Promise((r) => setTimeout(r, 100));
+		expect(seen.evictions, 'no recovery started').toBe(0);
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 	});
 

@@ -224,12 +224,10 @@ Two of the layout's effects would be wrong in a second window:
 
 ### One engine per window, owned by the player page
 
-AGENTS.md §6 says hls.js is a singleton inside `Player.svelte`.
-**[data]** No `Player.svelte` exists. The engine is constructed in the
-play page (`+page.svelte:2009`) and, separately, in the `/play`
-diagnostic page that plays a pasted URL
-(`frontend/src/routes/play/+page.svelte:35`). The rule's intent holds:
-one engine per player surface, never one built ad hoc.
+AGENTS.md §6 says hls.js is a singleton inside the player page.
+**[data]** The engine is constructed in the play page
+(`+page.svelte:2132`), the one place it is built. The rule's intent
+holds: one engine per player surface, never one built ad hoc.
 
 **[proposal]** The play page's attach path (engine, sidecar tracks,
 quality control, resume hold, stall recovery, position writing) moves
@@ -381,8 +379,8 @@ script in the appendix.
 
 **[data]** The app runs native Wayland under a Wayland session: the
 launcher exports `ELECTRON_OZONE_PLATFORM_HINT=auto` before Electron
-starts (`electron/build-resources/after-pack.cjs:45`, comment at
-`electron/main.js:93`), and the maintainer's logs show
+starts (`electron/lib/linux-launcher.cjs`, and the comment on
+`ELECTRON_OZONE_PLATFORM_HINT` in `electron/main.js`), and the maintainer's logs show
 `--ozone-platform=wayland`.
 
 **[data]** Wayland has no always-on-top for application windows:
@@ -450,10 +448,10 @@ cannot run on XWayland while the other runs natively. The choices are:
    (38.0)"), so the launcher's mechanism changes when the app moves to
    Electron 38 or later in any case. A viewer can already do this today by exporting
    `ELECTRON_OZONE_PLATFORM_HINT=x11` before launching; the launcher
-   honours a value already set (`after-pack.cjs:45`).
+   honours a value already set (`linux-launcher.cjs`).
 3. **A second Electron process for the mini window on XWayland.**
    Rejected: it would need its own profile under the single-instance
-   lock (`electron/main.js:137`), so it would not share `localStorage`
+   lock (`electron/lib/single-instance.cjs`), so it would not share `localStorage`
    (positions, caption choices), and the handover would cross
    processes.
 
@@ -467,8 +465,8 @@ keeping the window on top" below.
 **[data]** Electron documents `setAlwaysOnTop` levels for Windows; the
 default `floating` level stays below the taskbar. `setAspectRatio` and
 `-webkit-app-region` are supported. **[unverified]** Everything else:
-nobody in the loop runs Windows, and nothing builds the Windows
-installer in CI (AGENTS.md §15). Before the window phase merges, the
+nobody in the loop runs Windows, and nothing in CI installs or runs
+the Windows installer it can build (AGENTS.md §15). Before the window phase merges, the
 appendix steps run on a Windows install: on top of other windows,
 dragging, resizing at the ratio, Aero Snap, a second monitor at another
 scale, minimizing the main window, and the taskbar entry.
@@ -731,9 +729,7 @@ About 13–21 working days in all.
    proxy-side fragment cache can follow if the gap reads badly in
    use.
 6. **Chromium's picture-in-picture.** **Recommended:** remove it,
-   including from the native controls. The `/play` diagnostic page,
-   which plays a pasted URL with its own element, keeps whatever
-   Chromium offers there; it is a developer tool.
+   including from the native controls.
 7. **Entering the mini player on leaving the player.**
    **Recommended:** not in the first version; revisit after it ships.
 8. **The mini window in the taskbar and Alt+Tab.** **Recommended:**

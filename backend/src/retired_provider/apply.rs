@@ -38,6 +38,9 @@ fn numbering_gone(state: &AppState, before: usize, forgotten: usize) -> usize {
 pub(super) fn apply(state: &AppState, work: Work) -> RetiredSweepReport {
     let mut report = RetiredSweepReport::default();
     for (id, title) in &work.plan.superseded {
+        // The naming goes to the walked row that replaces the line, before
+        // the removal forgets the line's note.
+        crate::commands::linked_note::carry_to_listing(state, id);
         match crate::commands::history::history_delete(state, id) {
             Ok(true) => report.superseded.push(title.clone()),
             Ok(false) => {}
