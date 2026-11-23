@@ -368,3 +368,113 @@ async fn a_candidate_that_cannot_be_read_fails_the_franchise() {
 
     assert!(franchise(&state, "12").await.is_err());
 }
+
+/// Kitsu serves the artwork of an entry with no curated art as a
+/// Backblaze presigned link whose signature lasts minutes, while a
+/// listing is kept a day or a week. Every other Kitsu cache warms such
+/// links' bytes as it writes and reads its rows; a listing has to as
+/// well, or a related entry's poster breaks once the signature expires.
+mod signed_artwork {
+    use std::sync::Arc;
+
+    use serde_json::json;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::super::{franchise_listing, listing_key};
+    use super::state_with_kitsu;
+    use crate::app::AppState;
+    use crate::cache::meta_cache_put;
+
+    /// A state whose image cache is its own: the bytes are keyed by the
+    /// signature-stripped URL, so bytes another run cached under a port
+    /// the OS hands this run's image server again would answer the warm
+    /// from disk and the server would see no request.
+    fn state(kitsu_uri: &str, images: &tempfile::TempDir) -> Arc<AppState> {
+        let mut state = state_with_kitsu(kitsu_uri);
+        Arc::get_mut(&mut state).expect("unshared").image_cache_dir = images.path().to_path_buf();
+        state
+    }
+
+    async fn image_server() -> (MockServer, String) {
+        let images = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/poster.jpg"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0u8; 8]))
+            .mount(&images)
+            .await;
+        let signed = format!("{}/poster.jpg?X-Amz-Signature=deadbeef", images.uri());
+        (images, signed)
+    }
+
+    /// The warm is spawned, so poll for its effect; the deadline only
+    /// bounds a genuine failure.
+    async fn fetched(images: &MockServer) -> bool {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        while images.received_requests().await.unwrap().is_empty()
+            && tokio::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        !images.received_requests().await.unwrap().is_empty()
+    }
+
+    #[tokio::test]
+    async fn a_listing_read_from_kitsu_warms_its_signed_artwork() {
+        let (images, signed) = image_server().await;
+        let kitsu = MockServer::start().await;
+        let body = json!({
+            "data": [{ "type": "mediaRelationships", "attributes": { "role": "sequel" },
+                "relationships": { "destination": { "data": { "type": "anime", "id": "610" } } } }],
+            "included": [{ "type": "anime", "id": "610", "attributes": {
+                "canonicalTitle": "T610", "subtype": "OVA", "status": "finished",
+                "episodeCount": 6, "startDate": "1993-11-19",
+                "posterImage": { "original": signed }, "coverImage": null } }],
+            "meta": { "count": 1 }
+        });
+        Mock::given(method("GET"))
+            .and(path("/anime/7730/media-relationships"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&kitsu)
+            .await;
+        let dir = tempfile::tempdir().expect("image dir");
+        let state = state(&kitsu.uri(), &dir);
+
+        let listing = franchise_listing(&state, "7730").await.expect("listing");
+        let poster = listing.relations[0]
+            .entry
+            .as_ref()
+            .and_then(|e| e.poster.clone());
+        assert_eq!(poster.as_deref(), Some(signed.as_str()));
+        assert!(
+            fetched(&images).await,
+            "caching a listing must fetch its signed artwork while the signature is valid"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_listing_read_from_the_cache_warms_its_signed_artwork() {
+        let (images, signed) = image_server().await;
+        let dir = tempfile::tempdir().expect("image dir");
+        let state = state("http://127.0.0.1:1", &dir);
+        let cached = json!({
+            "relations": [{ "role": "sequel", "kind": "anime", "id": "610", "subtype": "OVA",
+                "entry": { "id": "610", "title": "T610", "subtype": "OVA", "start": "1993-11-19",
+                    "episodes": 6, "status": "finished", "poster": signed, "cover": null } }],
+            "complete": true
+        });
+        meta_cache_put(
+            &state.cache_pool,
+            &listing_key("7730"),
+            &cached.to_string(),
+            3600,
+        )
+        .expect("seed listing");
+
+        franchise_listing(&state, "7730").await.expect("listing");
+        assert!(
+            fetched(&images).await,
+            "a cached listing must warm its signed artwork as the other Kitsu caches do"
+        );
+    }
+}
