@@ -97,10 +97,19 @@ const flagsOrigin = flagsOriginArg
 	: null;
 
 // The renderer's word that its first page has rendered, which the
-// window's reveal waits for (lib/app-window.cjs). Sent once.
+// window's reveal waits for (lib/app-window.cjs). Sent once. The
+// mounted word comes before it, needing no frame: a hidden window whose
+// rendered word does not follow it soon is mapped so it gets frames
+// (lib/app-window.cjs frameWake). Sent once too.
 let appReadySent = false;
+let appMountedSent = false;
 
 contextBridge.exposeInMainWorld('aniGui', {
+	appMounted() {
+		if (appMountedSent) return;
+		appMountedSent = true;
+		ipcRenderer.send('ani-gui:app-mounted');
+	},
 	appReady() {
 		if (appReadySent) return;
 		appReadySent = true;

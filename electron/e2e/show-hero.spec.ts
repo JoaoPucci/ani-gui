@@ -37,14 +37,21 @@
  *
  * Pre-condition: `pnpm run package` has produced `dist/linux-unpacked/`.
  */
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test } from './policy-guard';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { appInfo, defaultSettings } from './fixtures/kitsu';
-import { appWindow, launchPackagedApp, packagedBinary, stopDeadApp } from './launch';
+import {
+	appWindow,
+	cardLinesAnswer,
+	launchPackagedApp,
+	packagedBinary,
+	stopDeadApp
+} from './launch';
 import { answer } from './stubs';
 
 /** The app's minimum window; a width where the topbar is short of
@@ -159,6 +166,7 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 		if (p === '/api/kitsu/search') return j([]);
 		if (p.startsWith('/api/kitsu/episodes/')) return j([]);
 		if (p === '/api/history') return j([]);
+		if (p === '/api/history/card-lines') return j(cardLinesAnswer(r.request().postDataJSON()));
 		if (p === '/api/watched-at') return j({});
 		return j(null);
 	});

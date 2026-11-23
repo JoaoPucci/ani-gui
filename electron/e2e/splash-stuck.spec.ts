@@ -37,7 +37,8 @@
  * with its own session bus, or CI's Xvfb — which the relaunched
  * process inherits.
  */
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test } from './policy-guard';
 import { execFileSync } from 'node:child_process';
 import fs, { existsSync } from 'node:fs';
 import os from 'node:os';

@@ -13,15 +13,27 @@
   iteration). The Escape key + clicking the backdrop are wired to
   the same handler.
 
-  It is a modal ($lib/components/modal-layer): the dismiss button
-  takes focus as it opens, Tab stays inside it, the page behind it is
+  It is a modal ($lib/components/modal-layer): the dismiss button —
+  or a guessed card's "Pick the right show", when offered — takes
+  focus as it opens, Tab stays inside it, the page behind it is
   inert, and focus goes back to what opened it as it closes.
 -->
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { modal } from './modal-layer';
 
-	let { headline, body, dismissLabel, onDismiss, actionLabel, actionHref } = $props<{
+	let {
+		headline,
+		body,
+		dismissLabel,
+		onDismiss,
+		actionLabel,
+		actionHref,
+		pickLabel,
+		pickIcon,
+		onPick
+	} = $props<{
 		/** Short eyebrow line — `Couldn't play episode N` style. */
 		headline: string;
 		/** Full sentence the user reads. Should suggest what to try
@@ -42,7 +54,15 @@
 		 *  routes target=_blank links through shell.openExternal. */
 		actionLabel?: string;
 		actionHref?: string;
+		/** Optional action in the app, beside dismiss — a guessed
+		 *  card's "Pick the right show". It takes focus when the overlay
+		 *  opens. */
+		pickLabel?: string;
+		/** A mark drawn before the pick action's label. */
+		pickIcon?: Snippet;
+		onPick?: () => void;
 	}>();
+	const hasPick = $derived(Boolean(pickLabel && onPick));
 	const displayDismissLabel = $derived(dismissLabel ?? m.errors_dismiss_default_label());
 	const hasAction = $derived(
 		typeof actionLabel === 'string' &&
@@ -99,8 +119,17 @@
 				</a>
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{/if}
-			<button type="button" class="dismiss" onclick={onDismiss} data-autofocus
-				>{displayDismissLabel}</button
+			{#if hasPick}
+				<button type="button" class="pick" onclick={onPick} data-autofocus
+					>{#if pickIcon}{@render pickIcon()}{/if}<span>{pickLabel}</span></button
+				>
+			{/if}
+			<!-- Focus opens on the offer when there is one, else on dismiss. -->
+			<button
+				type="button"
+				class="dismiss"
+				onclick={onDismiss}
+				data-autofocus={hasPick ? undefined : true}>{displayDismissLabel}</button
 			>
 		</div>
 	</div>
@@ -219,6 +248,36 @@
 	}
 	.action:active {
 		transform: translateY(1px);
+	}
+	/* An action in the app, not an alarm: Home's own accent. */
+	.pick {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2, 0.5rem);
+		padding: 0.6rem 1.5rem;
+		font-family: var(--font-mono, monospace);
+		font-size: var(--type-meta, 0.875rem);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro, 0.08em);
+		text-transform: uppercase;
+		color: var(--bone-100, #f4ece1);
+		background: color-mix(in oklab, var(--accent-persimmon, #e88a47) 22%, transparent);
+		border: 1px solid var(--accent-persimmon, #e88a47);
+		border-radius: var(--radius-pill, 999px);
+		cursor: pointer;
+		transition: background var(--dur-fast, 140ms) var(--ease-out-soft, ease-out);
+	}
+	.pick:hover {
+		background: color-mix(in oklab, var(--accent-persimmon, #e88a47) 40%, transparent);
+	}
+	.pick:focus-visible {
+		outline: none;
+		box-shadow:
+			0 0 0 2px var(--ink-000, #000),
+			0 0 0 4px var(--accent-persimmon, #e88a47);
+	}
+	.pick :global(.guess-mark) {
+		color: var(--accent-persimmon, #e88a47);
 	}
 	.dismiss {
 		padding: 0.6rem 1.5rem;

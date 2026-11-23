@@ -12,11 +12,10 @@
  * through the backend's play route and stream proxy (real-play.ts).
  */
 import {
-  expect,
-  test,
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
+import { expect, test } from "./policy-guard";
 import fs, { existsSync } from "node:fs";
 import http from "node:http";
 import type net from "node:net";

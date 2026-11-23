@@ -26,6 +26,7 @@ import type {
 	SkipInterval
 } from '../../src/lib/api';
 import { availabilityAnswer } from '../answers';
+import { watchPageFetches } from './page-fetches';
 vi.mock('$app/state', () => ({
 	get page() {
 		return page;
@@ -264,9 +265,15 @@ describe('the track a session starts on', () => {
 	it('keeps Off within the episode', async () => {
 		setLocale('pt-BR', { reload: false });
 		handlers();
+		const fetches = watchPageFetches();
+		const listings = () => fetches.sent.filter((f) => f.path.endsWith('/subtitles')).length;
 		const video = await mountAt('session-1', '1');
+		const listed = listings();
 		await pick(m.play_controls_cc_off());
-		await new Promise((r) => setTimeout(r, 50));
+		// Whatever the pick set off has been answered and has run: the
+		// tracks a listing asked for now would start on again.
+		await fetches.settled('the pick');
+		expect(listings(), 'the tracks are not asked for again').toBe(listed);
 		expect(showing(video)).toBeNull();
 	});
 });

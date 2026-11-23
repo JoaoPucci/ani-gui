@@ -21,6 +21,7 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { ownedPlays } from './owned-plays';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -33,6 +34,24 @@ vi.mock('$app/navigation', () => ({
 	beforeNavigate: vi.fn(),
 	afterNavigate: vi.fn()
 }));
+// What a recovery for a page left is judged by. It acts on its
+// eviction's answer in the turn that answer settles, and a fresh
+// resolve starts there as a switch, through `runOwnedPlay`: recording
+// both lets a case wait for the page to have acted on the answer
+// rather than for a fixed time.
+const seen = vi.hoisted(() => ({ evictions: [] as Promise<unknown>[] }));
+vi.mock('$lib/api', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/api')>();
+	const evictPlayCache: typeof real.evictPlayCache = (args) => {
+		const answered = real.evictPlayCache(args);
+		seen.evictions.push(answered);
+		return answered;
+	};
+	return { ...real, evictPlayCache };
+});
+vi.mock('$lib/play/owned-play', async (importOriginal) =>
+	(await import('./owned-plays')).trackOwnedPlays(await importOriginal())
+);
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
@@ -81,6 +100,8 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	seen.evictions.length = 0;
+	ownedPlays.length = 0;
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	setParams({ id: KITSU_ID });
@@ -504,8 +525,14 @@ describe('play route — a recovery for a show the page has left', () => {
 				await new Promise((r) => setTimeout(r, 20));
 			}
 			const streamsBefore = FakeEventSource.instances.length;
+			const playsBefore = ownedPlays.length;
 			release();
-			await new Promise((r) => setTimeout(r, 100));
+			// The page has acted on the eviction's answer. A fresh resolve
+			// starts as a switch in that turn; its stream opens later, once
+			// the request's URL is read, so the switch is what is ruled out.
+			await until(() => seen.evictions.length > 0, 'the eviction');
+			await Promise.allSettled([seen.evictions[seen.evictions.length - 1]]);
+			expect(ownedPlays.length, 'no switch is started after the move').toBe(playsBefore);
 			expect(FakeEventSource.instances.length, 'no fresh resolve after the move').toBe(
 				streamsBefore
 			);

@@ -137,7 +137,7 @@ Mechanical rules, enforced by `tests/arch/no_reacquired_script.sh` and `tests/ar
 - Every user-visible string goes through Paraglide. The `no-hardcoded-strings` ESLint rule enforces this; it allowlists only `aria-*`, `data-testid`, and dev-only strings.
 - Use logical CSS properties (`margin-inline-start`, not `margin-left`) so adding RTL locales later is translation-only.
 - No DOM-snapshot tests. Assert behavior: rendered text via `i18n.m`, role queries, user events.
-- hls.js is used as a singleton inside `Player.svelte`; no `new Hls()` outside that component.
+- hls.js is used as a singleton inside the player page (`routes/play/[id]/+page.svelte`); no `new Hls()` outside it.
 
 ## 7. Design direction guard rails
 
@@ -466,10 +466,14 @@ how the transport gap reached a release.
 `tests/arch/windows_deps.sh` is that counterpart now. Add a bundled
 dependency to one fetcher and the other check goes red. Both are
 static, though: they assert that a package is *configured* to carry
-what it needs, not that a built installer does. Nothing builds the
-Windows installer in CI, so on that side the configuration is the only
-thing under guard — which is worth knowing before trusting a green
-run about a platform nobody is building.
+what it needs, not that a built installer does. CI builds the Windows
+installer only for some changes — `.github/workflows/packages.yml`
+builds it when a pull request changes how a package is built, and on a
+run started by hand — and nothing in CI ever installs or runs it. On
+every other change the configuration is the only thing under guard,
+and even a build proves only that the dependencies fetched and the
+package assembled — which is worth knowing before trusting a green run
+about a platform nobody in CI is running.
 
 When a platform genuinely cannot be served in the same change — a
 deferral, so the maintainer's call under §14 — the obligation moves
