@@ -3792,6 +3792,13 @@
 		background: color-mix(in oklab, var(--accent) 10%, transparent);
 		box-shadow: 0 0 12px color-mix(in oklab, var(--accent) 30%, transparent);
 	}
+	/* Under the mouse, a button the keyboard focused keeps the app's ring
+	   in front of its hover glow, which replaced it. */
+	.ep-pager-mini-btn:focus-visible:hover:not(:disabled) {
+		box-shadow:
+			var(--ring),
+			0 0 12px color-mix(in oklab, var(--accent) 30%, transparent);
+	}
 	.ep-pager-mini-btn:first-child:hover:not(:disabled) svg {
 		transform: translateX(-2px);
 	}
