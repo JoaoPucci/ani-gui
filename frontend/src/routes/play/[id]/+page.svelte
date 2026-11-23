@@ -5806,8 +5806,8 @@
 	}
 	@media (forced-colors: active) {
 		.pc-volume-slider:has(input:focus-visible) {
-			outline: 2px solid CanvasText;
-			outline-offset: 2px;
+			outline: var(--ring-forced, 2px solid CanvasText);
+			outline-offset: var(--ring-forced-offset, 2px);
 		}
 	}
 	.pc-volume-slider input[type='range']::-webkit-slider-thumb {
@@ -6215,7 +6215,13 @@
 	.ep-jump-pill:focus-within {
 		border-color: var(--accent);
 		background: color-mix(in oklab, var(--bone-100) 10%, transparent);
-		/* The app's ring on the pill: its field turns its own off. */
+		box-shadow:
+			0 0 8px color-mix(in oklab, var(--accent) 50%, transparent),
+			0 0 16px color-mix(in oklab, var(--accent) 25%, transparent);
+	}
+	/* The app's ring on the pill while its field has focus: the field
+	   turns its own off. The Go button inside it rings itself. */
+	.ep-jump-pill:has(.jump-input:focus-visible) {
 		box-shadow:
 			var(--ring),
 			0 0 8px color-mix(in oklab, var(--accent) 50%, transparent),

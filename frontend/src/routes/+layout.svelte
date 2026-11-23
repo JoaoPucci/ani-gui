@@ -620,8 +620,16 @@
 						<kbd>/</kbd>
 					{/if}
 				</span>
-				<!-- Submit on Enter; the explicit button is sr-only for a11y. -->
-				<button type="submit" class="sr-only" disabled={topbarQuery.trim().length === 0}>
+				<!-- Submit on Enter; the explicit button is sr-only for a11y.
+				     Out of the Tab order: a stop the eye cannot see, whose
+				     focus showed no ring in a forced-colours theme. Enter in
+				     the field submits the form. -->
+				<button
+					type="submit"
+					class="sr-only"
+					tabindex="-1"
+					disabled={topbarQuery.trim().length === 0}
+				>
 					{m.app_search_submit_button()}
 				</button>
 

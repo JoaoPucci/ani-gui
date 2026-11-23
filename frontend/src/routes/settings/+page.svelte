@@ -1202,8 +1202,8 @@
 	   that takes focus is transparent: the track draws an outline. */
 	@media (forced-colors: active) {
 		.switch input:focus-visible + .switch-track {
-			outline: 2px solid CanvasText;
-			outline-offset: 2px;
+			outline: var(--ring-forced, 2px solid CanvasText);
+			outline-offset: var(--ring-forced-offset, 2px);
 		}
 	}
 	.switch-state {

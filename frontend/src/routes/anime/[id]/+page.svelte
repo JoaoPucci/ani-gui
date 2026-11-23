@@ -3281,6 +3281,15 @@
 			0 4px 10px -4px rgb(0 0 0 / 0.45);
 	}
 
+	/* Under the mouse, a tile the keyboard focused keeps the app's ring
+	   in front of its hover shadow, which replaced it. */
+	.ep-tile:focus-visible:hover:not(.ep-tile-disabled) {
+		box-shadow:
+			var(--ring),
+			0 12px 28px -6px color-mix(in oklab, var(--accent) 28%, transparent),
+			0 4px 10px -4px rgb(0 0 0 / 0.45);
+	}
+
 	.ep-tile:hover:not(.ep-tile-disabled) .ep-thumb img {
 		filter: brightness(1);
 	}
@@ -3640,7 +3649,13 @@
 	.ep-jump-pill:focus-within {
 		border-color: var(--accent);
 		background: color-mix(in oklab, var(--bone-100) 10%, transparent);
-		/* The app's ring on the pill: its field turns its own off. */
+		box-shadow:
+			0 0 8px color-mix(in oklab, var(--accent) 50%, transparent),
+			0 0 16px color-mix(in oklab, var(--accent) 25%, transparent);
+	}
+	/* The app's ring on the pill while its field has focus: the field
+	   turns its own off. The Go button inside it rings itself. */
+	.ep-jump-pill:has(.jump-input:focus-visible) {
 		box-shadow:
 			var(--ring),
 			0 0 8px color-mix(in oklab, var(--accent) 50%, transparent),
