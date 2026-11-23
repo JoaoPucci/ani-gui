@@ -138,7 +138,7 @@ test('both halves of the policy reach the document on every load', async () => {
 	try {
 		const backend = await bridge(page);
 		expect(Object.keys(backend.lanes).sort()).toEqual(
-			['download', 'image', 'probe', 'resolve', 'stream'].sort()
+			['download', 'franchise', 'image', 'probe', 'resolve', 'stream'].sort()
 		);
 		const expected = rendererPolicy({ backend, devOrigin: null });
 		for (const lane of [backend.apiBase, ...Object.values(backend.lanes)]) {

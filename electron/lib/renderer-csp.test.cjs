@@ -203,7 +203,7 @@ test("anything but http://127.0.0.1:<port> is dropped, never widened", () => {
 });
 
 test("property: every source is a keyword, a scheme the app needs, or a valid announced lane", () => {
-  const laneNames = fc.constantFrom("api", "stream", "image", "probe", "resolve", "download", "evil", "x");
+  const laneNames = fc.constantFrom("api", "stream", "image", "probe", "resolve", "download", "franchise", "evil", "x");
   const origin = fc.oneof(
     fc.integer({ min: 0, max: 70000 }).map((p) => `http://127.0.0.1:${p}`),
     fc.string(),
@@ -220,7 +220,7 @@ test("property: every source is a keyword, a scheme the app needs, or a valid an
         const allowed = new Set(["'self'", "'none'", "'unsafe-inline'", "data:", "blob:", ...d["style-src-attr"]]);
         if (dev) allowed.add("'unsafe-inline'").add("ws://localhost:5173");
         const announced = [backend.apiBase, ...Object.entries(backend.lanes)
-          .filter(([n]) => ["stream", "image", "probe", "resolve", "download"].includes(n))
+          .filter(([n]) => ["stream", "image", "probe", "resolve", "download", "franchise"].includes(n))
           .map(([, o]) => o)];
         for (const sources of Object.values(d)) {
           for (const s of sources) {
