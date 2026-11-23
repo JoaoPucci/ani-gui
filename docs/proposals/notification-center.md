@@ -77,8 +77,8 @@ out (section 2). [proposal]
 | Donation ask | About page only [code: `frontend/src/routes/about/+page.svelte:106`–`147`] | scheduled event | Open About; not now; never | Yes, under section 5's rules |
 | New episode of a show in progress | Nothing; airing rows are already cached for the home rail [code: `backend/src/commands/airing_seed.rs`] | event | Play it | Open question 9 |
 | Tracker write held (saving in N s) | Pinned toast with a countdown [code: `busy-notice.ts:60`] | condition, minutes | None | No: it resolves within minutes; stays a toast |
-| External player or Syncplay failed to start | `ErrorOverlay` modal [code: `frontend/src/routes/play/[id]/+page.svelte:4959`–`4990`] | event | None; Syncplay's links to its download page | No: it answers the click the user just made |
-| ffmpeg missing for a download | `ErrorOverlay` modal [code: `+layout.svelte:722`–`737`] | event | A link to ffmpeg's download page | No, same reason |
+| External player or Syncplay failed to start | `ErrorOverlay` modal [code: `frontend/src/routes/play/[id]/+page.svelte:4959`–`4990`] | event | None for the external player; Syncplay's links to its download page when Syncplay could not be started | No: it answers the click the user just made |
+| ffmpeg missing for a download | `ErrorOverlay` modal [code: `+layout.svelte:722`–`737`, `frontend/src/lib/download/ffmpeg-missing-copy.ts:45`–`49`] | event | A link to ffmpeg's download page on Windows and macOS, none on Linux | No, same reason |
 | Stream stall and recovery | Toasts during playback | event | None | No: bound to the moment |
 
 ## 2. Surface design options
@@ -87,9 +87,10 @@ What exists: a topbar holding the breadcrumb (on a page with
 somewhere to go back to) and the search form, then the update badge,
 the download dock, the account chip and the window controls [code:
 `+layout.svelte:587`–`594`, `:684`–`:687`]; a left rail with home,
-search, account, settings and diagnostics; toasts in a stack of at
-most three rows, where pinned ones count and passing ones give way to
-them [code: `toasts/store.svelte.ts:51`, `:63`–`70`].
+search, account, settings and diagnostics; toasts in a stack capped at
+three rows, where a push makes room by dropping the oldest passing
+rows and never a pinned one, so pinned rows can take the stack past
+the cap [code: `toasts/store.svelte.ts:8`–`13`, `:51`, `:63`–`70`].
 The dock's popover is the vocabulary to reuse: `--ink-050` surface,
 `--radius-card`, 24rem wide, anchored with `inset-inline-end`,
 `role="menu"`, and opening it marks every row seen [code:
@@ -231,9 +232,10 @@ lost. A notice with more to say than one line opens a detail route,
 - **Keyboard and assistive technology.** The bell is a button with
   `aria-expanded` and a label that carries the unread count; the list
   takes the dock's `role="menu"` and its menu keys: arrows, Home and
-  End move between rows, and Escape, Tab and Shift+Tab close it with
-  focus back on the bell [code: `DownloadDock.svelte:80`–`84`,
-  `frontend/src/lib/menu/menu-keys.ts:11`].
+  End move between rows, Escape and Shift+Tab close it with focus back
+  on the bell, and Tab closes it and moves on past the bell [code:
+  `DownloadDock.svelte:80`–`84`,
+  `frontend/src/lib/menu/menu-keys.ts:11`–`13`].
 - **Right to left.** None of the four shipped locales (en, pt-BR,
   es-419, ru) is right to left [code:
   `frontend/project.inlang/settings.json:4`], and the CSS uses logical
@@ -395,6 +397,11 @@ The facts behind the table:
   of public keys built into the app, any of which will do, so a
   rotation ships the next key a release ahead [code:
   `backend/Cargo.toml:85`, `backend/src/flags/signature.rs:1`–`10`].
+  That list is empty today, so no flag can yet be turned on remotely
+  [code: `signature.rs:28`]: the flags key still has to be made and
+  shipped in a release, and a notice key would follow the same two
+  steps (`docs/development.md`, "Signing the flags file", steps 1
+  and 2).
   The in-app updater proposal recommends the same for releases.
   Notices reuse that verifier with a list of keys of their own: the
   notice key is used often, and must never be the key that can replace
