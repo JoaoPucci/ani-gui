@@ -500,6 +500,30 @@ shape the docs answer, in the PR that fixes it. The golden and the
 allowlist change only in a PR that changes the rules, with the reason
 in the commit body.
 
+## The watch order's records
+
+The watch order's decisions are the backend's (`backend/src/watch_order/`),
+and two records hold what they answer:
+
+- `tests/fixtures/watch-order/parity.json`: every decision for the fixture
+  franchises (`runs.json`), the walk's served corpus and a fixed set of
+  generated payloads, with the inputs each came from. The renderer's
+  modules were held to it while they lived, which is how the port showed
+  it decided as they did; now `parity_test.rs` holds the backend to it, so
+  a change to a rule shows up as a changed record in its PR. Rewritten by
+  `cargo test --lib write_the_parity_record -- --ignored`.
+- `tests/fixtures/watch-order/scenarios/<suite>.json`: the inputs of each
+  watch-order acceptance scenario (a franchise payload, the rows the
+  history resumes, the order, the day, the episode) and the answer the
+  route gives for them. The acceptance tests stub the routes with these
+  answers and assert on what the renderer draws; `scenarios_test.rs`
+  checks every answer against the backend, and the `scenario_*_test.rs`
+  files assert the decisions the scenarios used to assert in the
+  renderer. A scenario's new inputs are written by running it with
+  `WATCH_ORDER_RECORD=1`, then
+  `cargo test --lib write_the_scenario_answers -- --ignored`
+  (`WATCH_ORDER_SUITE=<suite>` for one suite) fills in their answers.
+
 ## The wire contract
 
 The renderer's types for what crosses the HTTP seam (`frontend/src/lib/api.ts`,
