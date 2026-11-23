@@ -666,7 +666,10 @@
 		// answers after the page has gone reaches nothing
 		// ($lib/navigation/visit).
 		const signal = pageReads.signal;
-		settingsPromise = settingsGet({ signal }).catch(() => null as Config | null);
+		// Through the visit's keep: once Home is left the read settles
+		// never, so the cancel is not taken for settings that could not
+		// be read and nothing waiting on them starts.
+		settingsPromise = pageReads.keep(settingsGet({ signal })).catch(() => null as Config | null);
 		void settingsPromise.then((c) => {
 			if (c) config = c;
 			settingsRead = true;
