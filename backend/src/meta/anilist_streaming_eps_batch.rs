@@ -14,6 +14,7 @@ use crate::meta::anilist_batch::parse_page;
 use crate::meta::anilist_batch::{batch, Kind, Lanes, Want};
 #[cfg(test)]
 use crate::meta::anilist_batch::{resolve, Space};
+use crate::meta::anilist_gate::Purpose;
 #[cfg(test)]
 use crate::meta::anilist_pages::{Page, PAGE_CAP};
 
@@ -21,7 +22,7 @@ use crate::meta::anilist_pages::{Page, PAGE_CAP};
 pub(crate) struct Streaming;
 
 impl Kind for Streaming {
-    const NAME: &'static str = "stills";
+    const PURPOSE: Purpose = Purpose::Stills;
     type Out = StreamingListing;
     /// [`super::STREAMING_EPS_BY_MAL_GQL`] for a page of MAL ids.
     const BY_MAL_GQL: &'static str = "query StreamingEpsBatchByMal($malIds: [Int]) { \
