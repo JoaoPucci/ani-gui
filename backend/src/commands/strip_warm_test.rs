@@ -102,8 +102,10 @@ async fn serve(respond: impl wiremock::Respond + 'static, http: &str) -> wiremoc
     server
 }
 
-/// The card for show `i` (0-based) becomes ready `i × 250 ms` in, the
-/// way a cold strip's rows land seconds apart.
+/// The card for show `i` (0-based) becomes ready `(i + 1) × 250 ms` in,
+/// the way a cold strip's rows land seconds apart — each after the warm
+/// Home sends as its history loads, since a row is ready only once its
+/// match has come back.
 async fn staggered<F, Fut, T>(n: usize, card: F) -> Vec<T>
 where
     F: Fn(usize) -> Fut,
@@ -111,7 +113,7 @@ where
 {
     let card = &card;
     futures_util::future::join_all((0..n).map(|i| async move {
-        tokio::time::sleep(Duration::from_millis(250) * u32::try_from(i).unwrap_or(0)).await;
+        tokio::time::sleep(Duration::from_millis(250) * u32::try_from(i + 1).unwrap_or(1)).await;
         card(i).await
     }))
     .await
