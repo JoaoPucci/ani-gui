@@ -119,7 +119,9 @@ describe('/search render-then-prune', () => {
 			// The rails are not what this scenario is about, but the
 			// route fetches them on mount and the setup errors on any
 			// request it did not describe.
-			http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+				HttpResponse.json<KitsuAnimeRef[]>([])
+			),
 			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json<KitsuAnimeRef[]>([])),
 
 			http.post(`${API_BASE}/api/kitsu/search/page`, () =>

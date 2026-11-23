@@ -129,4 +129,33 @@ describe('home route — leaving while its reads are out', () => {
 		app = mount(HomePage, { target });
 		await until(() => reads.held.length >= 3 * PER_VISIT, "the third visit's reads");
 	});
+
+	it('starts no row read once Home is left while its settings are out', async () => {
+		// The rows are filtered in the viewer's mode, so they wait for the
+		// settings. Leaving cancels the settings read: that is the visit
+		// ending, not settings that could not be read, and nothing waiting
+		// on them may start after it.
+		server.use(
+			...homeHandlers({ history: [] }, [http.get(`${API_BASE}/api/settings`, reads.hang)])
+		);
+		pool = sixConnections();
+		const pooled = globalThis.fetch;
+		const asked: string[] = [];
+		vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+			const href = input instanceof Request ? input.url : String(input);
+			asked.push(new URL(href).pathname);
+			return pooled(input, init);
+		});
+		app = mount(HomePage, { target });
+		await until(() => reads.held.includes('GET /api/settings'), 'the settings read');
+		unmount(app);
+		app = null;
+		const sinceLeft = asked.length;
+		await new Promise((r) => setTimeout(r, 100));
+		expect(
+			asked
+				.slice(sinceLeft)
+				.filter((p) => p === '/api/kitsu/trending-anilist' || p === '/api/kitsu/top-rated')
+		).toEqual([]);
+	});
 });
