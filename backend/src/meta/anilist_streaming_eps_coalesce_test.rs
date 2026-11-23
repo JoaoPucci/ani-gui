@@ -200,6 +200,63 @@ async fn a_show_its_page_answered_is_not_held_behind_a_single_lookup() {
     );
 }
 
+/// The stand-in answering AniList-id pages after `delay`, and a page of
+/// MAL ids as one AniList cannot read.
+struct SlowIdPage(FakeAniList, Duration);
+
+impl wiremock::Respond for SlowIdPage {
+    fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+        match Asked::of(&request.body) {
+            Some(Asked::PageByMal(_)) => wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"Page":{"pageInfo":{"hasNextPage":false},"media":[null]}}}"#,
+            ),
+            Some(Asked::PageById(_)) => self.0.respond(request).set_delay(self.1),
+            _ => self.0.respond(request),
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_single_lookup_the_mal_page_hands_over_does_not_wait_for_the_id_page() {
+    // The MAL page cannot be read, so show 1 goes to its single lookup;
+    // the AniList-id page, asked for another show, is slow. Show 1's
+    // lookup goes as soon as the MAL page is read.
+    let mut known = fake(9);
+    known.media.push(FakeMedia {
+        id: 30,
+        mal: None,
+        listed: 1,
+    });
+    let server = serve(SlowIdPage(known, Duration::from_millis(600))).await;
+    let client = reqwest::Client::new();
+    let base = server.uri();
+    let lane = "single-beside-id-page";
+    let started = tokio::time::Instant::now();
+    let (client, base) = (&client, base.as_str());
+    let ask = |want| async move {
+        let got = in_background(streaming_listing_coalesced(client, lane, want, Some(base))).await;
+        (got, started.elapsed())
+    };
+    let ask = &ask;
+    let rest = async {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::join!(
+            ask(by_mal(1)),
+            ask(Want {
+                mal: None,
+                anilist: Some(30),
+            })
+        )
+    };
+    let (_, ((one, one_took), (thirty, _))) = tokio::join!(ask(by_mal(9)), rest);
+    assert_eq!(one.expect("answered"), fake(9).media[0].listing());
+    assert!(thirty.is_ok());
+    assert!(
+        one_took < Duration::from_millis(450),
+        "the single lookup waited for the AniList-id page: {one_took:?}"
+    );
+}
+
 #[tokio::test]
 async fn a_lookup_arriving_while_a_batch_is_out_does_not_wait_for_it() {
     // A's batch takes 600 ms to answer. B, arriving 200 ms in, goes out
