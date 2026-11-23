@@ -394,15 +394,17 @@ which fails unless a window of the app's own class appears within 30
 seconds and is still there 20 seconds later, the app's log shows its
 backend ready and its first page rendered, and no startup failure is
 logged; the catalog itself asks only for a visible window, which the
-splash or the failed-startup dialog would give it.
-`tests/bash/arch/appimage_catalog_check.bats` holds those verdicts
-against stand-ins for the X server, firejail and the app. When it fails, the job keeps the app's
-log and a screenshot as the `catalog-check-failure` artifact. A
+splash or the failed-startup dialog would give it. When the check
+fails, the job keeps the app's log and a screenshot as the
+`catalog-check-failure` artifact. A
 release whose AppImage needs a newer glibc than the catalog's, as
 v0.14.1's did, fails here rather than in the catalog. The firejail is
 Ubuntu 22.04's own (0.9.66), where the catalog installs a 2023 build of
 its own over it, so a failure particular to either firejail build
 would show in one and not the other.
+`tests/bash/arch/appimage_catalog_check.bats` holds the script's
+verdicts against stand-ins for the X server, the window manager,
+firejail and the app.
 
 On a pull request it publishes no package: the AppImage goes to the
 start-up check as a one-day artifact named `catalog-check-appimage`,
