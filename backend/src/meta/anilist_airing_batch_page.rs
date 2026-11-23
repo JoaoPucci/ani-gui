@@ -19,18 +19,7 @@ impl BatchPage {
     /// The keys one node answers, with their status, and the keys
     /// several nodes answer, which only a single lookup can settle.
     pub(super) fn by_key(self) -> (std::collections::HashMap<u32, AiringStatus>, Vec<u32>) {
-        let mut once = std::collections::HashMap::new();
-        let mut several = Vec::new();
-        for (key, status) in self.media {
-            if several.contains(&key) {
-                continue;
-            }
-            if once.insert(key, status).is_some() {
-                once.remove(&key);
-                several.push(key);
-            }
-        }
-        (once, several)
+        crate::meta::anilist_pages::by_key(self.media)
     }
 }
 

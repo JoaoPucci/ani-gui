@@ -6,7 +6,7 @@
 use crate::app::AppState;
 use crate::error::AniError;
 use crate::meta::anilist_media::MediaRef;
-use crate::meta::anilist_streaming_eps::{streaming_listing_for_ids, StreamingListing};
+use crate::meta::anilist_streaming_eps::{streaming_listing_coalesced, StreamingListing, Want};
 
 /// Why a lookup came back without a listing.
 #[derive(Debug, Clone)]
@@ -42,10 +42,15 @@ pub(super) async fn fetch_anilist_eps_thumbs(
     MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(Miss::NoIds)?;
     // A fill the page renders without: it spends AniList's budget
     // behind what the user is looking at.
-    crate::meta::anilist_gate::in_background(streaming_listing_for_ids(
+    let lane = crate::commands::strip_warm::fill_lane(state, anilist_base);
+    let want = Want {
+        mal: ids.mal,
+        anilist: ids.anilist,
+    };
+    crate::meta::anilist_gate::in_background(streaming_listing_coalesced(
         &state.meta_http,
-        ids.mal,
-        ids.anilist,
+        &lane,
+        want,
         anilist_base,
     ))
     .await

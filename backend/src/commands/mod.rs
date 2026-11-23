@@ -12,7 +12,8 @@ mod account_mapped;
 pub(crate) mod account_owner;
 pub(crate) mod account_revisions;
 pub mod airing;
-mod anilist_banner_memo;
+mod anilist_banner_fill;
+pub(crate) mod anilist_banner_memo;
 pub mod anilist_eps_thumbs;
 pub(crate) mod anilist_ids;
 pub mod aniskip;
@@ -43,6 +44,7 @@ pub(crate) mod external_ids;
 pub(crate) mod held_fill;
 pub mod listing_tags;
 pub mod numbering_offset;
+pub(crate) mod strip_warm;
 pub(crate) mod switch_episode;
 
 #[cfg(test)]
