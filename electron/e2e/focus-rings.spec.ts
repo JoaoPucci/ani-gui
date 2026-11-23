@@ -20,24 +20,32 @@
  *   - The buttons of a segmented control (Sub/Dub, the settings'
  *     choices) sit inside a rounded track that clips what overflows
  *     it, and it cut their rings.
+ *   - A control the keyboard scrolled into view stopped flush with the
+ *     window's bottom edge, its ring past it; going back with
+ *     Shift+Tab, one stopped under the sticky topbar, hidden.
  *
  * Layout is the subject, so this runs in the packaged app's Chromium.
  * The keyboard moves focus through every stop on Home, a show's page
- * and Settings, at the smallest window the app allows and at a common
- * desktop size, with the window maximized and not, and at every stop
- * the focused control's ring is read from its computed style:
+ * and Settings, forward with Tab and back with Shift+Tab, at the
+ * smallest window the app allows and at a common desktop size, with the
+ * window maximized and not. At every stop the focused control's ring is
+ * read from its computed style:
  *
- *   - no control's own ring leaves the window or is cut by a box that
- *     clips what overflows it. Above and below, the window counts only
- *     for a control that stays put as the page scrolls (the rail, the
- *     topbar): one that scrolls with the page meets the window's edge
- *     wherever the scroll leaves it, as on any page;
+ *   - no ring leaves the window or is cut by a box that clips what
+ *     overflows it; for a control that scrolls with the page, the window
+ *     starts under the sticky topbar. A ring drawn inside a control's box
+ *     is taken as whole when the box is;
  *   - a control whose chip carries the ring (`::before`) draws none of
  *     its own, and the chip's ring is inside the window;
+ *   - the controls this change is about each draw a ring;
  *   - the rail's mark rings the way the rail's links do.
  *
- * What it does not reach: menus, dialogs and popovers that open on
- * demand, and the player's page. A ring there is not checked here.
+ * What it does not reach: the Search, Account, About and Debug pages,
+ * the player's page, and menus, dialogs and popovers that open on
+ * demand. Of what clips, it models an ancestor's overflow and the
+ * window, not an ancestor's rounded corners, clip-path or mask. Where
+ * the window cannot be maximized (CI's Xvfb has no window manager),
+ * the maximized pass is noted on the test and not walked.
  *
  * Where a ring lies is computed from its outline and its shadows'
  * spread around the element's box, and a `::before` chip's box from its
@@ -45,7 +53,7 @@
  * pseudo-element has no box a script can read. Every API request is
  * stubbed.
  */
-import { type ElectronApplication, type Page } from '@playwright/test';
+import { type CDPSession, type ElectronApplication, type Page } from '@playwright/test';
 import { expect, test } from './policy-guard';
 import { withColdLaunchRetry } from '../lib/cold-launch.cjs';
 import fs, { existsSync } from 'node:fs';
@@ -139,9 +147,17 @@ async function launch() {
 	);
 }
 
+/** One DevTools session per page, kept open: an override lasts only as
+ *  long as the session that set it. */
+const sessions = new WeakMap<Page, CDPSession>();
+
 /** Lays the page out at `width` × `height` (see home-pill-fit.spec.ts). */
 async function sizeViewport(page: Page, width: number, height: number) {
-	const cdp = await page.context().newCDPSession(page);
+	let cdp = sessions.get(page);
+	if (!cdp) {
+		cdp = await page.context().newCDPSession(page);
+		sessions.set(page, cdp);
+	}
 	await cdp.send('Emulation.setDeviceMetricsOverride', {
 		width,
 		height,
@@ -149,7 +165,6 @@ async function sizeViewport(page: Page, width: number, height: number) {
 		mobile: false
 	});
 	await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
-	await cdp.detach();
 }
 
 interface Box {
@@ -165,15 +180,19 @@ interface Stop {
 	ring: Box | null;
 	/** The ring its `::before` chip carries, or null. */
 	chipRing: Box | null;
-	/** Its own ring's look, to compare one control's with another's. */
+	/** Whether it draws anything to show focus on its own box: an
+	 *  outline, or a shadow, inset ones included. */
+	drawn: boolean;
+	/** Its own box: an inset ring is drawn inside it. */
+	box: Box;
+	/** Its own ring's look, to compare one control's with another's.
+	 *  `outline` is the outline's style alone: its colour is the text's,
+	 *  and differs between controls that draw no outline. */
 	look: { outline: string; boxShadow: string; borderRadius: string };
-	/** (`outline` is its style alone: its colour is the text's, and
-	 *  differs between controls that draw no outline.) */
 	/** The boxes, the window's first, that clip what overflows them. */
 	clips: { name: string; box: Box }[];
-	/** Whether this is one of the window's buttons, the rail's mark, or
-	 *  one of the rail's links. */
-	kind: 'winctl' | 'brand' | 'nav' | 'other';
+	/** Which of the controls this change is about it is, if any. */
+	kind: 'winctl' | 'brand' | 'nav' | 'rail-foot' | 'seg' | 'other';
 }
 
 /** The focused control's rings and what may clip them, read in one frame. */
@@ -226,30 +245,29 @@ function readStop(page: Page): Promise<Stop | null> {
 				chipReach
 			);
 		}
-		// The window's edges. The page never scrolls sideways, so a ring
-		// past the window's side is cut for good. Above and below, a
-		// control that scrolls with the page is cut only where the scroll
-		// has left it, as on any page; one that stays put (in the sticky
-		// rail or topbar) is cut wherever it is.
+		// The window's edges. A control that scrolls with the page is also
+		// hidden by the sticky topbar above it, so for it the window starts
+		// under the topbar.
 		let pinned = false;
 		for (let a: HTMLElement | null = el; a; a = a.parentElement) {
 			const position = getComputedStyle(a).position;
 			if (position === 'fixed' || position === 'sticky') pinned = true;
 		}
+		const topbar = document.querySelector('.topbar');
 		const clips: { name: string; box: Box }[] = [
 			{
-				name: 'the window',
+				name: pinned || !topbar ? 'the window' : 'the window, under the topbar',
 				box: {
 					left: 0,
 					right: window.innerWidth,
-					top: pinned ? 0 : -Infinity,
-					bottom: pinned ? window.innerHeight : Infinity
+					top: pinned || !topbar ? 0 : topbar.getBoundingClientRect().bottom,
+					bottom: window.innerHeight
 				}
 			}
 		];
 		for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
 			const s = getComputedStyle(a);
-			if (s.overflowX === 'visible' && s.overflowY === 'visible' && s.contain === 'none') {
+			if (s.overflowX === 'visible' && s.overflowY === 'visible') {
 				continue;
 			}
 			const r = a.getBoundingClientRect();
@@ -276,26 +294,36 @@ function readStop(page: Page): Promise<Stop | null> {
 				borderRadius: cs.borderRadius
 			},
 			clips,
+			drawn:
+				(cs.outlineStyle !== 'none' && px(cs.outlineWidth) > 0) ||
+				(cs.boxShadow !== '' && cs.boxShadow !== 'none'),
+			box: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
 			kind: el.classList.contains('winctl-btn')
 				? 'winctl'
 				: el.classList.contains('brand')
 					? 'brand'
 					: el.classList.contains('nav-link')
 						? 'nav'
-						: 'other'
+						: el.classList.contains('rail-foot')
+							? 'rail-foot'
+							: el.classList.contains('seg-btn')
+								? 'seg'
+								: 'other'
 		};
 	});
 }
 
-/** Moves focus forward with Tab until it comes round to where it began,
- *  and reads every stop. The page's first Tab enters it at the top. */
-async function walk(page: Page): Promise<Stop[]> {
+/** Moves focus with `key` until it comes round to where it began, and
+ *  reads every stop. The page's first Tab enters it at the top; its
+ *  first Shift+Tab, at the bottom. */
+async function walk(page: Page, key: 'Tab' | 'Shift+Tab'): Promise<Stop[]> {
 	await page.mouse.click(1, 1);
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 	const stops: Stop[] = [];
 	const seen = new Set<string>();
+	let wrapped = false;
 	for (let i = 0; i < 400; i++) {
-		await page.keyboard.press('Tab');
+		await page.keyboard.press(key);
 		const id = await page.evaluate(() => {
 			const el = document.activeElement as HTMLElement | null;
 			if (!el || el === document.body) return null;
@@ -303,11 +331,15 @@ async function walk(page: Page): Promise<Stop[]> {
 			return el.dataset.focusWalk;
 		});
 		if (id === null) continue;
-		if (seen.has(id)) break;
+		if (seen.has(id)) {
+			wrapped = true;
+			break;
+		}
 		seen.add(id);
 		const stop = await readStop(page);
 		if (stop) stops.push(stop);
 	}
+	expect(wrapped, `${key} came round to where it began`).toBe(true);
 	return stops;
 }
 
@@ -328,8 +360,9 @@ function assertStops(stops: Stop[], at: string) {
 	}
 	for (const s of stops) {
 		const where = `${at}: ${s.name} ${JSON.stringify(s)}`;
-		// Whole: inside the window and every box that clips it.
-		for (const ring of [s.ring, s.chipRing]) {
+		// Whole: inside the window and every box that clips it. A ring
+		// drawn inside the box is whole when the box is.
+		for (const ring of [s.ring ?? (s.drawn ? s.box : null), s.chipRing]) {
 			if (!ring) continue;
 			for (const c of s.clips) {
 				expect.soft(inside(ring, c.box), `${where}: its ring is cut by ${c.name}`).toBe(true);
@@ -341,6 +374,8 @@ function assertStops(stops: Stop[], at: string) {
 		}
 		if (s.kind === 'winctl') {
 			expect.soft(s.chipRing, `${where}: its chip carries the ring`).not.toBeNull();
+		} else if (s.kind !== 'other') {
+			expect.soft(s.drawn, `${where}: shows a ring`).toBe(true);
 		}
 	}
 	// The rail's mark rings as the rail's links do.
@@ -394,6 +429,23 @@ test('every focus ring is drawn once and whole', async () => {
 				if (max) win?.maximize();
 				else win?.unmaximize();
 			}, maximized);
+			// The button the window shows for its state: Restore when
+			// maximized. A display with no window manager (CI's Xvfb) cannot
+			// maximize, and that pass is then said, not walked.
+			const state = page.locator('.winctl-btn').nth(1);
+			const label = maximized ? /restore/i : /maximize/i;
+			const reached = await expect
+				.poll(() => state.getAttribute('aria-label'), { timeout: 5_000 })
+				.toMatch(label)
+				.then(() => true)
+				.catch(() => false);
+			if (!reached) {
+				testInfo.annotations.push({
+					type: 'skipped',
+					description: `the window could not be ${maximized ? 'maximized' : 'restored'} here`
+				});
+				continue;
+			}
 			for (const view of views) {
 				await sizeViewport(page, view.width, view.height);
 				for (const p of pages) {
@@ -406,12 +458,14 @@ test('every focus ring is drawn once and whole', async () => {
 						() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
 					);
 					const at = `${p.label}, ${view.label}${maximized ? ', maximized' : ''}`;
-					const stops = await walk(page);
-					testInfo.annotations.push({
-						type: 'stops',
-						description: `${at}: ${stops.map((s) => s.name).join(' | ')}`
-					});
-					assertStops(stops, at);
+					for (const key of ['Tab', 'Shift+Tab'] as const) {
+						const stops = await walk(page, key);
+						testInfo.annotations.push({
+							type: 'stops',
+							description: `${at}, ${key}: ${stops.map((s) => s.name).join(' | ')}`
+						});
+						assertStops(stops, `${at}, ${key}`);
+					}
 					if (p.label === 'home') await shoot(page, `${view.label}${maximized ? '-max' : ''}`);
 				}
 			}
