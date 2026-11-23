@@ -25,14 +25,20 @@
  * up under the mouse, and whose volume shows while its field has
  * focus).
  *
- * What it covers: Home's hero pager, the rail's current page and its
+ * What it covers: Home's hero pager (and a hovered track's colour),
+ * the diagnostics switches for the hero's framing and the rows' style,
+ * the rail's current page and its
  * version link, the settings switches and segmented controls, a show's
  * Sub/Dub control, the download dialog's modes, the download bar's and
  * the download list's progress, the topbar's picked result, the search
  * page's sort and type chips, the search's progress bar, and the
  * player's timeline and volume fills and tracks. A state shown by text
  * as well (a switch's On/Off label) is still pictured without that
- * text: the control itself must show it. Keyboard focus in this theme
+ * text: the control itself must show it. Where a control opts out of
+ * the theme's colours, the spec also reads that what it draws stays in
+ * the theme: a switch's thumb inside its track's border, a chosen
+ * button's separator and words, a picked result's words, and the bars
+ * drawn whole. Keyboard focus in this theme
  * is not checked here (focus-rings.spec.ts). Every API request is
  * stubbed, but for the player test's play and stream (see
  * real-play.ts).
@@ -234,6 +240,23 @@ async function shows(
 		.toBeGreaterThanOrEqual(SEEN);
 }
 
+/** A system colour as the page resolves it in the theme now in force. */
+function systemColour(page: Page, name: string): Promise<string> {
+	return page.evaluate((n) => {
+		const probe = document.createElement('span');
+		probe.style.setProperty('forced-color-adjust', 'none');
+		probe.style.color = n;
+		document.body.append(probe);
+		const c = getComputedStyle(probe).color;
+		probe.remove();
+		return c;
+	}, name);
+}
+
+/** The computed value of `prop` on the first element `target` finds. */
+const computed = (target: Locator, prop: string) =>
+	target.first().evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
+
 /** A pattern matching `label` and nothing more. */
 const exactly = (label: string) =>
 	new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`);
@@ -288,8 +311,41 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			}
 		});
 		for (const track of await pager.locator('.hero-pager-track').all()) await hidden(track, false);
+		// A track under the mouse keeps a colour of the theme's.
+		const third = pager.locator('.hero-pager-dot').nth(2);
+		await third.hover();
+		const themed = await Promise.all(
+			['GrayText', 'CanvasText', 'Highlight'].map((n) => systemColour(page, n))
+		);
+		expect
+			.soft(themed, "a hovered hero pager track draws in one of the theme's colours")
+			.toContain(await computed(third.locator('.hero-pager-track'), 'background-color'));
+		await page.mouse.move(1, 1);
 		const second = pager.locator('.hero-pager-dot').nth(1);
 		await shows(page, second, "the hero pager's current show", () => second.click());
+
+		// The hero's framing switch and the rows' style switch, shown
+		// while the diagnostics page's toggle is on: a pressed choice.
+		await page.evaluate(() => {
+			localStorage.setItem(
+				'ani-gui:hero-framing',
+				JSON.stringify({ framing: 'pillar', source: 'anilist', controls: true })
+			);
+			localStorage.setItem(
+				'ani-gui:row-style',
+				JSON.stringify({ style: 'inline', controls: true })
+			);
+		});
+		await page.goto('about:blank');
+		await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
+		await forcedColours(page);
+		for (const group of ['.hero-framing-switch', '.row-style-switch']) {
+			const unpressed = page.locator(`${group} button[aria-pressed="false"]`).first();
+			await expect(unpressed).toBeVisible({ timeout: 15_000 });
+			const label = (await unpressed.textContent())?.trim() ?? '';
+			const choice = page.locator(`${group} button`, { hasText: exactly(label) });
+			await shows(page, choice, `${group}, ${label} pressed`, () => choice.click(), 6);
+		}
 
 		// The rail: the Settings link, on Home and then on Settings.
 		const settingsLink = page.locator('a.nav-link[href$="/settings"]');
@@ -338,6 +394,29 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			});
 		}
 
+		// A switch's thumb sits inside its track's border, off and on.
+		const first = switches.first();
+		for (let n = 0; n < 2; n++) {
+			const gaps = await first.evaluate((label) => {
+				const track = label.querySelector('.switch-track') as HTMLElement;
+				const thumb = label.querySelector('.switch-thumb') as HTMLElement;
+				const cs = getComputedStyle(track);
+				const t = track.getBoundingClientRect();
+				const h = thumb.getBoundingClientRect();
+				return [
+					h.left - (t.left + parseFloat(cs.borderLeftWidth)),
+					t.right - parseFloat(cs.borderRightWidth) - h.right,
+					h.top - (t.top + parseFloat(cs.borderTopWidth)),
+					t.bottom - parseFloat(cs.borderBottomWidth) - h.bottom
+				];
+			});
+			expect
+				.soft(Math.min(...gaps), `a switch's thumb clears its track's border (${gaps})`)
+				.toBeGreaterThanOrEqual(0.5);
+			await first.locator('.switch-track').click();
+			await still(page);
+		}
+
 		// Each segmented control: another of its buttons chosen.
 		const groups = page.locator('.seg:has(.seg-btn:not(.active):not(:disabled))');
 		const groupCount = await groups.count();
@@ -358,6 +437,17 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 				6
 			);
 		}
+
+		// A chosen button's separator, which no longer takes the theme's
+		// colour once the button opts out of it, takes the highlight.
+		const chosenSep = page.locator('.seg .seg-btn.active:not(:last-child)');
+		await expect(chosenSep.first()).toBeVisible();
+		expect
+			.soft(
+				await computed(chosenSep, 'border-inline-end-color'),
+				"a chosen button's separator is the highlight"
+			)
+			.toBe(await systemColour(page, 'Highlight'));
 
 		// A show's Sub/Dub control.
 		await page.locator('a.brand').click();
@@ -425,9 +515,19 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		});
 		await expect(range).toBeVisible();
 		await shows(page, range, "the download dialog's Range mode, chosen", () => range.click(), 6);
+		const highlightText = await systemColour(page, 'HighlightText');
+		for (const words of await range.locator('*').all()) {
+			if (!(await words.evaluate((el) => (el.textContent ?? '').trim().length > 0))) continue;
+			expect
+				.soft(await computed(words, 'color'), "the chosen mode's words are the highlight's text")
+				.toBe(highlightText);
+		}
 		await dialog.getByRole('button', { name: message('download', 'button_confirm') }).click();
 		const bar = page.locator('.dl-bar-progress');
 		await expect(bar).toBeVisible({ timeout: 15_000 });
+		expect
+			.soft(await computed(bar.locator('span'), 'opacity'), "the download bar's progress is whole")
+			.toBe('1');
 		await shows(page, bar, "the download bar's progress", () =>
 			hidden(bar.locator('span').first(), true)
 		);
@@ -436,6 +536,9 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		await page.locator('.dl-dock-trigger').click();
 		const rowBar = page.locator('.dl-row-bar').first();
 		await expect(rowBar).toBeVisible();
+		expect
+			.soft(await computed(rowBar.locator('span'), 'opacity'), "the download list's bar is whole")
+			.toBe('1');
 		await shows(page, rowBar, "the download list's bar", () =>
 			hidden(rowBar.locator('span').first(), true)
 		);
@@ -468,6 +571,12 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		await shows(page, firstHit, "the topbar's picked result", () => field.press('ArrowDown'), 6, {
 			keepFocus: true
 		});
+		for (const words of await firstHit.locator('*').all()) {
+			if (!(await words.evaluate((el) => (el.textContent ?? '').trim().length > 0))) continue;
+			expect
+				.soft(await computed(words, 'color'), "the picked result's words are the highlight's text")
+				.toBe(await systemColour(page, 'HighlightText'));
+		}
 		await field.press('Escape');
 
 		// The search page's sort and type chips: one chosen.
@@ -496,6 +605,12 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		await forcedColours(page);
 		const searching = page.locator('.search-progress');
 		await expect(searching).toBeVisible({ timeout: 15_000 });
+		expect
+			.soft(
+				await computed(searching.locator('.search-progress-bar'), 'opacity'),
+				"the search's progress bar is whole"
+			)
+			.toBe('1');
 		await shows(page, searching, "the search's progress bar", () =>
 			hidden(searching.locator('.search-progress-bar'), true)
 		);
