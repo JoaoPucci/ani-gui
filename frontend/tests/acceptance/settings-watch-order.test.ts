@@ -25,7 +25,13 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import SettingsPage from '../../src/routes/settings/+page.svelte';
-import { __resetApiBaseForTests, type AppInfo, type Config } from '../../src/lib/api';
+import {
+	__resetApiBaseForTests,
+	type AppInfo,
+	type Config,
+	type ShowView
+} from '../../src/lib/api';
+import { rememberedAnswer, settledAnswer } from '../../src/lib/watch-order/session-memo';
 
 const APP_INFO: AppInfo = appInfoAnswer({
 	version: '0.12.1',
@@ -61,7 +67,7 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 /** The settings answer with `watchOrder` stored: an order the backend
  *  reads back (it reads any other as As linked), or one it never sends,
  *  for what the page does with it. */
-function useSettings(watchOrder: Config['watch_order'] | 'story') {
+function useSettings(watchOrder: Config['watch_order'] | 'story', putFails = false) {
 	const puts: Record<string, unknown>[] = [];
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
@@ -71,7 +77,7 @@ function useSettings(watchOrder: Config['watch_order'] | 'story') {
 		),
 		http.put(`${API_BASE}/api/settings`, async ({ request }) => {
 			puts.push((await request.json()) as Record<string, unknown>);
-			return new HttpResponse(null, { status: 204 });
+			return new HttpResponse(null, { status: putFails ? 503 : 204 });
 		}),
 		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO))
 	);
@@ -114,5 +120,45 @@ describe('settings — the watch order', () => {
 		app = mount(SettingsPage, { target });
 		await until(() => group() !== null, 'the watch-order choice');
 		expect(pressed(m.watchorder_setting_linked())).toBe('true');
+	});
+});
+
+describe('settings — a change of the watch order', () => {
+	// A show page visited earlier this session draws its remembered
+	// watch-order answer in its first frame. The backend read that answer
+	// in the order then in force, so once another order is saved, a show
+	// reopened must not draw the old order, even for a frame.
+	const shown = { view: { order: 'linked', strip: null, link: null } as ShowView };
+
+	it('forgets the shows remembered in the old order once the new one is saved', async () => {
+		const puts = useSettings('linked');
+		settledAnswer('42', shown);
+		app = mount(SettingsPage, { target });
+		await until(() => group() !== null, 'the watch-order choice');
+		button(m.watchorder_setting_released())!.click();
+		await until(() => puts.length > 0, 'the settings write');
+		await until(() => rememberedAnswer('42') === null, 'the remembered answers to go');
+	});
+
+	it('keeps them when the order saved is the one in force', async () => {
+		const puts = useSettings('linked');
+		settledAnswer('42', shown);
+		app = mount(SettingsPage, { target });
+		await until(() => group() !== null, 'the watch-order choice');
+		button(m.watchorder_setting_linked())!.click();
+		await until(() => puts.length > 0, 'the settings write');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(rememberedAnswer('42')).toEqual(shown);
+	});
+
+	it('keeps them when the new order could not be saved', async () => {
+		const puts = useSettings('linked', true);
+		settledAnswer('42', shown);
+		app = mount(SettingsPage, { target });
+		await until(() => group() !== null, 'the watch-order choice');
+		button(m.watchorder_setting_released())!.click();
+		await until(() => puts.length > 0, 'the settings write');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(rememberedAnswer('42')).toEqual(shown);
 	});
 });

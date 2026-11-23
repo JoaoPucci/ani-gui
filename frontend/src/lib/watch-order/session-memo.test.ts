@@ -4,7 +4,8 @@ import {
 	forgetAnswers,
 	rememberedAnswer,
 	settledAnswer,
-	visitAnswer
+	visitAnswer,
+	watchOrderSaved
 } from './session-memo';
 import type { ShowView } from '$lib/api';
 import type { ShowAnswer } from './session-memo';
@@ -84,5 +85,27 @@ describe("a show page visit's answer", () => {
 		expect(rememberedAnswer('1')).toEqual(answer('1', '3'));
 		expect(visitAnswer('2', answer('2'), visit.signal)).toBeNull();
 		expect(rememberedAnswer('2')).toBeNull();
+	});
+});
+
+describe('a change of the order setting', () => {
+	it('forgets every answer once a different order is saved: they were read in the old one', () => {
+		settledAnswer('1', answer('1'));
+		settledAnswer('2', answer('2'));
+		expect(watchOrderSaved('linked', 'released')).toBe('released');
+		expect(rememberedAnswer('1')).toBeNull();
+		expect(rememberedAnswer('2')).toBeNull();
+	});
+
+	it('keeps the answers when the order saved is the one already in force', () => {
+		settledAnswer('1', answer('1'));
+		expect(watchOrderSaved('released', 'released')).toBe('released');
+		expect(rememberedAnswer('1')).toEqual(answer('1'));
+	});
+
+	it('forgets them when the order in force before the save was not known', () => {
+		settledAnswer('1', answer('1'));
+		expect(watchOrderSaved(null, 'linked')).toBe('linked');
+		expect(rememberedAnswer('1')).toBeNull();
 	});
 });

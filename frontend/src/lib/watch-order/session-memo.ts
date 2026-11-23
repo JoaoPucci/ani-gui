@@ -61,3 +61,12 @@ export function visitAnswer(
 export function forgetAnswers(): void {
 	answers.clear();
 }
+
+/**
+ * The order now in force once `saved` has been saved over `before`.
+ * Not yet in place: it forgets nothing.
+ */
+export function watchOrderSaved(before: string | null, saved: string): string {
+	void before;
+	return saved;
+}
