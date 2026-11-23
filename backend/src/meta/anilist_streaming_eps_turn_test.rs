@@ -18,6 +18,15 @@ use crate::meta::anilist_streaming_eps_fake_test::{
     asked_in_any_order, asked_of, sorted, Asked, FakeAniList, FakeMedia,
 };
 
+/// AniList's pace with a long wait for a turn: on a paused clock, the
+/// virtual time that runs while the mock answers on its own thread could
+/// otherwise spend a lookup's one-second wait, and the gate turn it
+/// away.
+const PACED: Pace = Pace {
+    background_wait: Duration::from_secs(60),
+    ..ANILIST
+};
+
 fn fake(n: u32) -> FakeAniList {
     FakeAniList {
         media: (1..=n)
@@ -78,7 +87,7 @@ async fn singles_the_gate_would_hold_behind_the_one_out_share_the_next_page() {
     // two go as one page when the turn comes.
     let server = serve(fake(3)).await;
     let base = server.uri();
-    let gate = share_for_tests(&base, ANILIST);
+    let gate = share_for_tests(&base, PACED);
     let client = reqwest::Client::new();
     let lane = "staggered-singles";
     tokio::time::pause();
@@ -110,7 +119,7 @@ async fn a_lookup_the_gate_would_let_go_now_goes_alone_at_once() {
         .mount(&server)
         .await;
     let base = server.uri();
-    let _gate = share_for_tests(&base, ANILIST);
+    let _gate = share_for_tests(&base, PACED);
     let client = reqwest::Client::new();
     let lane = "gate-ready";
     let first = card_at(&client, lane, &base, 1, Duration::ZERO).await;
@@ -153,15 +162,7 @@ async fn a_retry_does_not_take_the_turn_a_lane_waits_for() {
     // queue.
     let server = serve(fake(3)).await;
     let base = server.uri();
-    // A wait long enough that no virtual time the paused clock runs
-    // through while the mock answers can spend the retry's.
-    let gate = share_for_tests(
-        &base,
-        Pace {
-            background_wait: Duration::from_secs(60),
-            ..ANILIST
-        },
-    );
+    let gate = share_for_tests(&base, PACED);
     let client = reqwest::Client::new();
     let lane = "retry-behind-lane";
     let retry_lane = "retry-behind-lane-retry";
@@ -254,7 +255,7 @@ async fn a_lookup_kitsu_maps_to_anilist_alone_is_not_held_behind_a_mal_page() {
     });
     let server = serve(known).await;
     let base = server.uri();
-    let _gate = share_for_tests(&base, ANILIST);
+    let _gate = share_for_tests(&base, PACED);
     let client = reqwest::Client::new();
     let lane = "anilist-alone";
     let by_id = |id| Want {
