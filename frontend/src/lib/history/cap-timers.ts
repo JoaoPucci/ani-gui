@@ -25,10 +25,13 @@ export interface CapTimerDeps {
  *
  * A card armed with its `show` waits past the cap while Home's strip
  * warm for that show is still out (`pendingWarm`): its own episode read
- * shares the warm's lookup, so its details come back with the warm. It
- * then waits on, to `ceilingMs` from its first arm, for those details;
- * a warm that fails or is dropped ends the wait at once. A card no warm
- * is out for at the cap runs the plain cap.
+ * and the warm share one AniList lookup for the show, so its details
+ * come back by the time that lookup answers, or once the read's own
+ * two-second AniList budget runs out. It waits on, to `ceilingMs` from
+ * its first arm, for those details; a warm that fails or is dropped
+ * past the cap ends the wait at once. A card no warm is out for at the
+ * cap, its warm having ended or never carried the show, runs the plain
+ * cap. The show is the one the card offered when first armed.
  */
 export function createCapTimers(deps: CapTimerDeps) {
 	const handles = new Map<string, unknown>();

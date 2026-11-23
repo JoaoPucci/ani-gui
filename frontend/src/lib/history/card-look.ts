@@ -42,9 +42,10 @@ export const EPISODE_WAIT_CAP_MS = 1000;
  * The longest a matched card waits for its episode details, from its
  * first offer, when Home's strip warm is still out for its show at the
  * cap ($lib/history/cap-timers). On a cold launch the card's own read
- * shares the warm's AniList lookup, so its details come back with the
- * whole strip's, past a second; the ceiling keeps a stalled warm from
- * holding the skeleton.
+ * and the warm share one AniList lookup for the show, which answers
+ * with the whole strip's, often past a second; the read gives AniList
+ * two seconds before it answers without the still, and the ceiling
+ * keeps a slow Kitsu page or a stalled warm from holding the skeleton.
  */
 export const EPISODE_WAIT_CEILING_MS = 3000;
 
