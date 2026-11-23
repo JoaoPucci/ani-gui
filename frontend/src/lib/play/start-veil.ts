@@ -59,12 +59,14 @@ export function episodeNumeral(episode: number): string {
 
 /** The episode numbered `episode` on any of the cached episode `pages`
  *  (its absolute number, else its number in its season), or null when
- *  none holds it. */
+ *  none holds it. An episode with neither number is never the one. */
 export function episodeInPages(
 	pages: Iterable<readonly KitsuEpisode[]>,
 	episode: number
 ): KitsuEpisode | null {
-	void pages;
-	void episode;
+	for (const eps of pages) {
+		const found = eps.find((e) => (e.number ?? e.relative_number) === episode);
+		if (found) return found;
+	}
 	return null;
 }

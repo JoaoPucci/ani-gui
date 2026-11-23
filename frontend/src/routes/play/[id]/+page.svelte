@@ -210,7 +210,7 @@
 	import { watchStart, type StartWatch } from '$lib/play/start-watch';
 	import StartVeil from '$lib/play/StartVeil.svelte';
 	import StartAnnounce from '$lib/play/StartAnnounce.svelte';
-	import { veilMode } from '$lib/play/start-veil';
+	import { episodeInPages, veilMode } from '$lib/play/start-veil';
 	import { loadStartLook } from '$lib/play/start-look';
 	import { browserStorage } from '$lib/hero/prefs';
 	import { HandoffGate } from '$lib/play/handoff-gate';
@@ -1811,21 +1811,8 @@
 	// The episode the start veil shows: a switch's target while it is on
 	// its way, else the one playing.
 	const veilEpisode = $derived(switchBusy && switchTarget !== null ? switchTarget : episodeNum);
-	const veilEpisodeMeta = $derived.by(() => {
-		for (const eps of kitsuPageCache.values()) {
-			const found = eps.find((e) => (e.number ?? e.relative_number ?? -1) === veilEpisode);
-			if (found) return found;
-		}
-		return null;
-	});
-
-	const currentEpisodeMeta = $derived.by(() => {
-		for (const eps of kitsuPageCache.values()) {
-			const found = eps.find((e) => (e.number ?? e.relative_number ?? -1) === episodeNum);
-			if (found) return found;
-		}
-		return null;
-	});
+	const veilEpisodeMeta = $derived(episodeInPages(kitsuPageCache.values(), veilEpisode));
+	const currentEpisodeMeta = $derived(episodeInPages(kitsuPageCache.values(), episodeNum));
 
 	const totalEpisodePages = $derived.by(() => {
 		// Display bound (stripCap), not the action cap — the pager must
