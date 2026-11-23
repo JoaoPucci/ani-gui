@@ -232,15 +232,16 @@ test("Restart in the AppImage starts the waiter from the user's environment, not
   // (lib/child-env.cjs). Planned from this process's own instead, the
   // waiter, and the AppImage it runs, would start with Unity as the
   // session's desktop and what Electron added.
-  const launch = { ...appImageEnv, XDG_CURRENT_DESKTOP: "ubuntu:GNOME" };
-  const now = {
+  // The launch snapshot is taken after Electron's early rewrite
+  // (lib/child-env.cjs), so it already holds Unity; what main.js exports
+  // after it (ANI_GUI_*) is in this process's alone.
+  const launch = {
     ...appImageEnv,
     XDG_CURRENT_DESKTOP: "Unity",
     ORIGINAL_XDG_CURRENT_DESKTOP: "ubuntu:GNOME",
     CHROME_DESKTOP: "ani-gui.desktop",
-    GDK_BACKEND: "wayland",
-    NO_AT_BRIDGE: "1",
   };
+  const now = { ...launch, GDK_BACKEND: "wayland", NO_AT_BRIDGE: "1", ANI_GUI_BACKEND_PORT: "4100" };
   const spawned = [];
   restart(
     { platform: "linux", launch, now, execPath: appImageExec, argv: [appImageExec], pid: 4242 },
@@ -258,6 +259,7 @@ test("Restart in the AppImage starts the waiter from the user's environment, not
     assert.ok(!(k in env), k);
   }
   assert.equal(env.APPIMAGE, appImageEnv.APPIMAGE);
+  assert.equal(env.ANI_GUI_BACKEND_PORT, "4100");
 });
 
 test("Restart everywhere else asks for Electron's relaunch inside the user's environment", () => {
