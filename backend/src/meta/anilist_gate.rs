@@ -57,6 +57,9 @@ mod answer;
 mod pace;
 use answer::{authority, not_sent, stay_away};
 pub(crate) use pace::{Class, Ledger, Pace, ANILIST};
+#[path = "anilist_gate_place.rs"]
+mod place;
+pub(crate) use place::{handing, place, turn_in, Place};
 #[path = "anilist_gate_turn.rs"]
 mod turn;
 pub(crate) use turn::{as_retry, current_class, in_background, in_class};
@@ -120,6 +123,7 @@ impl Gate {
                     if class == Class::Retry {
                         ledger.record_retry(&self.pace, now);
                     }
+                    place::turn_taken();
                     #[cfg(test)]
                     self.let_go
                         .lock()

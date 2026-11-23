@@ -17,6 +17,19 @@
 //! gathers nothing closes the lane. Each caller is answered as soon as
 //! its own answer is in.
 //!
+//! A background lookup the gate would hold back for a turn anyway — a
+//! quarter second after the request before it, say — gains nothing by
+//! waiting for it in the gate alone. One that finds no lane open then
+//! opens one and waits there, and a batch at the end of a window waits
+//! there too, until the gate would let a request go: the lookups that
+//! arrive meanwhile join it, and it leaves when it would have left
+//! alone. The lane holds a place in the gate's queue while it waits
+//! ([`crate::meta::anilist_gate::Place`]), so no retry takes the turn
+//! ahead of it, and hands that place to the request it sends. A turn
+//! past the lookup's wait is not waited for: the gate turns it away at
+//! once, as before. The gate's own wait in its log line no longer
+//! counts what a lookup waited in its lane.
+//!
 //! Lanes are kept apart by kind, by the caller's key (its app state and
 //! AniList endpoint) and by the gate class the lookups count as, so a
 //! retry of a held-back fill is never sent as a background request, or
@@ -36,7 +49,7 @@ use tokio::sync::oneshot;
 
 use super::{batch_each, Kind, Want};
 use crate::error::{AniError, Result};
-use crate::meta::anilist_gate::{current_class, in_class, Class};
+use crate::meta::anilist_gate::{current_class, handing, in_class, place, turn_in, Class, Place};
 
 /// How long a lane gathers lookups before its batch goes out: under the
 /// gate's least gap between two requests (250 ms), so the MAL-id page a
@@ -130,6 +143,12 @@ pub(crate) async fn coalesced<K: Kind>(
     // arriving while a lane is open wait for its next batch — and,
     // inside [`gathered`], the one that opens it too.
     let gather = GATHER.try_with(|g| *g).unwrap_or(false);
+    let url = base_override
+        .unwrap_or(crate::meta::anilist::ANILIST_API)
+        .to_owned();
+    // Held back for a turn anyway, a lookup waits for it in its lane,
+    // where the next ones join it, and leaves when it would have alone.
+    let behind = waits_for_turn(class, turn_in(&url, class));
     let (opened, first) = {
         let mut lanes = K::lanes().open();
         match lanes.get_mut(&lane) {
@@ -137,7 +156,7 @@ pub(crate) async fn coalesced<K: Kind>(
                 pending.push((want, reply));
                 (false, None)
             }
-            None if gather => {
+            None if gather || behind => {
                 lanes.insert(lane.clone(), vec![(want, reply)]);
                 (true, None)
             }
@@ -162,7 +181,15 @@ pub(crate) async fn coalesced<K: Kind>(
             lane,
             client: client.clone(),
             base: base_override.map(str::to_owned),
+            url,
             class,
+            // Gathered, the lookups started together wait one window;
+            // behind the gate's turn, the opener waits only for that.
+            first_wait: if behind && !gather {
+                Duration::ZERO
+            } else {
+                WINDOW
+            },
             kind: PhantomData,
         };
         tokio::spawn(in_class(class, driver.run(closing)));
@@ -170,12 +197,23 @@ pub(crate) async fn coalesced<K: Kind>(
     answer.await.unwrap_or(Err(AniError::Network))
 }
 
+/// Whether a lookup of `class` whose turn comes in `turn` waits for it in
+/// its lane: a background lookup the gate would hold back, inside its
+/// wait.
+pub(crate) fn waits_for_turn(class: Class, turn: Option<Duration>) -> bool {
+    class == Class::Background && turn.is_some_and(|wait| !wait.is_zero())
+}
+
 /// The task gathering one lane's batches.
 struct Driver<K> {
     lane: String,
     client: reqwest::Client,
     base: Option<String>,
+    /// The endpoint, for its gate.
+    url: String,
     class: Class,
+    /// How long the first batch gathers before it waits for its turn.
+    first_wait: Duration,
     kind: PhantomData<K>,
 }
 
@@ -184,8 +222,16 @@ impl<K: Kind> Driver<K> {
     /// go on gathering: a lookup arriving while a batch is out goes in
     /// the next window's batch, not after the first one answers.
     async fn run(self, mut guard: Closing<K>) {
+        let mut wait = self.first_wait;
         loop {
-            tokio::time::sleep(WINDOW).await;
+            if !wait.is_zero() {
+                tokio::time::sleep(wait).await;
+            }
+            wait = WINDOW;
+            let Some(place) = self.until_turn().await else {
+                guard.0 = None;
+                return;
+            };
             let Some(batch) = self.take() else {
                 guard.0 = None;
                 return;
@@ -198,9 +244,44 @@ impl<K: Kind> Driver<K> {
             let base = self.base.clone();
             tokio::spawn(in_class(
                 self.class,
-                deliver::<K>(client, base, wants, replies),
+                handing(place, deliver::<K>(client, base, wants, replies)),
             ));
         }
+    }
+
+    /// Wait, while what the lane gathered would be held back for a turn
+    /// inside its wait, for that turn, holding a place in the gate's
+    /// queue; callers that stop waiting meanwhile are let go. The place,
+    /// if one was taken; `None`, and the lane closed, once nobody waits.
+    async fn until_turn(&self) -> Option<Option<Place>> {
+        let mut held = None;
+        loop {
+            if !self.still_wanted() {
+                return None;
+            }
+            let turn = turn_in(&self.url, self.class);
+            if !waits_for_turn(self.class, turn) {
+                return Some(held);
+            }
+            held.get_or_insert_with(|| place(&self.url));
+            let wait = turn.unwrap_or_default();
+            tokio::time::sleep(wait.min(CLOSED_POLL)).await;
+        }
+    }
+
+    /// Drop the gathered lookups whose callers stopped waiting; whether
+    /// any is left. A lane left with none is closed.
+    fn still_wanted(&self) -> bool {
+        let mut lanes = K::lanes().open();
+        let Some(pending) = lanes.get_mut(&self.lane) else {
+            return false;
+        };
+        pending.retain(|(_, reply)| !reply.is_closed());
+        if pending.is_empty() {
+            lanes.remove(&self.lane);
+            return false;
+        }
+        true
     }
 
     /// The lookups gathered since the last batch; `None`, and the lane
