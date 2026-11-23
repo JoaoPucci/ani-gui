@@ -1,10 +1,9 @@
 # Proposal: a notification center
 
 **Status**: research for the 0.20.0 release, alongside the
-[in-app updater](in-app-updater.md) proposal, which is reviewed
-separately and shares this one's signature verifier (section 3);
-links to it, and to the mini-player proposal, resolve once those are
-merged. Nothing below is built. It supersedes the "A notification center"
+[in-app updater](in-app-updater.md) proposal, which would use the same
+signature verifier as this one's remote notices (section 3). Nothing
+below is built. It supersedes the "A notification center"
 entry in [`deferred-work.md`](../deferred-work.md). Service prices and
 limits were checked on 2026-11-01 and 2026-11-02 against the pages
 cited next to them, and will drift.
@@ -31,7 +30,7 @@ place, and each is gone once the moment passes:
    until it is dismissed. After that, an expired sign-in leaves the
    amber dot on the account chip, and a refused renewal of a sign-in
    that is still valid leaves nothing. [code:
-   `frontend/src/routes/+layout.svelte:142`,
+   `frontend/src/routes/+layout.svelte:150`–`190`,
    `frontend/src/lib/account/expiry-toast.ts:57`,
    `frontend/src/lib/account/chip-descriptor.ts:64`]
 4. **Files the app deleted at startup** are a section on the
@@ -48,7 +47,7 @@ place, and each is gone once the moment passes:
    unreachable and the app had nowhere to say the problem was the
    provider's. [code:
    `frontend/src/lib/play/source-answer.ts:38`,
-   `frontend/messages/en/play.json:132`,
+   `frontend/messages/en/play.json:131`,
    `backend/src/scraper/gate.rs:18`–`25`]
 
 The maintainer also wants a place for things the app cannot see by
@@ -65,35 +64,37 @@ out (section 2). [proposal]
 
 | Notice | Source today | Kind | Action | In the list? |
 |---|---|---|---|---|
-| Update available | `/api/update-check`, once per app open [code: `backend/src/api/mod.rs:117`, `frontend/src/routes/+layout.svelte:233`] | condition | Open the update dialog | Yes |
-| What's new after an update | Nothing; the update check already fetches the notes [code: `backend/src/meta/github.rs:47`] | event | Detail: the release notes | Yes, cheap |
+| Update available | `/api/update-check`, at each app open [code: `backend/src/api/mod.rs:135`, `frontend/src/routes/+layout.svelte:276`] | condition | Open the update dialog | Yes |
+| What's new after an update | Nothing; the update check already fetches the notes [code: `backend/src/meta/github.rs:139`–`141`] | event | Detail: the release notes | Yes, cheap |
 | Streaming source not answering | Inferred from the provider's gate (section 4) | condition | Detail: since when, what is known | Yes; the main reason for the feature |
 | Announcement (outage, news, a domain move) | Nothing; needs a remote source (section 3) | condition with an expiry | Detail; optional link | Yes, if section 3 is adopted |
 | Downloads finished | `markDone` [code: `download/store.svelte.ts:224`] | event | Show in folder | Yes, one row per batch |
 | Download failed | `markError` [code: `download/store.svelte.ts:230`] | event | Detail with the reason; open the dock | Yes |
 | Tracker sign-in expired, refused or unreachable | Pinned toast [code: `sign-in-toast-copy.ts`] | condition | Reconnect, or retry | Yes; the list becomes its record |
-| Progress not saved to a tracker | 4-second error toast [code: `frontend/src/lib/account/busy-notice.ts:76`, `frontend/src/lib/toasts/store.svelte.ts:52`] | event | Open the show | Yes; today it is gone after 4 s |
+| Progress not saved to a tracker | 4-second error toast [code: `frontend/src/lib/account/busy-notice.ts:76`, `frontend/src/lib/toasts/store.svelte.ts:53`] | event | Open the show | Yes; today it is gone after 4 s |
 | Watch Later list could not be refreshed | Nothing; the rail renders its saved snapshot [code: `frontend/src/lib/account/watch-later-refresh.ts:4`] | condition | Retry | Yes, low priority |
 | Files removed at startup | Diagnostics page | event | Open diagnostics | Yes, once |
-| Donation ask | About page only [code: `frontend/src/routes/about/+page.svelte:104`–`110`] | scheduled event | Open About; not now; never | Yes, under section 5's rules |
+| Donation ask | About page only [code: `frontend/src/routes/about/+page.svelte:106`–`147`] | scheduled event | Open About; not now; never | Yes, under section 5's rules |
 | New episode of a show in progress | Nothing; airing rows are already cached for the home rail [code: `backend/src/commands/airing_seed.rs`] | event | Play it | Open question 9 |
 | Tracker write held (saving in N s) | Pinned toast with a countdown [code: `busy-notice.ts:60`] | condition, minutes | None | No: it resolves within minutes; stays a toast |
-| External player or Syncplay failed to start | `ErrorOverlay` modal [code: `frontend/src/routes/play/[id]/+page.svelte:3935`] | event | Settings | No: it answers the click the user just made |
-| ffmpeg missing for a download | `ErrorOverlay` modal [code: `+layout.svelte:702`] | event | Settings | No, same reason |
+| External player or Syncplay failed to start | `ErrorOverlay` modal [code: `frontend/src/routes/play/[id]/+page.svelte:4959`–`4990`] | event | None; Syncplay's links to its download page | No: it answers the click the user just made |
+| ffmpeg missing for a download | `ErrorOverlay` modal [code: `+layout.svelte:722`–`737`] | event | A link to ffmpeg's download page | No, same reason |
 | Stream stall and recovery | Toasts during playback | event | None | No: bound to the moment |
 
 ## 2. Surface design options
 
-What exists: a topbar holding the breadcrumb and the search form, then
-the update badge, the download dock, the account chip and the window
-controls [code: `+layout.svelte:561`–`564`, `:654`–`:657`]; a left rail with home, search,
-account, settings and diagnostics; toasts in a stack of at most three
-passing rows, plus pinned ones [code: `toasts/store.svelte.ts:50`].
+What exists: a topbar holding the breadcrumb (on a page with
+somewhere to go back to) and the search form, then the update badge,
+the download dock, the account chip and the window controls [code:
+`+layout.svelte:587`–`594`, `:684`–`:687`]; a left rail with home,
+search, account, settings and diagnostics; toasts in a stack of at
+most three rows, where pinned ones count and passing ones give way to
+them [code: `toasts/store.svelte.ts:51`, `:63`–`70`].
 The dock's popover is the vocabulary to reuse: `--ink-050` surface,
 `--radius-card`, 24rem wide, anchored with `inset-inline-end`,
 `role="menu"`, and opening it marks every row seen [code:
-`frontend/src/lib/components/DownloadDock.svelte:40`, `:136`,
-`:365`–`:370`].
+`frontend/src/lib/components/DownloadDock.svelte:49`–`51`, `:189`,
+`:454`–`:468`].
 
 ### (a) A list like the downloads
 
@@ -229,10 +230,10 @@ lost. A notice with more to say than one line opens a detail route,
   toasts, never notices.
 - **Keyboard and assistive technology.** The bell is a button with
   `aria-expanded` and a label that carries the unread count; the list
-  takes the dock's `role="menu"`, and adds what the dock lacks today:
-  arrow-key movement between rows, and focus returned to the bell when
-  Escape closes it [code: the dock handles Escape only,
-  `DownloadDock.svelte:53`–`55`].
+  takes the dock's `role="menu"` and its menu keys: arrows, Home and
+  End move between rows, and Escape, Tab and Shift+Tab close it with
+  focus back on the bell [code: `DownloadDock.svelte:80`–`84`,
+  `frontend/src/lib/menu/menu-keys.ts:11`].
 - **Right to left.** None of the four shipped locales (en, pt-BR,
   es-419, ru) is right to left [code:
   `frontend/project.inlang/settings.json:4`], and the CSS uses logical
@@ -240,7 +241,7 @@ lost. A notice with more to say than one line opens a detail route,
   dock does.
 - **Reduced motion.** The duration tokens are already zero under
   `prefers-reduced-motion: reduce` [code:
-  `frontend/src/lib/design/tokens.css:176`]; the bell does not pulse.
+  `frontend/src/lib/design/tokens.css:206`–`212`]; the bell does not pulse.
 
 ### System notifications
 
@@ -249,21 +250,25 @@ They show only while no window of the app is focused, so the 0.21.0
 mini-player window ([`mini-player.md`](mini-player.md)) counts as the
 app's focus. [proposal]
 
-- **They go through the main process.** A separate change in review
-  gives the window a deny-by-default permission handler that allows
-  only fullscreen and clipboard writing, so the renderer's web
-  `Notification` is refused. The renderer sends a small IPC message;
-  the main process checks the sender, as that change does for the
-  app's IPC calls, and shows an Electron `Notification`. Its text
-  comes from the renderer, already localized. [proposal]
+- **They go through the main process.** The window's permission
+  handler denies by default and allows only fullscreen and clipboard
+  writing, so the renderer's web `Notification` is refused [code:
+  `electron/lib/permissions.cjs:18`]. The renderer sends a small IPC
+  message; the handler registers through the IPC guard, which acts
+  only on a call from the app's own document [code:
+  `electron/lib/ipc-guard.cjs:3`–`5`], and the main process shows an
+  Electron `Notification`. Its text comes from the renderer, already
+  localized. [proposal]
 - **Electron.** `Notification.isSupported()` exists in the main
   process [source:
   <https://www.electronjs.org/docs/latest/api/notification>]. On Linux
   "Notifications are sent using libnotify", for desktops that follow
   the freedesktop specification. [source:
   <https://www.electronjs.org/docs/latest/tutorial/notifications>]
-  The app does not use `Notification` anywhere today. [code: no match
-  in `electron/`]
+  The main process does not use `Notification` anywhere today; the
+  one mention in `electron/` is the end-to-end check that the
+  renderer's request is refused. [code: no match in `electron/main.js`
+  or `electron/lib/`; `electron/e2e/smoke.spec.ts:1370`]
 - **Windows needs an app id.** A notification needs a Start Menu
   shortcut carrying an AppUserModelID and a ToastActivatorCLSID.
   [source: the tutorial above]
@@ -272,15 +277,18 @@ app's focus. [proposal]
   [source:
   <https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/templates/nsis/include/installer.nsh>],
   and the app's `appId` is `net.thirdmovement.ani-gui` [code:
-  `electron/package.json:37`]. The app must also call
+  `electron/package.json:40`]. The app must also call
   `app.setAppUserModelId` with the same id before any window opens
   [source: <https://www.electron.build/docs/nsis>], and
   `electron/main.js` does not today [code: no match]. The installer
   sets no ToastActivatorCLSID [source: the `installer.nsh` above], and
   whether a plain notification shows without one is untested.
   [unverified] So the Windows half is that call, a check on a Windows
-  machine (no CI builds the installer), and, if the check fails, the
-  CLSID added to the shortcut.
+  machine, and, if the check fails, the CLSID added to the shortcut.
+  The check has to be made by hand: CI builds the installer, but
+  nothing installs it or starts the app it installs [code:
+  `.github/workflows/packages.yml:30`–`31`, `:153`–`161`], and a
+  notification only shows from an installed shortcut.
 
 ## 3. Remote notices
 
@@ -312,7 +320,8 @@ The facts behind the table:
   The releases listing the update check reads answers with
   `x-ratelimit-resource: core` and `x-ratelimit-limit: 60` (checked
   with `curl -I` on 2026-11-02); the update check reads it once per
-  app open [code: `backend/src/meta/github.rs:25`, `:111`].
+  app open, and again when a language change reloads the window
+  [code: `backend/src/meta/github.rs:163`; `docs/PRIVACY.md:350`–`351`].
 - **raw.githubusercontent.com** answers with `cache-control:
   max-age=300`, an ETag, `via: 1.1 varnish`, and no rate-limit headers
   (checked with `curl -I` on 2026-11-02). GitHub's changelog of
@@ -372,24 +381,33 @@ The facts behind the table:
   because `master` is under a ruleset that requires an up-to-date pull
   request, which would put a review and CI between an outage and its
   notice; the signature, not the branch, is what the app trusts.
-  Whether the ruleset's branch pattern leaves such a branch out was
-  not checked. [unverified]
+  The `master` ruleset covers the default branch alone, and the remote
+  flags are already read this way, from a `flags` branch whose own
+  ruleset only blocks deletion and force-pushes (both checked with the
+  GitHub rulesets API on 2026-11-24) [code:
+  `backend/src/flags/remote.rs:20`]. A `notices` branch would follow
+  that precedent.
 - **Trust.** minisign: Ed25519 over a BLAKE2b-512 hash, a public key
   of one line. [source: <https://jedisct1.github.io/minisign/>] The
-  in-app updater proposal recommends the same, verified with the
-  `minisign-verify` crate (MIT, no dependencies) [source:
-  <https://crates.io/crates/minisign-verify>]. One verifier, two keys:
-  the notice key is used often, and must never be the key that can
-  replace the app ([`in-app-updater.md`](in-app-updater.md), section 4
-  and its open question 2). The app carries a list of notice keys, so
-  a rotation ships the next key a release ahead. Signing uses the
-  repository script the updater's release signing adds, which that
-  proposal notes is untried at writing minisign's exact file format.
+  backend already verifies a file this way: the remote flags file is
+  checked with the `minisign-verify` crate (MIT, no dependencies)
+  [source: <https://crates.io/crates/minisign-verify>] against a list
+  of public keys built into the app, any of which will do, so a
+  rotation ships the next key a release ahead [code:
+  `backend/Cargo.toml:85`, `backend/src/flags/signature.rs:1`–`10`].
+  The in-app updater proposal recommends the same for releases.
+  Notices reuse that verifier with a list of keys of their own: the
+  notice key is used often, and must never be the key that can replace
+  the app ([`in-app-updater.md`](in-app-updater.md), section 4 and its
+  open question 2), nor the one that can turn a feature on for every
+  install. Signing follows the flags file's steps with the minisign
+  tool (`docs/development.md`, "Signing the flags file").
 - **No replay.** The signature's trusted comment carries an issue
   time. The backend keeps the newest it has accepted and refuses an
   older file, so an old signed file cannot be served again to bring
   back a notice.
-- **When it is read.** At launch, beside the update check, and once
+- **When it is read.** At launch, beside the update check and the
+  remote flags, and once
   more when the outage condition of section 4 rises, which is when an
   explanation is most useful. No timer. The backend reads it with
   `If-None-Match`; any failure (offline, 404, a bad signature, a 429)
@@ -404,7 +422,7 @@ The facts behind the table:
   localized strings (`AGENTS.md` section 4). Notices are the
   maintainer's text relayed as data, the same shape as the release
   notes body the update check already relays [code:
-  `backend/src/meta/github.rs:47`]. See open question 7.
+  `backend/src/meta/github.rs:139`–`141`]. See open question 7.
 - **Targeting** stays coarse: version range and platform. Nothing
   about the user is sent to choose what they see; every install reads
   the same file and filters it locally.
@@ -421,21 +439,28 @@ The facts behind the table:
 
 ### Privacy
 
-`docs/PRIVACY.md` says ani-gui does not collect telemetry, that the
-only data leaving the computer is what the user sends to public
-services, and that it does not "phone home" on launch or on any other
-schedule; it lists the update check as the automatic exception [code:
-`docs/PRIVACY.md:10`, `:259`, `:274`]. A notice read is a second
-automatic request. It sends no account, install id or version, but it
-reveals the user's IP address, the time and a `User-Agent: ani-gui`
-header to GitHub's CDN. With the update check on, that is what the
-update check reveals to GitHub's API at the same moment; with it
-turned off, the notice read is the app's one request at launch, and
-the notices switch is how to stop it too. So `docs/PRIVACY.md` gets
-an entry for it naming the switch, its summary at the top names the
-automatic requests, and the sentence that ends its list of requests
-changes from "does not phone home" to naming them and what they
-carry.
+`docs/PRIVACY.md` says the app collects no analytics or telemetry,
+and that what leaves the computer is the requests it makes to public
+services to do its job [code: `docs/PRIVACY.md:9`–`15`]. Two of those
+are automatic at every launch and go to the project's own repository:
+the update check, to GitHub's API, and the remote flags file with its
+signature, two requests to GitHub's content server [code:
+`docs/PRIVACY.md:348`, `:375`–`391`, `:408`–`411`;
+`backend/src/flags/launch.rs`, `backend/src/flags/remote.rs:20`]. A
+notice read is one more, to that same content server. It sends no
+account, install id or version, but it reveals the user's IP address,
+the time and a `User-Agent: ani-gui` header, which the flags requests
+already reveal to that server at the same moment. Neither the update
+check nor the flags fetch can be turned off today [code:
+`docs/PRIVACY.md:369`; the flags fetch has no setting], and the
+updater's proposed switch would stop only the update check. So the
+notices switch stops the notice read and nothing else: with every
+switch off, the app still fetches the flags file and its signature at
+launch. `docs/PRIVACY.md` gets an entry for the notice read naming
+its switch, its summary at the top names the automatic requests, and
+the sentence that ends its list of requests, which names the update
+check and the flags file as the only requests to the project's own
+repository, adds the notices.
 
 ## 4. Detecting an outage
 
@@ -494,7 +519,7 @@ builds this settles it with a test. [unverified]
 
 Today the ask is the About page's "Support" section: an Ethereum
 address and a copy button. [code: `frontend/messages/en/about.json:7`,
-`frontend/src/routes/about/+page.svelte:104`–`110`]
+`frontend/src/routes/about/+page.svelte:106`–`147`]
 
 Precedents:
 
@@ -550,11 +575,10 @@ week or more.
 3. **System notifications.** The main-process IPC handler with the
    sender check, `app.setAppUserModelId`, the setting, tests in
    `electron/lib/*.test.cjs`, and a check on Windows. S–M.
-4. **Remote notices.** The notice key, signing with the updater's
-   script, the backend's read, verification and filter (`wiremock`
-   tests, a `proptest` for the filter), the setting, and the
-   `docs/PRIVACY.md` entry. The verifier lands with whichever of this
-   and the updater's download phase comes first. M.
+4. **Remote notices.** The notice key, signing as the flags file is
+   signed, the backend's read, verification with the flags' verifier
+   and the filter (`wiremock` tests, a `proptest` for the filter), the
+   setting, and the `docs/PRIVACY.md` entry. M.
 5. **The donation ask.** The schedule as a pure function with tests,
    the toast, the row and the setting. S.
 6. **The update and what's new.** The update row, opening the existing
@@ -575,7 +599,7 @@ Each with a recommended answer.
    switch in Settings.
 4. **Remote notices on by default?** Recommended: on, with a switch
    and a `docs/PRIVACY.md` entry; the request reveals to GitHub what
-   the update check already reveals at the same moment.
+   the remote flags fetch already reveals at the same moment.
 5. **When is the feed read?** Recommended: at launch and when an
    outage is detected, never on a timer.
 6. **Where does it live?** Recommended: a `notices` branch here, out
@@ -599,9 +623,10 @@ Each with a recommended answer.
   minisign verifier under a separate key.
 - The 0.18.0 notifier change, which offers only releases with a
   download for the user's platform. The update row inherits it.
-- A change in review that denies the window every web permission but
-  fullscreen and clipboard writing, and checks who sends IPC calls; it
-  is why system notifications go through the main process.
+- The window's permission handler, which denies every web permission
+  but fullscreen and clipboard writing, and the IPC guard, which
+  checks who sends each call; they are why system notifications go
+  through the main process.
 - [A mini-player window](mini-player.md), proposed for 0.21.0: its
   focus counts as the app's, download outcomes keep showing in the
   main window, and its own toast host shows no notices.
