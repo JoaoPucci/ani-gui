@@ -8,6 +8,13 @@
 // program. A command with a path or flags is kept. Changing the type
 // guesses no path: where a program is installed is the backend's
 // lookup, which these scenarios answer as "not found".
+//
+// What the command becomes is the backend's rule
+// (`backend/src/commands/external_player_kind_change.rs`), asked over
+// `/api/external-player/after-kind-change`. These scenarios answer it
+// from the table below, the rule's answers for exactly the changes
+// they make, and fail on a question the table does not hold; the rule
+// itself is the backend's tests' to hold.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -60,6 +67,23 @@ const APP_INFO: AppInfo = appInfoAnswer({
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 let saved: Record<string, unknown>[];
+let unanswered: string[];
+
+/** The backend rule's answers, by `command|from|to`. */
+const ANSWERS: Record<string, string> = {
+	'mpv|mpv|vlc': 'vlc',
+	'vlc|vlc|iina': 'iina',
+	'iina|iina|mpv': 'mpv',
+	'vlc|vlc|custom': 'vlc',
+	'vlc|custom|mpv': '',
+	'/opt/mpv/bin/mpv|custom|vlc': '/opt/mpv/bin/mpv',
+	'mpv --fs|custom|vlc': 'mpv --fs',
+	'flatpak run org.videolan.VLC|custom|vlc': 'flatpak run org.videolan.VLC',
+	'/usr/bin/mpv|mpv|vlc': '/usr/bin/mpv',
+	'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe|mpv|vlc': 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe',
+	'flatpak run io.mpv.Mpv|mpv|vlc': 'flatpak run io.mpv.Mpv',
+	'|mpv|vlc': ''
+};
 
 function serve(over: Partial<typeof CONFIG> = {}) {
 	server.use(
@@ -69,6 +93,15 @@ function serve(over: Partial<typeof CONFIG> = {}) {
 			return new HttpResponse(null, { status: 204 });
 		}),
 		http.get(`${API_BASE}/api/app-info`, () => HttpResponse.json<AppInfo>(APP_INFO)),
+		http.get(`${API_BASE}/api/external-player/after-kind-change`, ({ request }) => {
+			const q = new URL(request.url).searchParams;
+			const key = `${q.get('command')}|${q.get('from')}|${q.get('to')}`;
+			if (!(key in ANSWERS)) {
+				unanswered.push(key);
+				return new HttpResponse(null, { status: 500 });
+			}
+			return HttpResponse.json<string>(ANSWERS[key]);
+		}),
 		// Where each type's program is installed: nowhere, here.
 		http.get(`${API_BASE}/api/external-player/standard`, ({ request }) => {
 			const kind = new URL(request.url).searchParams.get('kind');
@@ -84,11 +117,13 @@ function serve(over: Partial<typeof CONFIG> = {}) {
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	saved = [];
+	unanswered = [];
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
 
 afterEach(() => {
+	expect(unanswered, 'a change the table does not answer').toEqual([]);
 	if (app) unmount(app);
 	app = null;
 	target.remove();
@@ -181,5 +216,35 @@ describe('settings — the external player command follows its type', () => {
 		await choose(m.settings_external_player_kind_vlc());
 		expect(command().value).toBe('vlc');
 		expect(saved.at(-1)).toMatchObject({ external_player_kind: 'vlc', external_player: 'vlc' });
+	});
+});
+
+describe('settings — the backend decides what the command becomes', () => {
+	it('saves the command the backend answers, whatever it is', async () => {
+		await open();
+		server.use(
+			http.get(`${API_BASE}/api/external-player/after-kind-change`, () =>
+				HttpResponse.json<string>('/from/the/backend/vlc')
+			)
+		);
+		await choose(m.settings_external_player_kind_vlc());
+		expect(command().value).toBe('/from/the/backend/vlc');
+		expect(saved.at(-1)).toMatchObject({
+			external_player_kind: 'vlc',
+			external_player: '/from/the/backend/vlc'
+		});
+	});
+
+	it('still changes the type, keeping the command, when the backend cannot answer', async () => {
+		await open();
+		server.use(
+			http.get(
+				`${API_BASE}/api/external-player/after-kind-change`,
+				() => new HttpResponse(null, { status: 500 })
+			)
+		);
+		await choose(m.settings_external_player_kind_vlc());
+		expect(command().value).toBe('mpv');
+		expect(saved.at(-1)).toMatchObject({ external_player_kind: 'vlc', external_player: 'mpv' });
 	});
 });
