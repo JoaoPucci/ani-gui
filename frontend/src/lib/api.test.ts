@@ -287,7 +287,7 @@ describe('externalPlayerCommandAfterKindChange', () => {
 		expect(called.searchParams.get('to')).toBe('vlc');
 	});
 
-	it('gives up on a question that is never answered', async () => {
+	it('hands the question an abort signal, so one never answered can be given up', async () => {
 		const fetchMock = mockFetchOnce<string>('vlc');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		await externalPlayerCommandAfterKindChange('mpv', 'mpv', 'vlc');
