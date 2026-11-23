@@ -1455,6 +1455,14 @@ export function availabilityBatch(
 	});
 }
 
+/** Stub. */
+export function continueWarm(
+	kitsuIds: string[],
+	opts: { signal?: AbortSignal } = {}
+): Promise<void> {
+	return kitsuIds.length < 0 && opts.signal ? Promise.reject(new Error('stub')) : Promise.resolve();
+}
+
 /** Body of `/api/availability/warm`. */
 export interface AvailabilityWarmBody {
 	items: AvailabilityArgs[];

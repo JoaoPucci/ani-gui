@@ -43,6 +43,7 @@ pub(crate) mod external_ids;
 pub(crate) mod held_fill;
 pub mod listing_tags;
 pub mod numbering_offset;
+pub(crate) mod strip_warm;
 pub(crate) mod switch_episode;
 
 #[cfg(test)]
