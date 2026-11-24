@@ -8,10 +8,10 @@
  * Each read is handed a signal, aborted when the page goes (`stop`)
  * and, for the resume lookups, when forgetting drops their answers:
  * a franchise read holds its response open while the backend walks the
- * franchise, on the API lane every page shares (`$lib/backend/lanes`),
- * so a read whose answer nobody will use must not hold a connection.
- * For the same reason the series are walked a few at a time
- * (`HANDOFF_WALKS_AT_ONCE`), in the order the rows ask for them.
+ * franchise, on the franchise lane (`$lib/backend/lanes`), so a read
+ * whose answer nobody will use must not hold a connection. The series
+ * are walked as many at a time as the lane can spare
+ * (`handoffWalksAtOnce`), in the order the rows ask for them.
  */
 import type { FranchiseData } from './types';
 
@@ -23,17 +23,39 @@ export interface FranchiseReads {
 }
 
 /**
- * How many series walks Home keeps out at once. Chromium gives the API
- * lane six connections, the refill wait can hold one, and Home's own
- * calls need the rest: a Continue card's resume reads its row again
- * before it plays, and a removal writes. Two walks leave three once
- * Home's own first reads have answered.
+ * How many series walks Home keeps out at once on a franchise lane of
+ * its own: that lane's six connections, which Chromium gives each
+ * origin. The walks have the lane to themselves while Home is open, and
+ * Home's own calls (a Continue card's resume, a removal) go to the API
+ * lane, so none waits behind them. More would only wait in Chromium's
+ * queue instead of this one, which starts them in the order the rows
+ * ask. Each walk reads up to four Kitsu listings at a time on a cold
+ * cache, so six walks put up to 24 in flight; a listing is cached for a
+ * day, or a week once everything it relates has finished, so a warm
+ * Home asks Kitsu for little or nothing.
  */
-export const HANDOFF_WALKS_AT_ONCE = 2;
+export const HANDOFF_WALKS_ON_OWN_LANE = 6;
+
+/**
+ * How many walks Home keeps out at once when the franchise lane falls
+ * back to the API's origin (browser-only dev, or a window opened
+ * without the lane). The walks then share the API origin's six
+ * connections with Home's own calls; the refill wait can hold one, so
+ * two walks leave three for a Continue card's resume and a removal once
+ * Home's first reads have answered.
+ */
+export const HANDOFF_WALKS_ON_SHARED_LANE = 2;
+
+/** The walk budget for a franchise lane that is (`ownLane`) or is not
+ *  an origin of its own (`windowLaneIsOwn` in `$lib/api`). */
+export function handoffWalksAtOnce(ownLane: boolean): number {
+	return ownLane ? HANDOFF_WALKS_ON_OWN_LANE : HANDOFF_WALKS_ON_SHARED_LANE;
+}
 
 export function createFranchiseReads(
 	read: (id: string, signal: AbortSignal) => Promise<FranchiseData>,
-	settled: (id: string, franchise: FranchiseData | null) => void
+	settled: (id: string, franchise: FranchiseData | null) => void,
+	atOnce: number
 ): FranchiseReads {
 	const asked = new Set<string>();
 	const page = new AbortController();
@@ -49,7 +71,7 @@ export function createFranchiseReads(
 		settled(id, franchise);
 	};
 	const next = () => {
-		while (out < HANDOFF_WALKS_AT_ONCE && waiting.length > 0) {
+		while (out < atOnce && waiting.length > 0) {
 			const id = waiting.shift()!;
 			out += 1;
 			read(id, page.signal).then(

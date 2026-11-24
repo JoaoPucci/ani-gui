@@ -73,6 +73,7 @@
 		kitsuByMalIds,
 		kitsuEpisodes,
 		kitsuFranchise,
+		windowLaneIsOwn,
 		historyByKitsuEach,
 		kitsuTopRated,
 		kitsuTrendingAnilist,
@@ -169,7 +170,11 @@
 		railHandoffs,
 		unclaimedHandoff
 	} from '$lib/watch-order/handoff';
-	import { createFranchiseReads, createNamedReads } from '$lib/watch-order/handoff-reads';
+	import {
+		createFranchiseReads,
+		createNamedReads,
+		handoffWalksAtOnce
+	} from '$lib/watch-order/handoff-reads';
 	import { localDay } from '$lib/watch-order/entry';
 	import { settledOrder } from '$lib/watch-order/page-model';
 	import type { FranchiseData } from '$lib/watch-order/types';
@@ -1368,7 +1373,8 @@
 		(id, signal) => kitsuFranchise(id, { signal }),
 		(id, franchise) => {
 			handoffSeries = { ...handoffSeries, [id]: franchise };
-		}
+		},
+		handoffWalksAtOnce(windowLaneIsOwn('franchise'))
 	);
 	const handoffToday = localDay(new Date());
 	const handoffOrder = $derived(settledOrder(config, configFailed));

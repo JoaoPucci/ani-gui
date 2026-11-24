@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
-import { createFranchiseReads, createNamedReads } from './handoff-reads';
+import {
+	createFranchiseReads,
+	createNamedReads,
+	handoffWalksAtOnce,
+	HANDOFF_WALKS_ON_OWN_LANE,
+	HANDOFF_WALKS_ON_SHARED_LANE
+} from './handoff-reads';
 import type { FranchiseData } from './types';
 
 const franchise = (anchor: string): FranchiseData => ({
@@ -23,7 +29,7 @@ describe('createFranchiseReads', () => {
 	it('reads a series once however often it is wanted, and hands it on', async () => {
 		const read = vi.fn(async (id: string) => franchise(id));
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		reads.want('7');
 		await flush();
@@ -37,7 +43,7 @@ describe('createFranchiseReads', () => {
 	it('reads each series it is asked for', async () => {
 		const read = vi.fn(async (id: string) => franchise(id));
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		reads.want('8');
 		await flush();
@@ -50,7 +56,7 @@ describe('createFranchiseReads', () => {
 			throw new Error('503');
 		});
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		await flush();
 		reads.want('7');
@@ -70,7 +76,7 @@ describe('createFranchiseReads, when the page goes', () => {
 			return new Promise<FranchiseData>((r) => answers.push(r));
 		};
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 		reads.want('7');
 		reads.want('8');
 		reads.stop();
@@ -84,17 +90,35 @@ describe('createFranchiseReads, when the page goes', () => {
 		const signals: AbortSignal[] = [];
 		const reads = createFranchiseReads(
 			(id, signal) => (signals.push(signal), new Promise<FranchiseData>(() => {})),
-			vi.fn()
+			vi.fn(),
+			HANDOFF_WALKS_ON_OWN_LANE
 		);
 		reads.want('7');
 		expect(signals[0].aborted).toBe(false);
 	});
 });
 
-describe('createFranchiseReads, sharing the API lane', () => {
-	// Home's other API calls, a Continue card's resume among them, share
-	// the lane's six connections with these walks.
-	const AT_ONCE = 2;
+describe('handoffWalksAtOnce', () => {
+	it('walks six at once when the franchise lane is an origin of its own', () => {
+		expect(handoffWalksAtOnce(true)).toBe(HANDOFF_WALKS_ON_OWN_LANE);
+		expect(HANDOFF_WALKS_ON_OWN_LANE).toBe(6);
+	});
+
+	it("walks two at once when franchise reads share the API's origin", () => {
+		// Browser-only dev, or a window opened without the lane: the walks
+		// would otherwise take all six of the API origin's connections, and
+		// a Continue card's resume or a removal would queue behind them.
+		expect(handoffWalksAtOnce(false)).toBe(HANDOFF_WALKS_ON_SHARED_LANE);
+		expect(HANDOFF_WALKS_ON_SHARED_LANE).toBe(2);
+	});
+});
+
+describe('createFranchiseReads, on the franchise lane', () => {
+	// The walks have the franchise lane's six connections to themselves:
+	// Home's own calls, a Continue card's resume among them, go to the
+	// API lane.
+	const AT_ONCE = HANDOFF_WALKS_ON_OWN_LANE;
+	const ids = (n: number) => Array.from({ length: n }, (_, i) => String(i + 1));
 
 	/** Reads that answer when the test says, with how many are out. */
 	function held() {
@@ -117,25 +141,25 @@ describe('createFranchiseReads, sharing the API lane', () => {
 
 	it(`walks at most ${AT_ONCE} series at once, and the next as one answers`, async () => {
 		const { out, started, read } = held();
-		const reads = createFranchiseReads(read, vi.fn());
-		for (const id of ['1', '2', '3', '4']) reads.want(id);
-		expect(started).toEqual(['1', '2']);
+		const reads = createFranchiseReads(read, vi.fn(), HANDOFF_WALKS_ON_OWN_LANE);
+		for (const id of ids(8)) reads.want(id);
+		expect(started).toEqual(ids(6));
 		out.get('1')!(franchise('1'));
 		await flush();
-		expect(started).toEqual(['1', '2', '3']);
+		expect(started).toEqual(ids(7));
 		out.get('2')!(new Error('503'));
 		await flush();
-		expect(started).toEqual(['1', '2', '3', '4']);
+		expect(started).toEqual(ids(8));
 	});
 
 	it('starts none of the waiting reads once the page has gone', async () => {
 		const { out, started, read } = held();
 		const settled = vi.fn();
-		const reads = createFranchiseReads(read, settled);
-		for (const id of ['1', '2', '3']) reads.want(id);
+		const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
+		for (const id of ids(8)) reads.want(id);
 		reads.stop();
 		await flush();
-		expect(started).toEqual(['1', '2']);
+		expect(started).toEqual(ids(6));
 		expect(out.size).toBe(0);
 		expect(settled).not.toHaveBeenCalled();
 	});
@@ -143,12 +167,12 @@ describe('createFranchiseReads, sharing the API lane', () => {
 	it('reads every series wanted exactly once, never more than the share at a time', async () => {
 		await fc.assert(
 			fc.asyncProperty(
-				fc.array(fc.constantFrom('1', '2', '3', '4', '5', '6'), { maxLength: 12 }),
+				fc.array(fc.constantFrom(...ids(10)), { maxLength: 16 }),
 				fc.array(fc.tuple(fc.nat(), fc.boolean()), { maxLength: 12 }),
 				async (wants, answers) => {
 					const { out, started, read } = held();
 					const settled = vi.fn();
-					const reads = createFranchiseReads(read, settled);
+					const reads = createFranchiseReads(read, settled, HANDOFF_WALKS_ON_OWN_LANE);
 					let peak = 0;
 					const watch = () => (peak = Math.max(peak, out.size));
 					for (const id of wants) {
@@ -177,6 +201,23 @@ describe('createFranchiseReads, sharing the API lane', () => {
 				}
 			)
 		);
+	});
+});
+
+describe('createFranchiseReads, sharing the API origin', () => {
+	it('keeps to the budget it is given, and starts the next as one answers', async () => {
+		const out = new Map<string, (f: FranchiseData) => void>();
+		const started: string[] = [];
+		const read = (id: string) => {
+			started.push(id);
+			return new Promise<FranchiseData>((resolve) => out.set(id, resolve));
+		};
+		const reads = createFranchiseReads(read, vi.fn(), HANDOFF_WALKS_ON_SHARED_LANE);
+		for (const id of ['1', '2', '3', '4']) reads.want(id);
+		expect(started).toEqual(['1', '2']);
+		out.get('1')!(franchise('1'));
+		await flush();
+		expect(started).toEqual(['1', '2', '3']);
 	});
 });
 

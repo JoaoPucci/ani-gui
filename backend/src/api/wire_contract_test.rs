@@ -843,7 +843,7 @@ fn enums() -> Value {
 /// The lanes the launch handshake announces, by the names the renderer
 /// looks each one's origin up under.
 fn lanes() -> Vec<Lane> {
-    units!(Lane: Api, Stream, Image, Probe, Resolve, Download)
+    units!(Lane: Api, Stream, Image, Probe, Resolve, Download, Franchise)
 }
 
 fn media_kinds() -> Vec<MediaKind> {

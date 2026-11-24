@@ -16,7 +16,7 @@ import { notePlayed } from '$lib/history/guess-plays';
 import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
-import { laneBase, type Lane } from '$lib/backend/lanes';
+import { laneBase, laneIsOwn, type Lane } from '$lib/backend/lanes';
 import { withSecretHeader } from '$lib/backend/secret';
 import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
@@ -180,6 +180,20 @@ function windowLanes(): Partial<Record<string, string>> | undefined {
 export function windowLaneBase(lane: Lane): string | null {
 	if (typeof window === 'undefined' || !window.aniGui?.apiBase) return null;
 	return laneBase(window.aniGui.lanes, lane, window.aniGui.apiBase);
+}
+
+/**
+ * Whether `lane` has an origin of its own on the preload bridge, so its
+ * requests do not take the API origin's connections. False with no
+ * bridge (browser-only dev), where every lane falls back to the API.
+ */
+export function windowLaneIsOwn(lane: Lane): boolean {
+	return laneIsOwn(windowLanes(), lane, windowApiBase());
+}
+
+/** The API origin the preload bridge carries, or '' without one. */
+function windowApiBase(): string {
+	return typeof window === 'undefined' ? '' : (window.aniGui?.apiBase ?? '');
 }
 
 /**
@@ -1752,9 +1766,13 @@ export interface FranchiseChain {
  *  around it. The backend holds the response open while it walks the
  *  franchise, several rounds of Kitsu reads when Kitsu is slow, so the
  *  page that asked passes `signal` and cancels it when it goes: a read
- *  nobody waits for would hold one of the API lane's connections. */
+ *  nobody waits for would hold one of the franchise lane's connections
+ *  (`$lib/backend/lanes`). */
 export function kitsuFranchise(kitsuId: string, opts: ReadOptions = {}): Promise<Franchise> {
-	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`, opts);
+	return getJson<Franchise>(`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}`, {
+		...opts,
+		lane: 'franchise'
+	});
 }
 
 /** What the show page will draw once the franchise walk answers, as
@@ -1779,7 +1797,7 @@ export async function kitsuFranchiseFirstHop(
 ): Promise<FirstHop> {
 	const { signal } = await getJson<FirstHopAnswer>(
 		`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}/first-hop`,
-		opts
+		{ ...opts, lane: 'franchise' }
 	);
 	return signal;
 }
