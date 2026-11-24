@@ -243,8 +243,8 @@ test("property: a Linux child holds only what the user launched with or the app 
   );
 });
 
-// The AppImage. Its runtime (type2-runtime, the one electron-builder 26
-// embeds) exports APPIMAGE, APPDIR, OWD and ARGV0 before AppRun runs,
+// The AppImage. Its runtime (type2-runtime, which the repack puts in
+// place of electron-builder's own; both do the same here) exports APPIMAGE, APPDIR, OWD and ARGV0 before AppRun runs,
 // and AppRun puts the mount ahead of PATH, XDG_DATA_DIRS, LD_LIBRARY_PATH
 // and GSETTINGS_SCHEMA_DIR, all before main.js takes its snapshot. A
 // browser started with that environment loads the image's old

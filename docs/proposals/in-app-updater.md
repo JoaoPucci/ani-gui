@@ -1032,7 +1032,9 @@ a day or less, **M** a few days, **L** a week or more.
 2. **Which package, and is it updatable**: the backend works out the
    package kind with the positive checks of sections 2 and 3 (an
    AppImage only when `APPIMAGE`, `APPDIR` and the running executable
-   agree; the installer on Windows; a `.deb` by its own marker;
+   agree, which `main.js` reads from its own environment and hands the
+   backend, since the backend is started without the runtime's
+   variables, `electron/lib/child-env.cjs`; the installer on Windows; a `.deb` by its own marker;
    anything else not updatable) and runs the pre-flight checks — the
    write test beside the AppImage, the install mode and write test on
    Windows. It returns the asset, its signature and digest, or the

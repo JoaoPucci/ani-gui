@@ -48,7 +48,7 @@
 //
 // Both start the new instance from the user's environment, not the one
 // Electron has rewritten in this process (lib/child-env.cjs): the
-// restart is planned from the rebuilt one (`restart`, below), and
+// AppImage's waiter gets the rebuilt one (`restart`, below), and
 // Electron's relaunch, which starts its relauncher from this process's
 // environment at the call, is asked for inside `asUser`. Started from
 // Electron's, the new instance's Electron would keep Unity as the
@@ -89,9 +89,11 @@ function userArgs(argv) {
 }
 
 /**
- * How to start the app again: `{ kind: "relaunch" }` for Electron's own
- * relaunch, or `{ kind: "spawn", command, args, env }` for the
- * AppImage's waiter.
+ * How to start the app again, from this process's environment `env`:
+ * `{ kind: "relaunch" }` for Electron's own relaunch, or
+ * `{ kind: "spawn", command, args, env }` for the AppImage's waiter,
+ * its `env` being `env` without the dying mount's $APPDIR. `restart`
+ * gives the waiter the user's environment instead.
  */
 function relaunchPlan({ platform, env, execPath, argv, pid, realpath }) {
   const image = appImageOf({ platform, env, execPath, realpath });
@@ -129,10 +131,10 @@ function relaunch(
 }
 
 /**
- * Restart, as the splash's stuck state asks for it: planned from the
- * user's environment, rebuilt from the launch's (`launch`) and this
- * process's (`now`) by lib/child-env.cjs, then arranged by `relaunch`
- * with `deps`.
+ * Restart, as the splash's stuck state asks for it: planned from this
+ * process's environment (`now`), the AppImage's waiter given the user's,
+ * rebuilt from the launch's (`launch`) and `now` by lib/child-env.cjs,
+ * then arranged by `relaunch` with `deps`.
  */
 function restart({ platform, launch, now, execPath, argv, pid }, deps) {
   // Whether this is the AppImage is read off this process's own
