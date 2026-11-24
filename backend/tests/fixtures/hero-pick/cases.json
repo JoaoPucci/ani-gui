@@ -1264,12 +1264,12 @@
             "airing": true,
             "art": "cover",
             "id": "1",
-            "preference_applied": true,
+            "preference_applied": false,
             "rank": 1,
             "status": "current",
             "title": "Show 1",
             "verdict": {
-              "because": "airing_art",
+              "because": "art",
               "kind": "taken",
               "slot": 0
             }
@@ -1511,12 +1511,12 @@
             "airing": true,
             "art": "cover",
             "id": "3",
-            "preference_applied": true,
+            "preference_applied": false,
             "rank": 3,
             "status": "current",
             "title": "Show 3",
             "verdict": {
-              "because": "airing_art",
+              "because": "art",
               "kind": "taken",
               "slot": 0
             }

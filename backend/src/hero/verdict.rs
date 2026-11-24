@@ -22,16 +22,21 @@ impl Verdicts<'_> {
         if let Some(slot) = self.hero.iter().position(|&h| h == i) {
             return Verdict::Taken {
                 slot,
-                because: self.taken_because(e, i),
+                because: self.taken_because(e, i, slot),
             };
         }
         skipped(self.skipped_because(e, i))
     }
 
-    fn taken_because(&self, e: &Entries<'_>, i: usize) -> TakenBecause {
+    /// A show with art is taken because it airs only when the pick off
+    /// would not have it in this slot: the shows with art lead the
+    /// pick off in `off_art`'s order, so its slot there is its index.
+    fn taken_because(&self, e: &Entries<'_>, i: usize, slot: usize) -> TakenBecause {
         if !e.has_art(i) {
             TakenBecause::Fill
-        } else if e.lifted(i, self.airing_first) {
+        } else if e.lifted(i, self.airing_first)
+            && self.off_art.iter().position(|&o| o == i) != Some(slot)
+        {
             TakenBecause::AiringArt
         } else {
             TakenBecause::Art

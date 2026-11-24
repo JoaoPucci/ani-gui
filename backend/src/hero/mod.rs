@@ -101,7 +101,8 @@ pub enum TakenBecause {
     /// It has art, and came early enough in trending order.
     Art,
     /// It has art and is airing, and the airing preference put it
-    /// ahead of the shows with art that are not.
+    /// ahead of the shows with art that are not: the pick off would
+    /// have it in another slot, or not at all.
     AiringArt,
     /// It has no art, and too few shows did: it fills a slot.
     Fill,
