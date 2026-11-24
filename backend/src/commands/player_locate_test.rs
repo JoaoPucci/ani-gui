@@ -157,7 +157,7 @@ fn macos_looks_on_path_then_in_the_app_bundles_then_homebrew() {
 fn locate_takes_the_first_candidate_that_exists() {
     let var = vars(&[("PATH", "/a:/b"), ("HOME", "/home/u")]);
     let exists = |p: &str| p == "/b/mpv" || p == "/snap/bin/mpv";
-    let never = |_: &str| -> Option<String> { panic!("App Paths is Windows only") };
+    let never = |_: &str| -> Registrations { panic!("App Paths is Windows only") };
     assert_eq!(
         locate("mpv", Os::Linux, &var, &exists, &never),
         Some("/b/mpv".to_string())
@@ -168,8 +168,13 @@ fn locate_takes_the_first_candidate_that_exists() {
 #[test]
 fn windows_falls_back_to_the_app_paths_registration() {
     let var = vars(&[("ProgramFiles", "C:\\Program Files"), ("SystemDrive", "D:")]);
-    let registered =
-        |file: &str| (file == "vlc.exe").then(|| "%SystemDrive%\\Apps\\VLC\\vlc.exe".to_string());
+    let registered = |file: &str| -> Registrations {
+        Box::new(
+            (file == "vlc.exe")
+                .then(|| "%SystemDrive%\\Apps\\VLC\\vlc.exe".to_string())
+                .into_iter(),
+        )
+    };
     let exists = |p: &str| p == "D:\\Apps\\VLC\\vlc.exe";
     assert_eq!(
         locate("vlc", Os::Windows, &var, &exists, &registered),
@@ -183,7 +188,7 @@ fn windows_falls_back_to_the_app_paths_registration() {
 #[test]
 fn an_install_folder_wins_over_the_registration() {
     let var = vars(&[("ProgramFiles", "C:\\Program Files")]);
-    let registered = |_: &str| -> Option<String> { panic!("not needed when a folder has it") };
+    let registered = |_: &str| -> Registrations { panic!("not needed when a folder has it") };
     let exists = |p: &str| p == "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe";
     assert_eq!(
         locate("vlc", Os::Windows, &var, &exists, &registered),
@@ -224,7 +229,7 @@ fn a_registered_path_keeps_a_variable_it_cannot_expand_and_a_lone_percent() {
             "C:\\Program Files\\VLC\\vlc.exe",
         ),
     ] {
-        let app = |_: &str| Some(registered.to_string());
+        let app = |_: &str| -> Registrations { Box::new(std::iter::once(registered.to_string())) };
         let exists = |p: &str| p == expanded;
         assert_eq!(
             locate("vlc", Os::Windows, &var, &exists, &app).as_deref(),

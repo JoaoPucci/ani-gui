@@ -26,7 +26,7 @@ mod reg_export;
 mod registry;
 use places::installs;
 pub use reg_export::parse_reg_export;
-use registry::{expand, registered_app_path};
+use registry::{expand, registered_app_paths};
 
 /// The OS whose conventions a search follows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,17 +84,22 @@ fn join(dir: &str, slash: char, file: &str) -> String {
     format!("{}{slash}{file}", dir.trim_end_matches(slash))
 }
 
+/// The App Paths registrations of one program, in the order they are
+/// asked: per-user, then machine-wide. Lazy, so a query is only run
+/// when the one before it gave nothing usable.
+pub type Registrations = Box<dyn Iterator<Item = String>>;
+
 /// The first of `name`'s [`candidates`] that `exists`, then, on
-/// Windows, the path its App Paths registration gives (`app_path`,
-/// asked with the program's file name, e.g. `vlc.exe`), with its
-/// `%VARIABLE%`s expanded.
+/// Windows, the path its App Paths registrations give (`app_paths`,
+/// asked with the program's file name, e.g. `vlc.exe`), picked by
+/// [`first_registered`].
 #[must_use]
 pub fn locate(
     name: &str,
     os: Os,
     var: &dyn Fn(&str) -> Option<String>,
     exists: &dyn Fn(&str) -> bool,
-    app_path: &dyn Fn(&str) -> Option<String>,
+    app_paths: &dyn Fn(&str) -> Registrations,
 ) -> Option<String> {
     if let Some(found) = candidates(name, os, var).into_iter().find(|c| exists(c)) {
         return Some(found);
@@ -102,7 +107,20 @@ pub fn locate(
     if os != Os::Windows {
         return None;
     }
-    app_path(&format!("{name}.exe"))
+    first_registered(app_paths(&format!("{name}.exe")), var, exists)
+}
+
+/// The first registration, with its `%VARIABLE%`s expanded, when it
+/// `exists`.
+#[must_use]
+pub fn first_registered(
+    registrations: impl IntoIterator<Item = String>,
+    var: &dyn Fn(&str) -> Option<String>,
+    exists: &dyn Fn(&str) -> bool,
+) -> Option<String> {
+    registrations
+        .into_iter()
+        .next()
         .map(|p| expand(&p, var))
         .filter(|p| exists(p))
 }
@@ -112,7 +130,7 @@ pub fn locate(
 pub fn locate_installed(name: &str) -> Option<String> {
     let var = |k: &str| std::env::var(k).ok();
     let exists = |p: &str| crate::scraper::fetch::is_executable(std::path::Path::new(p));
-    locate(name, current_os(), &var, &exists, &registered_app_path)
+    locate(name, current_os(), &var, &exists, &registered_app_paths)
 }
 
 /// The program Syncplay is told to wrap for a bare standard name, on

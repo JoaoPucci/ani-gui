@@ -11,14 +11,15 @@ use super::parse_reg_export;
 #[cfg_attr(not(windows), allow(dead_code))] // used by the Windows query
 const REG_LIMIT: std::time::Duration = std::time::Duration::from_secs(2);
 
-/// The App Paths registration of `file` (e.g. `vlc.exe`): per-user,
-/// then machine-wide in the 64-bit and the 32-bit view. Exported
-/// through `reg.exe` ([`reg_command`], [`reg_output`]), without a
-/// console window, each export bounded by [`REG_LIMIT`], and read as
-/// the UTF-16 file it writes ([`parse_reg_export`]): its query output
-/// is in the console's code page, which cannot carry every path.
+/// The App Paths registrations of `file` (e.g. `vlc.exe`): per-user,
+/// then machine-wide in the 64-bit and the 32-bit view, each asked
+/// only when the iterator reaches it. Exported through `reg.exe`
+/// ([`reg_command`], [`reg_output`]), without a console window, each
+/// export bounded by [`REG_LIMIT`], and read as the UTF-16 file it
+/// writes ([`parse_reg_export`]): its query output is in the
+/// console's code page, which cannot carry every path.
 #[cfg(windows)]
-pub(super) fn registered_app_path(file: &str) -> Option<String> {
+pub(super) fn registered_app_paths(file: &str) -> super::Registrations {
     let key = format!("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{file}");
     let reg = std::env::var("SystemRoot")
         .map(|root| format!("{root}\\System32\\reg.exe"))
@@ -28,21 +29,27 @@ pub(super) fn registered_app_path(file: &str) -> Option<String> {
         ("HKLM", Some("/reg:64")),
         ("HKLM", Some("/reg:32")),
     ];
+    Box::new(
+        queries.into_iter().filter_map(move |(hive, view)| {
+            exported_default(&reg, &format!("{hive}\\{key}"), view)
+        }),
+    )
+}
+
+/// The default value of `key`, exported in `view` through `reg`.
+#[cfg(windows)]
+fn exported_default(reg: &str, key: &str, view: Option<&str>) -> Option<String> {
     let file = export_file();
-    let found = queries.into_iter().find_map(|(hive, view)| {
-        let mut args = vec![
-            "export".to_string(),
-            format!("{hive}\\{key}"),
-            file.display().to_string(),
-            "/y".to_string(),
-        ];
-        args.extend(view.map(str::to_string));
-        let out = reg_output(reg_command(&reg, &args), REG_LIMIT)?;
-        if !out.status.success() {
-            return None;
-        }
-        parse_reg_export(&std::fs::read(&file).ok()?)
-    });
+    let mut args = vec![
+        "export".to_string(),
+        key.to_string(),
+        file.display().to_string(),
+        "/y".to_string(),
+    ];
+    args.extend(view.map(str::to_string));
+    let found = reg_output(reg_command(reg, &args), REG_LIMIT)
+        .filter(|out| out.status.success())
+        .and_then(|_| parse_reg_export(&std::fs::read(&file).ok()?));
     // An export killed at its limit may still hold the file for a
     // moment; a file left then is the next lookup's to overwrite (`/y`).
     let _ = std::fs::remove_file(&file);
@@ -102,8 +109,8 @@ pub(super) fn reg_output(
 
 /// No registry off Windows.
 #[cfg(not(windows))]
-pub(super) fn registered_app_path(_file: &str) -> Option<String> {
-    None
+pub(super) fn registered_app_paths(_file: &str) -> super::Registrations {
+    Box::new(std::iter::empty())
 }
 
 /// `%NAME%` replaced by the variable's value; an unknown one is kept.

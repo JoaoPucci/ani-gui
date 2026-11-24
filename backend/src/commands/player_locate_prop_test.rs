@@ -82,7 +82,7 @@ proptest! {
             .map(|(c, _)| c.clone())
             .collect();
         let exists = |p: &str| exists_set.iter().any(|e| e == p);
-        let none = |_: &str| None;
+        let none = |_: &str| -> Registrations { Box::new(std::iter::empty()) };
         prop_assert_eq!(locate(n, os, &var, &exists, &none), exists_set.first().cloned());
     }
 
