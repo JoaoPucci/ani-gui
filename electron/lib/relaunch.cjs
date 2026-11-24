@@ -40,12 +40,11 @@
 //   AppRun added it (the sandbox probe got no answer) or the person
 //   passed it: the new AppRun reads it as the person's own and starts
 //   without the sandbox, as this launch did, without probing again
-//   (lib/appimage-tree.cjs). The dying mount's $APPDIR is left out of
-//   its environment (the new runtime sets its own). The other variables
-//   the old AppRun prefixed with the mount (PATH, LD_LIBRARY_PATH,
-//   XDG_DATA_DIRS, GSETTINGS_SCHEMA_DIR) pass through: the new AppRun
-//   prefixes its own mount ahead of them, and a directory that no
-//   longer exists is skipped.
+//   (lib/appimage-tree.cjs). The waiter gets the user's environment,
+//   which has none of what this image's runtime and AppRun added
+//   ($APPIMAGE, $APPDIR, the mount's entries in PATH, LD_LIBRARY_PATH,
+//   XDG_DATA_DIRS and GSETTINGS_SCHEMA_DIR; lib/child-env.cjs): the new
+//   image's runtime and AppRun add their own.
 //
 // Both start the new instance from the user's environment, not the one
 // Electron has rewritten in this process (lib/child-env.cjs): the
@@ -60,8 +59,7 @@
 // one, say) leaks both into the terminals it opens.
 
 const fs = require("node:fs");
-const path = require("node:path");
-const { childEnv } = require("./child-env.cjs");
+const { childEnv, ownMount } = require("./child-env.cjs");
 
 /** What the packaged Linux launchers put before the person's
  *  arguments on every launch: the wrapper script both packages run
@@ -74,26 +72,11 @@ const LAUNCHER_SWITCHES = ["--enable-wayland-ime"];
  *  run once it is gone. Nothing is interpolated into the script. */
 const WAIT_THEN_EXEC = 'pid=$1; shift; while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done; exec "$@"';
 
-/** `p` resolved through symlinks, or as it is when it cannot be. */
-function resolved(p, realpath) {
-  try {
-    return realpath(p);
-  } catch {
-    return p;
-  }
-}
-
-/** The AppImage file this process runs from, or null. Paths are
- *  compared resolved: the runtime sets $APPDIR as it mounted it, and
- *  this binary's path is resolved, so a symlinked /tmp tells them apart. */
+/** The AppImage file this process runs from, or null
+ *  (lib/child-env.cjs ownMount). */
 function appImageOf({ platform, env, execPath, realpath = fs.realpathSync }) {
   if (platform !== "linux") return null;
-  const image = env.APPIMAGE;
-  const dir = env.APPDIR;
-  if (!image || !dir || !execPath) return null;
-  const inside = path.posix.relative(resolved(dir, realpath), resolved(execPath, realpath));
-  if (!inside || inside.startsWith("..") || path.posix.isAbsolute(inside)) return null;
-  return image;
+  return ownMount({ env, execPath, realpath }) ? env.APPIMAGE : null;
 }
 
 /** `argv` without its binary and without the launcher's own leading
@@ -152,8 +135,11 @@ function relaunch(
  * with `deps`.
  */
 function restart({ platform, launch, now, execPath, argv, pid }, deps) {
-  const env = childEnv({ platform, launch, now });
-  relaunch(relaunchPlan({ platform, env, execPath, argv, pid }), deps);
+  // Whether this is the AppImage is read off this process's own
+  // environment: the user's has no runtime variables in it.
+  const plan = relaunchPlan({ platform, env: now, execPath, argv, pid });
+  const env = childEnv({ platform, launch, now, execPath });
+  relaunch(plan.kind === "spawn" ? { ...plan, env } : plan, deps);
 }
 
 module.exports = { LAUNCHER_SWITCHES, WAIT_THEN_EXEC, appImageOf, relaunch, relaunchPlan, restart, userArgs };

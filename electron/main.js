@@ -75,7 +75,12 @@ const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cj
 
 /** The environment a program the app starts gets (lib/child-env.cjs). */
 function userEnv() {
-  return childEnvs.childEnv({ platform: process.platform, launch: LAUNCH_ENV, now: process.env });
+  return childEnvs.childEnv({
+    platform: process.platform,
+    launch: LAUNCH_ENV,
+    now: process.env,
+    execPath: process.execPath,
+  });
 }
 
 /**
@@ -88,6 +93,7 @@ function asUser(open) {
     platform: process.platform,
     target: process.env,
     launch: LAUNCH_ENV,
+    execPath: process.execPath,
     open,
   });
 }

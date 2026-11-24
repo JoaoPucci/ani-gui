@@ -36,8 +36,29 @@
 // the app's window. The app's own process keeps Electron's environment;
 // a child gets the rebuilt one.
 //
+// The AppImage changes more, before main.js runs. Its runtime
+// (type2-runtime, which electron-builder 26 embeds) exports APPIMAGE,
+// APPDIR, OWD and ARGV0, and the AppRun the image ships puts the mount
+// ahead of PATH (the mount and its usr/sbin), XDG_DATA_DIRS (its
+// usr/share/, with /usr/share/gnome, /usr/local/share/ and /usr/share/
+// appended after the user's), LD_LIBRARY_PATH (its usr/lib) and
+// GSETTINGS_SCHEMA_DIR (its usr/share/glib-2.0/schemas). The snapshot
+// reads all of that as the user's. A browser started with it would load
+// the image's old libraries (libnotify, libappindicator, ...) and search
+// its data first, and an Electron app started with it would read
+// $APPIMAGE as its own. So when this process runs from the mount, a
+// child gets those lists without what AppRun added, and a list left
+// empty is not passed on at all (AppRun cannot tell a list set empty
+// from one never set, and neither can this); the runtime's variables
+// are dropped. A process that does not run from the mount (another
+// AppImage leaked its variables into the terminal the app was started
+// from) passes them on as the user launched with them.
+//
 // Windows and macOS are untouched: a child gets the app's environment
 // itself, as it always has.
+
+const fs = require("node:fs");
+const path = require("node:path");
 
 const APP_OWNED = "ANI_GUI_";
 const KEPT_DESKTOP = "ORIGINAL_XDG_CURRENT_DESKTOP";
@@ -51,11 +72,61 @@ const NEVER_PASSED_ON = [
   "XDG_ACTIVATION_TOKEN",
 ];
 
+/** What the AppImage's runtime exports for the program it runs. */
+const APPIMAGE_RUNTIME = ["APPIMAGE", "APPDIR", "OWD", "ARGV0"];
+/** The lists AppRun puts the mount ahead of. */
+const APPRUN_LISTS = ["PATH", "XDG_DATA_DIRS", "LD_LIBRARY_PATH", "GSETTINGS_SCHEMA_DIR"];
+/** What AppRun appends to XDG_DATA_DIRS, after its own and the user's. */
+const APPRUN_DATA_TAIL = ["/usr/share/gnome", "/usr/local/share/", "/usr/share/"];
+
 const has = (env, key) => Object.prototype.hasOwnProperty.call(env, key);
 
 /** Set `key` as an own property, `__proto__` included. */
 function put(env, key, value) {
   Object.defineProperty(env, key, { value, enumerable: true, writable: true, configurable: true });
+}
+
+/** `p` resolved through symlinks, or as it is when it cannot be. */
+function resolved(p, realpath) {
+  try {
+    return realpath(p);
+  } catch {
+    return p;
+  }
+}
+
+/** The AppImage's mount ($APPDIR) when `execPath` runs from it, or null.
+ *  Paths are compared resolved: the runtime sets $APPDIR as it mounted
+ *  it, and the binary's path is resolved, so a symlinked /tmp tells them
+ *  apart. */
+function ownMount({ env, execPath, realpath = fs.realpathSync }) {
+  const dir = env.APPDIR;
+  if (!env.APPIMAGE || !dir || !execPath) return null;
+  const inside = path.posix.relative(resolved(dir, realpath), resolved(execPath, realpath));
+  if (!inside || inside.startsWith("..") || path.posix.isAbsolute(inside)) return null;
+  return dir;
+}
+
+/** Take out of `env` what the AppImage's runtime and AppRun added for `mount`. */
+function withoutImage(env, mount) {
+  const rooted = (p) => p === mount || p.startsWith(`${mount}/`);
+  for (const name of APPRUN_LISTS) {
+    if (!has(env, name)) continue;
+    const all = env[name].split(":");
+    let parts = all.filter((p) => !rooted(p));
+    const tail = parts.slice(-APPRUN_DATA_TAIL.length);
+    if (
+      name === "XDG_DATA_DIRS" &&
+      rooted(all[0]) &&
+      tail.length === APPRUN_DATA_TAIL.length &&
+      tail.every((p, i) => p === APPRUN_DATA_TAIL[i])
+    ) {
+      parts = parts.slice(0, -APPRUN_DATA_TAIL.length);
+    }
+    if (parts.length === 0) delete env[name];
+    else put(env, name, parts.join(":"));
+  }
+  for (const name of APPIMAGE_RUNTIME) delete env[name];
 }
 
 /** A frozen copy of `env` as it is now: taken by main.js before it loads Electron's API. */
@@ -67,10 +138,11 @@ function launchSnapshot(env) {
 
 /**
  * The environment a child gets on `platform`, from the snapshot `launch`
- * and the app's environment `now`. Off Linux, `now` itself. Changes
- * neither.
+ * and the app's environment `now`, for the app running as `execPath`
+ * (which says whether it runs from an AppImage's mount). Off Linux,
+ * `now` itself. Changes neither.
  */
-function childEnv({ platform, launch, now }) {
+function childEnv({ platform, launch, now, execPath, realpath }) {
   if (platform !== "linux") return now;
   const env = {};
   for (const [key, value] of Object.entries(launch)) {
@@ -83,6 +155,8 @@ function childEnv({ platform, launch, now }) {
   // session never had stays unset, whatever was kept for it.
   if (has(launch, KEPT_DESKTOP) && has(env, DESKTOP)) put(env, DESKTOP, launch[KEPT_DESKTOP]);
   for (const key of NEVER_PASSED_ON) delete env[key];
+  const mount = ownMount({ env: launch, execPath, realpath });
+  if (mount) withoutImage(env, mount);
   return env;
 }
 
@@ -115,15 +189,15 @@ function replaceAll(target, next) {
  *
  * Off Linux `open` runs and `target` is never touched.
  */
-function withUserEnv({ platform, target, launch, open }) {
+function withUserEnv({ platform, target, launch, execPath, open }) {
   if (platform !== "linux") return open();
   const saved = { ...target };
   try {
-    replaceAll(target, childEnv({ platform, launch, now: saved }));
+    replaceAll(target, childEnv({ platform, launch, now: saved, execPath }));
     return open();
   } finally {
     replaceAll(target, saved);
   }
 }
 
-module.exports = { childEnv, launchSnapshot, withUserEnv };
+module.exports = { childEnv, launchSnapshot, ownMount, withUserEnv };
