@@ -31,7 +31,8 @@ function backendSpawnOptions({ platform, env }) {
 }
 
 /**
- * Spawn the backend at `bin` with `spawn` (node's, in main.js) and
+ * Spawn the backend at `bin` with `spawn` (node's, in main.js), in the
+ * backend's environment from `envs` (lib/child-env.cjs userEnvs), and
  * resolve with `{ child, apiBase, internalSecret, lanes }` once `handshake`
  * — lib/backend-handshake.cjs, wired up by the caller — resolves for
  * it.
@@ -43,8 +44,8 @@ function backendSpawnOptions({ platform, env }) {
  * leaves it tracked, for the boot's own stop, which skips a spawn that
  * failed and a backend that has already exited (see `stoppable`).
  */
-async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
-  const child = spawn(bin, [], backendSpawnOptions({ platform, env }));
+async function launchBackend({ spawn, bin, platform, envs, track, handshake }) {
+  const child = spawn(bin, [], backendSpawnOptions({ platform, env: envs.forBackend() }));
   track(child);
   const ready = await handshake(child);
   return { child, ...ready };
