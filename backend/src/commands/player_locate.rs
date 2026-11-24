@@ -110,8 +110,10 @@ pub fn locate(
     first_registered(app_paths(&format!("{name}.exe")), var, exists)
 }
 
-/// The first registration, with its `%VARIABLE%`s expanded, when it
-/// `exists`.
+/// The first registration that, with its `%VARIABLE%`s expanded,
+/// `exists`. One whose program is gone, such as a per-user entry an
+/// uninstall left behind, gives way to the next; none after the one
+/// taken is asked.
 #[must_use]
 pub fn first_registered(
     registrations: impl IntoIterator<Item = String>,
@@ -120,9 +122,8 @@ pub fn first_registered(
 ) -> Option<String> {
     registrations
         .into_iter()
-        .next()
         .map(|p| expand(&p, var))
-        .filter(|p| exists(p))
+        .find(|p| exists(p))
 }
 
 /// Where `name` is installed on this computer, if anywhere.
