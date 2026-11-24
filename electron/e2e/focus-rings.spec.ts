@@ -63,12 +63,15 @@
  * control does not count. A ring beside or around the control must show
  * against what it is drawn on.
  *
- * Two more tests walk what shows only in some states, at the desktop
+ * More tests walk what shows only in some states, at the desktop
  * size: Home with a guessed Continue Watching card, a pinned sign-in
  * toast and the update badge; the card's link dialog; a show's page
- * with a download in flight, which shows the download bar; and the
+ * with a download in flight, which shows the download bar; the
  * player's page with the skip button up and the note on a guessed
- * session. Each requires the walk to reach those controls.
+ * session; and, with the watch-order mockups on, a show's page with
+ * their strip (its tiles, the line for the entry being watched and the
+ * franchise link) and the franchise page it links to. Each requires
+ * the walk to reach those controls.
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
@@ -109,7 +112,8 @@
  *
  * Under the mouse: at the desktop size, the forward walks of the four
  * pages (and of the show's page with an episode typed), of the hero's
- * empty and failed states and of the player rest the mouse on every
+ * empty and failed states, of the player and of the watch-order
+ * mockups' strip and franchise page rest the mouse on every
  * stop that shows, and a hover style must neither replace its ring nor
  * add a second; the read must find the control under the mouse.
  * Whether a lifted, hovered control's ring stays whole is not checked,
