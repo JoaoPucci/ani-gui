@@ -943,7 +943,7 @@ async function ringCovered(page: Page): Promise<string | null> {
 	let moved = '';
 	for (let attempt = 0; attempt < 4; attempt++) {
 		const found = await ringCoveredOnce(page);
-		if (found === MOVED) {
+		if (found?.startsWith(MOVED)) {
 			moved = found;
 			await still(page);
 			continue;
@@ -1094,14 +1094,15 @@ async function ringCoveredOnce(page: Page): Promise<string | null> {
 			outer,
 			radius,
 			width: window.innerWidth,
-			height: window.innerHeight
+			height: window.innerHeight,
+			clientWidth: document.documentElement.clientWidth
 		};
 	});
 	if (!geometry) {
 		await putBack(page);
 		return null;
 	}
-	const { box, outer, width, height } = geometry;
+	const { box, outer, width, height, clientWidth } = geometry;
 	const clip = {
 		x: Math.max(0, Math.floor(box.left - outer - 1)),
 		y: Math.max(0, Math.floor(box.top - outer - 1)),
@@ -1134,7 +1135,9 @@ async function ringCoveredOnce(page: Page): Promise<string | null> {
 		) > 0.5
 	) {
 		await putBack(page);
-		return MOVED;
+		const at = (b: Box | null) =>
+			b ? [b.left, b.top, b.right, b.bottom].map((v) => v.toFixed(2)).join(',') : 'gone';
+		return `${MOVED} (from ${at(box)} to ${at(now)}, window ${width} then ${await page.evaluate(() => window.innerWidth)}, page ${clientWidth} then ${await page.evaluate(() => document.documentElement.clientWidth)})`;
 	}
 	let found: string | null;
 	try {
