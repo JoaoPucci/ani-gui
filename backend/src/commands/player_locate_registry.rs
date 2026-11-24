@@ -51,13 +51,14 @@ fn exported_default(reg: &str, key: &str, view: Option<&str>) -> Option<String> 
         .filter(|out| out.status.success())
         .and_then(|_| parse_reg_export(&std::fs::read(&file).ok()?));
     // An export killed at its limit may still hold the file for a
-    // moment; a file left then is the next lookup's to overwrite (`/y`).
+    // moment; a file left then stays in the temporary folder, since
+    // every export is given a name of its own.
     let _ = std::fs::remove_file(&file);
     found
 }
 
-/// A file of this process's own in the temporary folder, for one
-/// lookup's exports: reg.exe writes an export only to a file.
+/// A file of this process's own in the temporary folder, new for each
+/// export: reg.exe writes an export only to a file.
 #[cfg(windows)]
 fn export_file() -> std::path::PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
