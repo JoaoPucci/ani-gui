@@ -937,6 +937,27 @@ function pngPixels(png: Buffer): { width: number; height: number; rgba: Uint8Arr
  *  each, or null when none is, or when the control draws no ring of its
  *  own (its chip's, or one on an element inside it, is not looked at). */
 async function ringCovered(page: Page): Promise<string | null> {
+	// The box is read again once the picture is taken: a control that
+	// moved in between (a hover's lift that landed late) is pictured
+	// again, once it has stopped.
+	let moved = '';
+	for (let attempt = 0; attempt < 4; attempt++) {
+		const found = await ringCoveredOnce(page);
+		if (found === MOVED) {
+			moved = found;
+			await still(page);
+			continue;
+		}
+		return found;
+	}
+	return `could not be read: ${moved}`;
+}
+
+/** What ringCoveredOnce says when the control moved while it was being
+ *  pictured. */
+const MOVED = 'the control moved while its ring was pictured';
+
+async function ringCoveredOnce(page: Page): Promise<string | null> {
 	const geometry = await page.evaluate(() => {
 		const el = document.activeElement as HTMLElement | null;
 		if (!el || el === document.body) return null;
@@ -1069,6 +1090,22 @@ async function ringCovered(page: Page): Promise<string | null> {
 		await putBack(page);
 		throw error;
 	}
+	const now = await page.evaluate(() => {
+		const r = (document.activeElement as HTMLElement | null)?.getBoundingClientRect();
+		return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null;
+	});
+	if (
+		!now ||
+		Math.max(
+			Math.abs(now.left - box.left),
+			Math.abs(now.right - box.right),
+			Math.abs(now.top - box.top),
+			Math.abs(now.bottom - box.bottom)
+		) > 0.5
+	) {
+		await putBack(page);
+		return MOVED;
+	}
 	let found: string | null;
 	try {
 		found = shot ? await coverIn(page, shot, geometry, clip) : null;
@@ -1076,7 +1113,11 @@ async function ringCovered(page: Page): Promise<string | null> {
 		await putBack(page);
 	}
 	if (found) {
-		fs.writeFileSync(test.info().outputPath(`covered-ring-${++coveredShots}.png`), shot!);
+		const name = `covered-ring-${++coveredShots}.png`;
+		fs.writeFileSync(test.info().outputPath(name), shot!);
+		await test
+			.info()
+			.attach(name, { path: test.info().outputPath(name), contentType: 'image/png' });
 		return `${found} (picture: covered-ring-${coveredShots}.png)`;
 	}
 	return null;
