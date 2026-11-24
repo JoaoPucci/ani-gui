@@ -150,6 +150,7 @@ pub mod providers;
 pub mod proxy_url;
 pub mod session;
 pub mod settings;
+pub(crate) mod show_settled;
 pub mod syncplay;
 pub(crate) mod title_match_rows;
 pub(crate) mod title_match_store;
