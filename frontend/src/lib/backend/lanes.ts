@@ -22,8 +22,9 @@
  *   - `resolve`  — play resolutions, the user's own and the warms.
  *   - `download` — downloads' progress streams, open for the whole
  *                  download.
- *   - `franchise` — franchise reads and the walk's first hop
- *                  (`kitsuFranchise`, `kitsuFranchiseFirstHop`), each
+ *   - `franchise` — the watch-order reads that walk the franchise and
+ *                  the walk's first hop (`watchOrderShow`, `…Franchise`,
+ *                  `…UpNext`, `…Handoff`, `kitsuFranchiseFirstHop`), each
  *                  open while the backend walks the franchise, several
  *                  rounds of Kitsu reads when Kitsu is slow; the page
  *                  that asked cancels it when the viewer leaves. The

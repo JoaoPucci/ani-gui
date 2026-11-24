@@ -15,8 +15,7 @@
  * reads it with the title; the line is decoration.
  */
 import { m } from '$lib/paraglide/messages';
-import { progressOf } from './entry';
-import type { FranchiseRow } from './franchise-sections';
+import type { RowWire } from '$lib/api';
 
 export type RowProgress =
 	| { readonly kind: 'none' }
@@ -31,8 +30,8 @@ export interface CaptionPart {
 }
 
 /** What `row`'s right column shows. */
-export function rowProgress(row: Pick<FranchiseRow, 'entry' | 'progress' | 'share'>): RowProgress {
-	const view = progressOf(row.entry, row.progress);
+export function rowProgress(row: Pick<RowWire, 'entry' | 'share'>): RowProgress {
+	const view = row.entry.progress;
 	if (view.kind === 'none') return { kind: 'none' };
 	if (view.kind === 'watched') return { kind: 'watched', caption: m.watchorder_meta_watched() };
 	if (view.total === null)

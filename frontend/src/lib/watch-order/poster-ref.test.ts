@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { FIXTURE_RUNS } from './fixtures/runs';
 import { asRef } from './poster-ref';
+import type { WatchEntry } from './types';
 
-const ova = FIXTURE_RUNS.find((r) => r.key === 'jojo')!.versions.find((e) => e.id === '610')!;
+const ova: WatchEntry = {
+	id: '610',
+	title: "JoJo's Bizarre Adventure (1993)",
+	subtype: 'OVA',
+	start: '1993-11-19',
+	episodes: 13,
+	status: 'finished',
+	poster: 'https://media.kitsu.app/anime/poster_images/610/medium.jpg',
+	cover: 'https://media.kitsu.app/anime/cover_images/610/large.jpg'
+};
 
 describe('asRef', () => {
 	it('shapes an entry for PosterCard', () => {

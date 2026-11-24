@@ -5,9 +5,7 @@
  */
 import { m } from '$lib/paraglide/messages';
 import { stackPartsText } from './strip-copy';
-import type { FranchiseSummary } from './strip-view';
-import type { WatchEntry } from './types';
-import type { ChainEndCard, PlayerUpNext } from './chain-end';
+import type { ChainEndCard, FranchiseSummary, UpNextWire, ViewEntry } from '$lib/api';
 
 /** The franchise card's meta line: the first two parts the strip's link names. */
 export function franchiseCardMeta(summary: FranchiseSummary): string {
@@ -15,22 +13,22 @@ export function franchiseCardMeta(summary: FranchiseSummary): string {
 }
 
 /** The card's key over its title or its list. */
-export function cardKey(card: PlayerUpNext): string {
+export function cardKey(card: UpNextWire): string {
 	if (card.kind === 'franchise') return m.watchorder_upnext_franchise_key();
-	const { upNext } = card.card;
-	if (upNext.kind === 'choices') return m.watchorder_upnext_choices();
-	if (upNext.kind === 'unaired') return m.watchorder_upnext_coming();
+	const next = card.card;
+	if (next.kind === 'choices') return m.watchorder_upnext_choices();
+	if (next.kind === 'unaired') return m.watchorder_upnext_coming();
 	return m.watchorder_upnext_eyebrow();
 }
 
 /** The entries an entry card names, in its order. */
-export function cardEntries(card: Extract<PlayerUpNext, { kind: 'entry' }>): readonly WatchEntry[] {
-	const { upNext } = card.card;
-	return upNext.kind === 'choices' ? upNext.entries : [upNext.entry];
+export function cardEntries(card: Extract<UpNextWire, { kind: 'entry' }>): readonly ViewEntry[] {
+	const next = card.card;
+	return next.kind === 'choices' ? next.entries : [next.entry];
 }
 
 /** What the card announces once, politely, when it appears. */
-export function cardAnnouncement(card: PlayerUpNext): string {
+export function cardAnnouncement(card: UpNextWire): string {
 	if (card.kind === 'franchise')
 		return m.watchorder_upnext_franchise_announce({ name: card.card.name });
 	return m.watchorder_upnext_announce({ title: cardEntries(card)[0].title });
@@ -38,7 +36,7 @@ export function cardAnnouncement(card: PlayerUpNext): string {
 
 /** The id the card's accent is taken from: the first title it names,
  *  or the entry the franchise's name comes from, as on its page. */
-export function cardAccentId(card: PlayerUpNext): string {
+export function cardAccentId(card: UpNextWire): string {
 	return card.kind === 'franchise' ? card.card.front : cardEntries(card)[0].id;
 }
 

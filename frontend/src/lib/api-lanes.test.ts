@@ -14,16 +14,19 @@ import {
 	availabilityWarm,
 	checkAvailability,
 	downloadStream,
-	historyByKitsuEach,
 	imageProxyUrl,
-	kitsuFranchise,
 	kitsuFranchiseFirstHop,
 	kitsuSearch,
 	play,
 	playExternal,
 	playStream,
 	playSyncplay,
-	settingsGet
+	settingsGet,
+	watchOrderFranchise,
+	watchOrderHandoff,
+	watchOrderRail,
+	watchOrderShow,
+	watchOrderUpNext
 } from './api';
 import { probeScope } from './availability/probe-scope';
 
@@ -127,20 +130,46 @@ describe('lanes', () => {
 		);
 	});
 
-	it("a franchise read and the walk's first hop go to the franchise lane", async () => {
+	it("the walk's first hop goes to the franchise lane", async () => {
 		g.fetch = answering({ signal: 'strip' }) as unknown as typeof fetch;
-		await kitsuFranchise('12');
 		await kitsuFranchiseFirstHop('12');
 		expect(fetched.map((f) => f.url)).toEqual([
-			`${LANES.franchise}/api/kitsu/franchise/12`,
 			`${LANES.franchise}/api/kitsu/franchise/12/first-hop`
 		]);
 	});
 
-	it("the history rows a franchise resumes from stay on the API's lane", async () => {
-		g.fetch = answering({ '12': null }) as unknown as typeof fetch;
-		await historyByKitsuEach(['12']);
-		expect(fetched.map((f) => f.url)).toEqual([`${API}/api/history/by-kitsu`]);
+	it("every watch-order read that walks the franchise goes to the franchise lane, with the viewer's day", async () => {
+		const today = { today: '2026-11-24' };
+		await watchOrderShow('kid 12', today);
+		await watchOrderFranchise('12', today);
+		await watchOrderUpNext('12', { ...today, episode: 12.5 });
+		g.fetch = answering({ handoff: null }) as unknown as typeof fetch;
+		expect(await watchOrderHandoff('12', today)).toBeNull();
+		expect(fetched.map((f) => [f.url, f.init?.method, f.init?.body])).toEqual([
+			[`${LANES.franchise}/api/watch-order/kid%2012/show`, 'POST', JSON.stringify(today)],
+			[`${LANES.franchise}/api/watch-order/12/franchise`, 'POST', JSON.stringify(today)],
+			[
+				`${LANES.franchise}/api/watch-order/12/up-next`,
+				'POST',
+				JSON.stringify({ ...today, episode: 12.5 })
+			],
+			[`${LANES.franchise}/api/watch-order/12/handoff`, 'POST', JSON.stringify(today)]
+		]);
+	});
+
+	it('a hand-off read hands on the hand-off the backend answers', async () => {
+		const handoff = { finished: { id: '10' }, next: { id: '20' } };
+		g.fetch = answering({ handoff }) as unknown as typeof fetch;
+		expect(await watchOrderHandoff('10', { today: '2026-11-24' })).toEqual(handoff);
+	});
+
+	it("Home's rail, which walks nothing, stays on the API's lane", async () => {
+		g.fetch = answering({ asks: {}, handoffs: {} }) as unknown as typeof fetch;
+		const body = { rows: [], history: [], matches: {}, series: {} };
+		expect(await watchOrderRail(body)).toEqual({ asks: {}, handoffs: {} });
+		expect(fetched.map((f) => [f.url, f.init?.method, f.init?.body])).toEqual([
+			[`${API}/api/watch-order/rail`, 'POST', JSON.stringify(body)]
+		]);
 	});
 
 	it('a poster goes to the image lane', () => {

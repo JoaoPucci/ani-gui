@@ -10,16 +10,21 @@
 // Every row carries its whole title, a film sits under Films whatever
 // role Kitsu gave it, a TV re-edit sits with the other versions, and
 // the recaps show like any other section.
+//
+// The page is the backend's answer over that franchise
+// (`POST /api/watch-order/:id/franchise`), served as recorded for it
+// (./watch-order-answers.ts); the names and sections it carries are
+// asserted by name in backend/src/watch_order/scenario_franchise_page_test.rs.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { http, HttpResponse } from 'msw';
+import { http } from 'msw';
 import { mount, unmount } from 'svelte';
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
-import { appConfig } from './home-handlers';
+import { answerResponse } from './watch-order-answers';
 import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
@@ -35,12 +40,7 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import FranchisePage from '../../src/routes/anime/[id]/franchise/+page.svelte';
-import {
-	__resetApiBaseForTests,
-	type Config,
-	type Franchise,
-	type HistoryEntry
-} from '../../src/lib/api';
+import { __resetApiBaseForTests, type Franchise } from '../../src/lib/api';
 
 /** The walk's answer for `id`, as the endpoint serves it. */
 function served(id: string): Franchise {
@@ -72,22 +72,22 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-/** Open `id`'s franchise page with the walk's answer for it. */
+/**
+ * Open `id`'s franchise page with the backend's answer over the walk's
+ * franchise for it, in link order, with nothing watched.
+ */
 function openFranchise(id: string) {
 	setParams({ id });
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json<Config>({ ...appConfig(), watch_order: 'linked' })
-		),
-		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () =>
-			HttpResponse.json<Franchise>(served(id))
-		),
-		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-			const { ids } = (await request.json()) as { ids: string[] };
-			return HttpResponse.json<Record<string, HistoryEntry | null>>(
-				Object.fromEntries(ids.map((k) => [k, null]))
-			);
-		})
+		http.post(`${API_BASE}/api/watch-order/${id}/franchise`, () =>
+			answerResponse('franchise-page-franchises', {
+				route: 'franchise',
+				id,
+				order: 'linked',
+				franchise: served(id),
+				resumes: {}
+			})
+		)
 	);
 	app = mount(FranchisePage, { target });
 }

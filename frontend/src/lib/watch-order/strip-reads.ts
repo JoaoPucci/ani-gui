@@ -1,10 +1,10 @@
 /**
  * The show page's strip reads on one visit: the visit's walk, and the
- * reads of its rows again that a history link asks for
- * ($lib/history/link-deps `onHistoryLinked`). The page hands in what
- * it draws (`current`), how to read the rows again against it
- * (`reread`, `$lib/watch-order/loader` `rereadRows`) and how to draw
- * an answer (`show`).
+ * reads again that a history link asks for ($lib/history/link-deps
+ * `onHistoryLinked`). The page hands in what it draws (`current`), how
+ * to read the answer again (`reread`: the show route, through
+ * `$lib/watch-order/loader` `rereadAnswer`) and how to draw an answer
+ * (`show`).
  *
  * A link answered while the walk is out is held until the walk lands,
  * whose rows may have been read before the link, and then reads the

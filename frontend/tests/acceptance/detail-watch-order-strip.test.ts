@@ -16,6 +16,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { answerResponse, type ScenarioInputs } from './watch-order-answers';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { availabilityAnswer } from '../answers';
@@ -41,7 +42,6 @@ import {
 	type AvailabilityResponse,
 	type Config,
 	type Franchise,
-	type HistoryEntry,
 	type HistoryRowByKitsu,
 	type KitsuAnimeRef,
 	type KitsuEpisode,
@@ -116,10 +116,13 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 
 type HistoryRowFixture = { ep_no: string; id: string; title: string; kitsu_id?: string };
 
+/** The walk's answer: a franchise, one held until it lands, or a failure. */
+type Walk = Franchise | Promise<Franchise> | 'fail';
+
 interface ShowOptions {
 	order?: Config['watch_order'];
 	settings?: () => Response;
-	franchise?: () => Response | Promise<Response>;
+	franchise?: Walk;
 	/** Null: the history read fails. */
 	history?: HistoryRowFixture[] | null;
 	/**
@@ -129,6 +132,42 @@ interface ShowOptions {
 	 */
 	named?: Record<string, HistoryRowFixture>;
 	similar?: string[];
+}
+
+/**
+ * What the resume lookup names for each id: the row that recorded it,
+ * or the one the backend names for it where that is another; none when
+ * the history cannot be read.
+ */
+function resumesOf(
+	history: HistoryRowFixture[] | null | undefined,
+	named: Record<string, HistoryRowFixture> = {}
+): Record<string, string> | null {
+	if (history === null) return null;
+	const out: Record<string, string> = {};
+	for (const r of history ?? []) if (r.kitsu_id) out[r.kitsu_id] = r.ep_no;
+	for (const [id, r] of Object.entries(named)) out[id] = r.ep_no;
+	return out;
+}
+
+/**
+ * The show route for `id`: the backend's answer recorded for the walk
+ * `walk` answers, the history `opts` describes and the order setting.
+ */
+function showRoute(id: string, walk: () => Walk, opts: ShowOptions, onRead?: () => void) {
+	return http.post(`${API_BASE}/api/watch-order/${id}/show`, async () => {
+		onRead?.();
+		const w = walk();
+		if (w === 'fail') return new HttpResponse(null, { status: 503 });
+		const inputs: ScenarioInputs = {
+			route: 'show',
+			id,
+			order: opts.order ?? 'linked',
+			franchise: await w,
+			resumes: resumesOf(opts.history, opts.named)
+		};
+		return answerResponse('detail-watch-order-strip', inputs);
+	});
 }
 
 /** The page's reads, with the franchise answered by `franchise`. */
@@ -147,10 +186,12 @@ function useShow(opts: ShowOptions = {}) {
 				subtype: 'TV'
 			})
 		),
-		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, () => {
-			calls.franchise++;
-			return opts.franchise ? opts.franchise() : HttpResponse.json<Franchise>(FRANCHISE);
-		}),
+		showRoute(
+			KITSU_ID,
+			() => opts.franchise ?? FRANCHISE,
+			opts,
+			() => calls.franchise++
+		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
 			HttpResponse.json<AiringStatus>({
 				aired: 12,
@@ -181,18 +222,6 @@ function useShow(opts: ShowOptions = {}) {
 			HttpResponse.json<HistoryRowByKitsu | null>(null)
 		),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
-		// The rows the franchise's entries resume from, as the resume
-		// lookup names them.
-		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-			if (opts.history === null) return new HttpResponse(null, { status: 503 });
-			const { ids } = (await request.json()) as { ids: string[] };
-			const rows = opts.history ?? [];
-			return HttpResponse.json<Record<string, HistoryEntry | null>>(
-				Object.fromEntries(
-					ids.map((id) => [id, opts.named?.[id] ?? rows.find((r) => r.kitsu_id === id) ?? null])
-				)
-			);
-		}),
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 	return calls;
@@ -258,7 +287,7 @@ describe('detail route — the watch-order strip', () => {
 	});
 
 	it('shows no strip and no error when the franchise cannot be read', async () => {
-		const calls = useShow({ franchise: () => new HttpResponse(null, { status: 503 }) });
+		const calls = useShow({ franchise: 'fail' });
 		app = mount(DetailPage, { target });
 		await until(() => title() !== '' && calls.franchise > 0, 'the page and the franchise read');
 		await new Promise((r) => setTimeout(r, 100));
@@ -313,8 +342,8 @@ describe('detail route — the watch-order strip', () => {
 			'the watching card from the linked row'
 		);
 		expect(tile('5')!.textContent).toContain(m.watchorder_meta_progress_open({ episode: 3 }));
-		// The franchise itself did not change: one walk, read once.
-		expect(calls.franchise).toBe(1);
+		// The show is read again once, for the link: its first read and the one after.
+		expect(calls.franchise).toBe(2);
 	});
 
 	it('remembers the rows a link wrote for the next visit of the show', async () => {
@@ -337,7 +366,7 @@ describe('detail route — the watch-order strip', () => {
 		app = null;
 
 		// The second visit's walk never answers: only the remembered answer draws.
-		useShow({ history, franchise: () => new Promise<Response>(() => {}) });
+		useShow({ history, franchise: new Promise<Franchise>(() => {}) });
 		app = mount(DetailPage, { target });
 		await until(() => strip() !== null, 'the remembered strip');
 		expect(tile('5')).not.toBeNull();
@@ -363,7 +392,7 @@ describe('detail route — the watch-order strip', () => {
 		const FILM = entry('60', 'Saga: The Movie', 'movie', '2015-01-01');
 		useShow({
 			similar: ['10', '50', '5', '60', '77'],
-			franchise: () => HttpResponse.json<Franchise>({ ...FRANCHISE, films: [FILM] })
+			franchise: { ...FRANCHISE, films: [FILM] }
 		});
 		app = mount(DetailPage, { target });
 		await until(() => strip() !== null && similarCard('77') !== null, 'the strip and Similar');
@@ -400,16 +429,7 @@ describe('detail route — the watch-order strip', () => {
 	it('shows no Similar titles card that the strip then takes away', async () => {
 		let release!: () => void;
 		const held = new Promise<void>((r) => (release = r));
-		useShow({
-			similar: ['50', '77'],
-			franchise: () => HttpResponse.json<Franchise>(FRANCHISE)
-		});
-		server.use(
-			http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
-				await held;
-				return HttpResponse.json<Franchise>(FRANCHISE);
-			})
-		);
+		useShow({ similar: ['50', '77'], franchise: held.then(() => FRANCHISE) });
 		app = mount(DetailPage, { target });
 		let sawFifty = false;
 		const deadline = Date.now() + 1500;
@@ -443,13 +463,7 @@ describe('detail route — the watch-order strip', () => {
 		// The walk stopped at its bound: Second Arc is the last entry it
 		// reached, which says nothing about whether another follows.
 		useShow({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [SAGA, SECOND],
-					links: [['10', '42']],
-					complete: false
-				})
+			franchise: { ...FRANCHISE, entries: [SAGA, SECOND], links: [['10', '42']], complete: false }
 		});
 		app = mount(DetailPage, { target });
 		await until(() => strip() !== null, 'the strip');
@@ -469,14 +483,13 @@ describe('detail route — the watch-order strip', () => {
 
 	it("names a side story's parent stories, and nothing after it", async () => {
 		useShow({
-			franchise: () =>
-				HttpResponse.json<Franchise>({
-					...FRANCHISE,
-					entries: [SAGA, FINAL],
-					links: [['10', '50']],
-					sides: [SECOND],
-					parents: { [KITSU_ID]: ['10', '50'] }
-				})
+			franchise: {
+				...FRANCHISE,
+				entries: [SAGA, FINAL],
+				links: [['10', '50']],
+				sides: [SECOND],
+				parents: { [KITSU_ID]: ['10', '50'] }
+			}
 		});
 		app = mount(DetailPage, { target });
 		await until(() => strip() !== null, 'the strip');
@@ -495,9 +508,7 @@ describe('detail route — the watch-order strip', () => {
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER}`, () =>
 				HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(OTHER, 'Lone Film', 1), subtype: 'movie' })
 			),
-			http.get(`${API_BASE}/api/kitsu/franchise/${OTHER}`, () =>
-				HttpResponse.json<Franchise>({ ...FRANCHISE, anchor: OTHER, entries: [], links: [] })
-			),
+			showRoute(OTHER, () => ({ ...FRANCHISE, anchor: OTHER, entries: [], links: [] }), {}),
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER}`, () =>
 				HttpResponse.json<AiringStatus>({
 					aired: 1,
@@ -526,24 +537,21 @@ describe('detail route — the watch-order strip', () => {
 		let release!: () => void;
 		const held = new Promise<void>((r) => (release = r));
 		let answered = false;
-		useShow();
+		useShow({
+			franchise: held.then(() => {
+				answered = true;
+				return FRANCHISE;
+			})
+		});
 		const OTHER = '50';
 		server.use(
-			http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
-				await held;
-				answered = true;
-				return HttpResponse.json<Franchise>(FRANCHISE);
-			}),
 			http.get(`${API_BASE}/api/kitsu/anime/${OTHER}`, () =>
 				HttpResponse.json<KitsuAnimeRef>({
 					...kitsuRef(OTHER, 'Saga: Final Arc', 12),
 					subtype: 'TV'
 				})
 			),
-			http.get(
-				`${API_BASE}/api/kitsu/franchise/${OTHER}`,
-				() => new HttpResponse(null, { status: 503 })
-			),
+			showRoute(OTHER, () => 'fail', {}),
 			http.get(`${API_BASE}/api/kitsu/airing/${OTHER}`, () =>
 				HttpResponse.json<AiringStatus>({
 					aired: 12,
@@ -587,7 +595,7 @@ describe('detail route — the franchise link without a strip', () => {
 	it('links to the franchise page from a show that is its main story alone', async () => {
 		useShow({
 			similar: ['60', '61', '77'],
-			franchise: () => HttpResponse.json<Franchise>(ONE_MAIN)
+			franchise: ONE_MAIN
 		});
 		app = mount(DetailPage, { target });
 		await until(() => link() !== null && similarCard('77') !== null, 'the link and Similar');
@@ -604,7 +612,7 @@ describe('detail route — the franchise link without a strip', () => {
 	});
 
 	it('links there without counts from a franchise read in part', async () => {
-		useShow({ franchise: () => HttpResponse.json<Franchise>({ ...ONE_MAIN, complete: false }) });
+		useShow({ franchise: { ...ONE_MAIN, complete: false } });
 		app = mount(DetailPage, { target });
 		await until(() => link() !== null, 'the link');
 		expect(strip()).toBeNull();
@@ -618,7 +626,7 @@ describe('detail route — the franchise link without a strip', () => {
 		it(`gives no link for a show that is the franchise alone (read ${complete ? 'whole' : 'in part'})`, async () => {
 			const calls = useShow({
 				similar: ['77'],
-				franchise: () => HttpResponse.json<Franchise>({ ...ALONE, complete })
+				franchise: { ...ALONE, complete }
 			});
 			app = mount(DetailPage, { target });
 			await until(

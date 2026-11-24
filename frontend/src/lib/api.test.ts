@@ -21,7 +21,6 @@ import {
 	downloadStream,
 	evictPlayCache,
 	historyByKitsu,
-	historyByKitsuEach,
 	historyClear,
 	historyDelete,
 	historyLink,
@@ -37,7 +36,6 @@ import {
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuEpisodes,
-	kitsuFranchise,
 	kitsuFranchiseFirstHop,
 	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
@@ -71,7 +69,6 @@ import {
 	type KitsuEpisode,
 	type KitsuSearchPage,
 	type SkipInterval,
-	type Franchise,
 	type FirstHopAnswer,
 	type Config,
 	type CreateSessionResponse,
@@ -1803,31 +1800,6 @@ describe('historyByKitsu', () => {
 	});
 });
 
-describe('historyByKitsuEach', () => {
-	it('POSTs the ids to /api/history/by-kitsu and returns each id with its row', async () => {
-		const answer: Record<string, HistoryEntry | null> = {
-			'7': { id: 'hianime:x-1', title: 'X', ep_no: '3' },
-			'8': null
-		};
-		const fetchMock = mockFetchOnce<Record<string, HistoryEntry | null>>(answer);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const got = await historyByKitsuEach(['7', '8']);
-		const { url, init } = lastCall(fetchMock);
-		expect(url).toBe(`${BASE}/api/history/by-kitsu`);
-		expect(init?.method).toBe('POST');
-		expect(JSON.parse(String(init?.body))).toEqual({ ids: ['7', '8'] });
-		expect(got).toEqual(answer);
-	});
-
-	it('hands its signal to the request, so the page that asked can cancel it', async () => {
-		const fetchMock = mockFetchUnread({});
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const visit = new AbortController();
-		await historyByKitsuEach(['7'], { signal: visit.signal });
-		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
-	});
-});
-
 describe('checkAvailability / availabilityBatch / availabilityWarm', () => {
 	it('checkAvailability forwards subtype in the POST body', async () => {
 		// The backend probe now applies the same format disproof play
@@ -2050,37 +2022,6 @@ describe('airingGet', () => {
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/kitsu/airing/kid%2050551`);
 		expect(got).toEqual(status);
-	});
-});
-
-describe('kitsuFranchise', () => {
-	it('GETs /api/kitsu/franchise/<kitsuId> and returns the franchise', async () => {
-		const franchise: Franchise = {
-			anchor: '7730',
-			name: 'JoJo no Kimyou na Bouken',
-			name_from: '610',
-			entries: [],
-			links: [['7158', '7730']],
-			versions: [],
-			films: [],
-			sides: [],
-			recaps: [],
-			parents: {},
-			complete: true
-		};
-		const fetchMock = mockFetchOnce<Franchise>(franchise);
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const got = await kitsuFranchise('kid 7730');
-		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730`);
-		expect(got).toEqual(franchise);
-	});
-
-	it('hands its signal to the request: the walk holds it open across several reads', async () => {
-		const fetchMock = mockFetchUnread({});
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const visit = new AbortController();
-		await kitsuFranchise('7730', { signal: visit.signal });
-		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
 	});
 });
 

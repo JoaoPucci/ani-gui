@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
 import {
 	CARD_BLOCK_REM,
 	CARD_INLINE_REM,
@@ -10,13 +9,24 @@ import {
 	stackCards,
 	type FanPose
 } from './stack-fan';
-import { franchiseSummary } from './strip-view';
+import type { WatchEntry } from './types';
 
-const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
 describe('stackCards', () => {
-	const posters = franchiseSummary(run('jojo'), run('jojo').nameId).posters;
+	// Three posters from different parts of a franchise, as the
+	// backend's summary picks them.
+	const poster = (id: string): WatchEntry => ({
+		id,
+		title: `Entry ${id}`,
+		subtype: 'TV',
+		start: '2012-10-06',
+		episodes: 26,
+		status: 'finished',
+		poster: `https://media.kitsu.app/anime/poster_images/${id}/medium.jpg`,
+		cover: null
+	});
+	const posters = [poster('7158'), poster('610'), poster('12064')];
 
 	it('holds up to the limit of posters, in order', () => {
 		expect(stackCards(posters, 3).map((c) => (c.kind === 'poster' ? c.entry.id : '-'))).toEqual(

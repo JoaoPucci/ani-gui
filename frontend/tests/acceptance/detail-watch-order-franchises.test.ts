@@ -19,6 +19,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 
 import { API_BASE, server } from './setup';
+import { answerResponse } from './watch-order-answers';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { availabilityAnswer } from '../answers';
@@ -44,7 +45,6 @@ import {
 	type AvailabilityResponse,
 	type Config,
 	type Franchise,
-	type HistoryEntry,
 	type HistoryRowByKitsu,
 	type KitsuAnimeRef,
 	type KitsuEpisode,
@@ -103,7 +103,17 @@ function openShow(
 		http.get(`${API_BASE}/api/kitsu/anime/${id}`, () =>
 			HttpResponse.json<KitsuAnimeRef>({ ...kitsuRef(id, titleOf(f, id), 12), subtype: 'TV' })
 		),
-		http.get(`${API_BASE}/api/kitsu/franchise/${id}`, () => HttpResponse.json<Franchise>(f)),
+		// The backend's answer, recorded for the walk's answer, no history
+		// and `order`.
+		http.post(`${API_BASE}/api/watch-order/${id}/show`, () =>
+			answerResponse('detail-watch-order-franchises', {
+				route: 'show',
+				id,
+				order,
+				franchise: f,
+				resumes: {}
+			})
+		),
 		http.get(`${API_BASE}/api/kitsu/airing/${id}`, () =>
 			HttpResponse.json<AiringStatus>({
 				aired: 12,
@@ -138,12 +148,6 @@ function openShow(
 			HttpResponse.json<HistoryRowByKitsu | null>(null)
 		),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
-		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-			const { ids } = (await request.json()) as { ids: string[] };
-			return HttpResponse.json<Record<string, HistoryEntry | null>>(
-				Object.fromEntries(ids.map((i) => [i, null]))
-			);
-		}),
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 	app = mount(DetailPage, { target });

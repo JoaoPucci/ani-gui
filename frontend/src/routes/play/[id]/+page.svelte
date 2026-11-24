@@ -37,13 +37,10 @@
 	import { settle } from '$lib/motion/settle';
 	import { fade } from '$lib/motion/transitions';
 	import UpNextCard from '$lib/watch-order/UpNextCard.svelte';
-	import { localDay } from '$lib/watch-order/entry';
 	import { latestRead } from '$lib/watch-order/latest-read';
-	import { loadWatchOrder, type WatchOrderData } from '$lib/watch-order/loader';
+	import { visitRead, type WatchOrderAnswer } from '$lib/watch-order/loader';
 	import { followLink } from '$lib/watch-order/link-reread';
 	import { watchOrderSources } from '$lib/watch-order/sources';
-	import { settledOrder } from '$lib/watch-order/page-model';
-	import { playerUpNext } from '$lib/watch-order/chain-end';
 	import { atVideoEnd, stepOpen, upNextShown as upNextShownFor } from '$lib/play/up-next-window';
 	import {
 		altTitlesFromKitsu,
@@ -71,6 +68,7 @@
 		type KitsuEpisode,
 		type MediaKind,
 		type SkipInterval,
+		type UpNextView,
 		historySwitchEpisode
 	} from '$lib/api';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
@@ -1834,24 +1832,13 @@
 	// step to, once the video has ended, it names the entry the order
 	// setting puts next, or, at the end of a chain outside the main
 	// story that leads nowhere, the whole franchise, and waits for a
-	// click ($lib/watch-order/chain-end's playerUpNext decides which,
+	// click (the backend's answer for the viewing decides which,
 	// $lib/play/up-next-window when). Nothing asks the provider about
 	// that entry, and the card plays nothing: auto-play only ever steps
 	// within the entry. Dismissed, it stays away for the rest of that
 	// viewing, and it is announced once per viewing.
-	let upNextData = $state<WatchOrderData | null>(null);
-	let configFailed = $state(false);
-	const upNextToday = localDay(new Date());
-	const upNextCard = $derived(
-		playerUpNext(
-			upNextData,
-			id,
-			settledOrder(config, configFailed),
-			upNextToday,
-			episodeNum,
-			detail ? { id: detail.id, status: detail.status, episodes: detail.episode_count } : null
-		)
-	);
+	let upNextData = $state<WatchOrderAnswer<UpNextView> | null>(null);
+	const upNextCard = $derived(upNextData?.view?.card ?? null);
 	// The counts behind `hasNext` belong to another show: a page that
 	// sees its id change still holds the detail it read at mount. The
 	// route mounts a new page for another show (./+layout.svelte), but
@@ -1880,24 +1867,28 @@
 			atEnd: playheadOnScreen && atVideoEnd(currentTime, duration, videoEnded)
 		})
 	);
-	// One read per show; only the latest one's answer counts, and a
-	// read superseded, or still out when the page goes, is cancelled
-	// ($lib/watch-order/latest-read). Neither read rejects; a franchise
-	// that cannot be read means no card ($lib/watch-order/loader).
-	const upNextReads = latestRead<WatchOrderData>((w) => (upNextData = w));
+	// One read per viewing (a show and its episode); only the latest
+	// one's answer counts, and a read superseded, or still out when the
+	// page goes, is cancelled ($lib/watch-order/latest-read). The read
+	// never rejects; a franchise that cannot be read means no card
+	// ($lib/watch-order/loader).
+	const upNextReads = latestRead<WatchOrderAnswer<UpNextView> | null>((w) => (upNextData = w));
+	const readUpNext = (showId: string, episode: number) => (signal: AbortSignal) =>
+		visitRead((s) => watchOrderSources.upNext(showId, episode, s), signal);
 	$effect(() => {
 		const showId = id;
+		const episode = episodeNum;
 		if (!showId) {
 			upNextReads.stop();
 			return;
 		}
-		upNextReads.start((signal) => loadWatchOrder(showId, watchOrderSources, signal));
+		upNextReads.start(readUpNext(showId, episode));
 	});
 	// A history link answered while the player is on screen can move a
 	// row onto the next entry ($lib/watch-order/link-reread).
-	const stopHearingLinks = onHistoryLinked(() =>
-		followLink(upNextReads, id, upNextData, watchOrderSources)
-	);
+	const stopHearingLinks = onHistoryLinked(() => {
+		if (id) followLink(upNextReads, upNextData, readUpNext(id, episodeNum));
+	});
 	onDestroy(() => {
 		stopHearingLinks();
 		upNextReads.stop();
@@ -2645,7 +2636,6 @@
 			})
 			.catch(() => {
 				config = null;
-				configFailed = true;
 			});
 	});
 
@@ -3737,7 +3727,6 @@
 				<!-- Takes the Skip Ending pill's place and corner. -->
 				<UpNextCard
 					card={upNextCard}
-					today={upNextToday}
 					announce={!upNextAnnounced}
 					onannounce={() => (upNextAnnounced = true)}
 					ondismiss={() => (upNextDismissed = true)}

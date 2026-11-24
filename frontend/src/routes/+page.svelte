@@ -72,9 +72,9 @@
 		kitsuAnimeDetail,
 		kitsuByMalIds,
 		kitsuEpisodes,
-		kitsuFranchise,
 		windowLaneIsOwn,
-		historyByKitsuEach,
+		watchOrderHandoff,
+		watchOrderRail,
 		kitsuTopRated,
 		kitsuTrendingAnilist,
 		markWatched,
@@ -83,8 +83,10 @@
 		watchedAtAll,
 		type Config,
 		type CreateSessionResponse,
+		type Handoff,
 		type HistoryEntry,
 		type KitsuAnimeRef,
+		type RailView,
 		type KitsuEpisode
 	} from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -163,21 +165,10 @@
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
 	import HandoffCard from '$lib/watch-order/HandoffCard.svelte';
-	import {
-		handoffAsk,
-		handoffFrom,
-		playedIds,
-		railHandoffs,
-		unclaimedHandoff
-	} from '$lib/watch-order/handoff';
-	import {
-		createFranchiseReads,
-		createNamedReads,
-		handoffWalksAtOnce
-	} from '$lib/watch-order/handoff-reads';
+	import { createHandoffReads, handoffWalksAtOnce } from '$lib/watch-order/handoff-reads';
+	import { railRequest } from '$lib/watch-order/rail-request';
+	import { latestRead } from '$lib/watch-order/latest-read';
 	import { localDay } from '$lib/watch-order/entry';
-	import { settledOrder } from '$lib/watch-order/page-model';
-	import type { FranchiseData } from '$lib/watch-order/types';
 	import SkeletonRow from '$lib/components/SkeletonRow.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
@@ -556,9 +547,6 @@
 	// /play/[id] — bypassing the detail page so the back button
 	// returns to the home grid, not the detail view.
 	let config = $state<Config | null>(null);
-	// The settings read answered with nothing: the hand-offs then use
-	// the default order rather than waiting for it.
-	let configFailed = $state(false);
 	// Shared settings load — created on mount, awaited by BOTH the
 	// loader's getMode and startResume. Cards can release (and be
 	// clicked) before this resolves; the click awaits it via
@@ -700,7 +688,6 @@
 		settingsPromise = pageReads.keep(settingsGet({ signal })).catch(() => null as Config | null);
 		void settingsPromise.then((c) => {
 			if (c) config = c;
-			else configFailed = true;
 			settingsRead = true;
 		});
 		// Both catalogue rows, loaded as the search page loads its own
@@ -1359,80 +1346,68 @@
 	// epOf / titleOf were absorbed into resolveHistoryEntry — see
 	// $lib/history/resolve.ts (target.displayEpisode / displayTitle).
 
-	// Continue Watching's hand-off ($lib/watch-order/handoff): a row
-	// whose finale was played through moves on to the show that comes
-	// next, once that row's series has been read. Only such a row asks
-	// for its series, each once per visit; until it answers, and when it
-	// cannot be read, the row keeps its ordinary card. A row's
-	// availability probe can answer after the card moved on: when it
-	// finds an episode past Kitsu's count, the card goes back to
-	// offering that episode. The probe may never answer, so the
-	// hand-off does not wait for it.
-	let handoffSeries = $state<Record<string, FranchiseData | null>>({});
-	const handoffReads = createFranchiseReads(
-		(id, signal) => kitsuFranchise(id, { signal }),
-		(id, franchise) => {
-			handoffSeries = { ...handoffSeries, [id]: franchise };
+	// Continue Watching's hand-off: a row whose finale was played
+	// through moves on to the show that comes next, once that row's
+	// hand-off has been read. The backend decides it all: which rows ask
+	// (`asks`), each asking series' hand-off (`watchOrderHandoff`, which
+	// also asks its resume lookup whether a history row resumes the next
+	// entry) and which rows show one (`watchOrderRail`, over what Home
+	// has read so far: the rows, their matches and probes, the played
+	// rows). Only an asking row's series is read, each once per visit
+	// until the history changes; until it answers, and when it cannot be
+	// read, the row keeps its ordinary card. A row's availability probe
+	// can answer after the card moved on: when it finds an episode past
+	// Kitsu's count, the card goes back to offering that episode. The
+	// probe may never answer, so the hand-off does not wait for it.
+	let handoffSeries = $state<Record<string, Handoff | null>>({});
+	const handoffToday = localDay(new Date());
+	const handoffReads = createHandoffReads(
+		(id, signal) => watchOrderHandoff(id, { today: handoffToday }, { signal }),
+		(id, handoff) => {
+			handoffSeries = { ...handoffSeries, [id]: handoff };
 		},
 		handoffWalksAtOnce(windowLaneIsOwn('franchise'))
 	);
-	const handoffToday = localDay(new Date());
-	const handoffOrder = $derived(settledOrder(config, configFailed));
-	const handoffAsks = $derived(
-		dedupedHistory.map(
-			(row) =>
-				[
-					row.id,
-					handoffAsk(
-						historyMatches[row.id],
-						row.ep_no,
-						historyPlayableCounts[row.id] ?? null,
-						leftPartWay
-					)
-				] as const
+	// The rail, read again whenever what Home sends changes; only the
+	// latest read's answer is drawn, a superseded one is cancelled, and
+	// the last answer stays drawn until the next lands (or if it fails).
+	let rail = $state<RailView | null>(null);
+	const railReads = latestRead<RailView | null>((r) => {
+		if (r) rail = r;
+	});
+	const handoffRail = $derived(
+		railRequest(
+			dedupedHistory,
+			history ?? [],
+			historyMatches,
+			historyPlayableCounts,
+			handoffSeries,
+			leftPartWay
 		)
 	);
 	$effect(() => {
-		for (const [, kitsuId] of handoffAsks) if (kitsuId !== null) handoffReads.want(kitsuId);
+		const body = handoffRail;
+		if (body) railReads.refresh((signal) => watchOrderRail(body, { signal }).catch(() => null));
 	});
-	const handoffPlayed = $derived(playedIds(history ?? [], historyMatches));
-	const handoffFor = (kitsuId: string) =>
-		handoffFrom(handoffSeries[kitsuId] ?? null, kitsuId, handoffOrder, handoffToday, handoffPlayed);
-	// Before a card moves on, the backend's resume lookup is asked, once
-	// per id and again whenever the history changes, whether a history
-	// row resumes the next entry, the rule its own page goes by
-	// ($lib/watch-order/handoff `unclaimedHandoff`).
-	let handoffNamed = $state<Record<string, boolean | null>>({});
-	const namedReads = createNamedReads(
-		(ids, signal) => historyByKitsuEach(ids, { signal }),
-		(id, named) => {
-			handoffNamed = { ...handoffNamed, [id]: named };
-		}
-	);
 	// A row removed from the history may have been the one that resumed
-	// a next show, so the answers are asked again when it changes.
-	let namedFor: HistoryEntry[] | null = null;
+	// a next show, so the hand-offs are asked again when it changes. The
+	// last answers stand until the new ones land, so a moved-on card
+	// does not drop back while they are out.
+	let askedFor: HistoryEntry[] | null = null;
 	$effect(() => {
-		// The last answers stand until the new ones land, so a moved-on
-		// card does not drop back while they are out.
-		if (history !== namedFor) {
-			namedFor = history;
-			namedReads.forget();
+		if (history !== askedFor) {
+			askedFor = history;
+			handoffReads.forget();
 		}
-		for (const h of railHandoffs(handoffAsks, handoffFor).values()) namedReads.want(h.next.id);
+		for (const kitsuId of Object.values(rail?.asks ?? {}))
+			if (kitsuId !== null) handoffReads.want(kitsuId);
 	});
-	// Home going cancels the reads still out: a series read holds its
+	// Home going cancels the reads still out: a hand-off read holds its
 	// response open while the backend walks the franchise.
 	onDestroy(() => {
 		handoffReads.stop();
-		namedReads.stop();
+		railReads.stop();
 	});
-	const handoffs = $derived(
-		railHandoffs(handoffAsks, (kitsuId) => {
-			const handoff = handoffFor(kitsuId);
-			return handoff && unclaimedHandoff(handoff, handoffNamed[handoff.next.id]);
-		})
-	);
 </script>
 
 <svelte:head>
@@ -1706,7 +1681,7 @@
 	>
 		{#each dedupedHistory as entry (entry.id)}
 			{@const match = historyMatches[entry.id]}
-			{@const handoff = handoffs.get(entry.id)}
+			{@const handoff = rail?.handoffs[entry.id]}
 			{@const ep = historyEpisodes[entry.id]}
 			{@const target = resolveHistoryEntry(entry, match ?? null)}
 			{@const accent = accentFor(match?.id ?? entry.id)}

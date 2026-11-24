@@ -1,10 +1,10 @@
-// Acceptance: leaving a show ends its franchise read and its first hop.
+// Acceptance: leaving a show ends its watch-order read and its first hop.
 //
-// The franchise route holds its response open while the backend walks
-// the franchise's relation listings, several rounds of Kitsu reads
-// when Kitsu is slow. Chromium opens at most six connections to one
-// origin over plain HTTP and queues every request past the sixth. The
-// franchise read and the walk's first hop, which the page reads beside
+// The show's watch-order route holds its response open while the
+// backend walks the franchise's relation listings, several rounds of
+// Kitsu reads when Kitsu is slow. Chromium opens at most six
+// connections to one origin over plain HTTP and queues every request
+// past the sixth. The watch-order read and the walk's first hop, which the page reads beside
 // it to hold the strip's room, go to the franchise lane, an origin of
 // their own. Reads the page kept after the viewer moved on would hold
 // that lane's six for nothing: a few shows browsed while Kitsu is
@@ -46,6 +46,7 @@ import {
 	type KitsuEpisode
 } from '../../src/lib/api';
 
+const WATCH_ORDER = '/api/watch-order/';
 const FRANCHISE = '/api/kitsu/franchise/';
 
 /** The franchise lane's origin, as the backend announces it. */
@@ -53,11 +54,15 @@ const FRANCHISE_LANE = 'http://127.0.0.1:31351';
 type Bridge = { apiBase: string; lanes?: Record<string, string> };
 const bridge = () => (window as unknown as { aniGui: Bridge }).aniGui;
 
-/** The shows whose franchise read reached the franchise lane. */
+/** The shows whose watch-order read reached the franchise lane. */
 const reached: string[] = [];
 const HOP = '/first-hop';
-/** The shows whose franchise walk the page cancelled. */
-const walks = (c: Connections) => cancelledUnder(c, FRANCHISE).filter((p) => !p.endsWith(HOP));
+const SHOW = '/show';
+/** The shows whose watch-order read (the franchise walk) the page cancelled. */
+const walks = (c: Connections) =>
+	cancelledUnder(c, WATCH_ORDER)
+		.filter((p) => p.endsWith(SHOW))
+		.map((p) => p.slice(0, -SHOW.length));
 /** The shows whose first hop the page cancelled. */
 const hops = (c: Connections) =>
 	cancelledUnder(c, FRANCHISE)
@@ -77,7 +82,7 @@ function slowKitsu() {
 				subtype: 'TV'
 			})
 		),
-		http.get(`${FRANCHISE_LANE}/api/kitsu/franchise/:id`, ({ params }) => {
+		http.post(`${FRANCHISE_LANE}/api/watch-order/:id/show`, ({ params }) => {
 			reached.push(String(params.id));
 			return new Promise<Response>((resolve) =>
 				holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
@@ -153,7 +158,7 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 3000) {
 }
 
 describe('detail route — leaving a show while its franchise is read', () => {
-	it("cancels the show's franchise read, so the next show's own read is not held behind it", async () => {
+	it("cancels the show's watch-order read, so the next show's own read is not held behind it", async () => {
 		slowKitsu();
 		pool = sixConnections();
 		setParams({ id: '101' });
@@ -166,14 +171,14 @@ describe('detail route — leaving a show while its franchise is read', () => {
 		}
 		expect(walks(pool)).toEqual(['101', '102', '103', '104', '105']);
 		expect(hops(pool)).toEqual(['101', '102', '103', '104', '105']);
-		// The seventh show's details come through, and its own franchise
-		// read reaches the lane rather than waiting behind the others.
+		// The seventh show's details come through, and its own
+		// watch-order read reaches the lane rather than waiting behind the others.
 		setParams({ id: '107' });
 		await until(() => title() === 'Show 107', 'show 107');
-		await until(() => reached.includes('107'), "show 107's franchise read");
+		await until(() => reached.includes('107'), "show 107's watch-order read");
 	});
 
-	it('cancels the franchise read when the page itself goes', async () => {
+	it('cancels the watch-order read when the page itself goes', async () => {
 		slowKitsu();
 		pool = sixConnections();
 		setParams({ id: '201' });

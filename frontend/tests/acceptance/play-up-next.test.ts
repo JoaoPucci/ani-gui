@@ -21,9 +21,10 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { answerResponse, type ScenarioInputs } from './watch-order-answers';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
-import { availabilityAnswer, episodeAnswer, errorAnswer } from '../answers';
+import { availabilityAnswer, episodeAnswer } from '../answers';
 import { watchPageFetches } from './page-fetches';
 import { recordMotion, setReducedMotion } from './motion';
 import { playerVideo, playerVideoInSlot } from './player-video';
@@ -51,7 +52,6 @@ import {
 	type AvailabilityResponse,
 	type Config,
 	type Franchise,
-	type HistoryEntry,
 	type KitsuAnimeRef,
 	type KitsuEpisode,
 	type LinkOutcome,
@@ -132,7 +132,7 @@ const g = globalThis as unknown as GlobalLike;
 
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
-/** Franchise reads held open, ended when the case ends. */
+/** Up next reads held open, ended when the case ends. */
 const holding: Array<() => void> = [];
 
 beforeEach(() => {
@@ -184,8 +184,9 @@ interface Options {
 	autoPlayNext?: boolean;
 	nativeControls?: boolean;
 	skips?: { skip_type: string; start_time: number; end_time: number }[];
-	/** Null: the franchise cannot be read. Held: Kitsu is slow, and
-	 *  the read stays open until the page cancels it. */
+	/** Null: the franchise cannot be read (the Up next route fails).
+	 *  Held: Kitsu is slow, and the route stays open until the page
+	 *  cancels it. */
 	franchise?: ReturnType<typeof franchise> | null | 'held';
 	/** How many episodes the source lists and has aired: Kitsu's 12 unless set. */
 	sourceEpisodes?: number;
@@ -204,6 +205,63 @@ interface Options {
 
 type HistoryRowFixture = { id: string; title: string; ep_no: string; kitsu_id?: string };
 
+/**
+ * What the resume lookup names for each id: the row that recorded it,
+ * or the one the backend names for it where that is another.
+ */
+function resumesOf(
+	history: HistoryRowFixture[] | undefined,
+	named: Record<string, HistoryRowFixture> = {}
+): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const r of history ?? []) if (r.kitsu_id) out[r.kitsu_id] = r.ep_no;
+	for (const [id, r] of Object.entries(named)) out[id] = r.ep_no;
+	return out;
+}
+
+/** What the player's Kitsu detail says about Second Arc, as the backend reads it. */
+const SECOND_OWN = { status: 'finished', episodes: EPISODES };
+
+/** Where the Up next route's answer comes from, for one read. */
+interface UpNextSource {
+	order: Config['watch_order'];
+	/** Null: the franchise cannot be read, and the route fails. Held:
+	 *  Kitsu is slow, and the route stays open until the page cancels it. */
+	franchise: Franchise | null | 'held';
+	history?: HistoryRowFixture[];
+	named?: Record<string, HistoryRowFixture>;
+}
+
+/**
+ * The Up next route (`POST /api/watch-order/:id/up-next {today,
+ * episode}`): the backend's answer recorded for the episode the page
+ * asks about, the franchise and history `source(id)` describes, the
+ * order setting and the player's detail of Second Arc.
+ */
+function upNextRoute(source: (id: string) => UpNextSource) {
+	return http.post(`${API_BASE}/api/watch-order/:id/up-next`, async ({ params, request }) => {
+		const id = String(params.id);
+		const { episode } = (await request.json()) as { episode: number };
+		const s = source(id);
+		if (s.franchise === 'held')
+			return new Promise<Response>((resolve) =>
+				holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
+			);
+		if (s.franchise === null) return new HttpResponse(null, { status: 503 });
+		const inputs: ScenarioInputs = {
+			route: 'up-next',
+			id,
+			order: s.order,
+			franchise: s.franchise,
+			// Read at each request: a scenario's history can change between reads.
+			resumes: resumesOf(s.history, s.named),
+			episode,
+			own: SECOND_OWN
+		};
+		return answerResponse('play-up-next', inputs);
+	});
+}
+
 /** Opens `options.episode` of Second Arc and gives its video a length. */
 async function openEpisode(options: Options = {}) {
 	const fetches = watchPageFetches();
@@ -211,7 +269,6 @@ async function openEpisode(options: Options = {}) {
 		http.get(`${API_BASE}/api/settings`, () =>
 			HttpResponse.json<Config>({
 				...appConfig(),
-				watch_order: options.order ?? 'linked',
 				auto_play_next: options.autoPlayNext === true,
 				auto_skip_op: options.autoSkipOp === true,
 				use_custom_player_controls: options.nativeControls !== true
@@ -223,26 +280,12 @@ async function openEpisode(options: Options = {}) {
 				status: 'finished'
 			})
 		),
-		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, () =>
-			options.franchise === 'held'
-				? new Promise<Response>((resolve) =>
-						holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
-					)
-				: options.franchise === null
-					? errorAnswer(502, { kind: 'upstream', status: 503, key: 'error.network.upstream' })
-					: HttpResponse.json<Franchise>(options.franchise ?? franchise())
-		),
-		// The rows the franchise's entries resume from, as the resume
-		// lookup names them.
-		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-			const { ids } = (await request.json()) as { ids: string[] };
-			const rows = options.history ?? [];
-			return HttpResponse.json<Record<string, HistoryEntry | null>>(
-				Object.fromEntries(
-					ids.map((k) => [k, options.named?.[k] ?? rows.find((r) => r.kitsu_id === k) ?? null])
-				)
-			);
-		}),
+		upNextRoute(() => ({
+			order: options.order ?? 'linked',
+			franchise: options.franchise === undefined ? franchise() : options.franchise,
+			history: options.history,
+			named: options.named
+		})),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
 			HttpResponse.json<AiringStatus>({
 				aired: options.sourceEpisodes ?? EPISODES,
@@ -288,7 +331,7 @@ async function openEpisode(options: Options = {}) {
 	// phase ends, and with it the start veil that holds the pill back.
 	video.dispatchEvent(new Event('playing'));
 	if (options.franchise !== 'held')
-		await fetches.settled('the franchise, the settings and the skip times');
+		await fetches.settled('the Up next read, the settings and the skip times');
 	return { video, fetches };
 }
 
@@ -489,14 +532,13 @@ describe('the Up next card at a finale', () => {
 		await playToEnd(video);
 		await until(() => card() !== null, 'the card');
 		await fetches.settled('anything the card set off');
-		// The local history lookup names every entry of the franchise
-		// once it is read, which asks nothing of the provider.
+		// The page asks the backend about Second Arc's episode alone
+		// (`up-next`), and nothing about Final Arc.
 		const asked = fetches.sent.filter(
 			(f) =>
-				f.path !== '/api/history/by-kitsu' &&
-				(f.path.includes('/50') ||
-					JSON.stringify(f.body).includes('Final Arc') ||
-					JSON.stringify(f.body).includes('"50"'))
+				f.path.includes('/50') ||
+				JSON.stringify(f.body).includes('Final Arc') ||
+				JSON.stringify(f.body).includes('"50"')
 		);
 		expect(asked).toEqual([]);
 		const after = fetches.sent.slice(sentBefore);
@@ -1085,7 +1127,8 @@ const OPENED_ON = { id: '9001', title: 'Long Saga', episodes: 24 };
  * another show (`routes/play/[id]/+layout.svelte`); this drives the page
  * itself through the id change its guard still covers: the page keeps
  * the detail and availability it read at mount, Long Saga's, while the
- * franchise is read again for Second Arc.
+ * Up next card is read again for Second Arc (whose detail the backend
+ * reads for itself).
  */
 async function openMovedToAnotherShow(options: { autoPlayNext?: boolean } = {}) {
 	const fetches = watchPageFetches();
@@ -1093,7 +1136,6 @@ async function openMovedToAnotherShow(options: { autoPlayNext?: boolean } = {}) 
 		http.get(`${API_BASE}/api/settings`, () =>
 			HttpResponse.json<Config>({
 				...appConfig(),
-				watch_order: 'linked',
 				auto_play_next: options.autoPlayNext === true,
 				use_custom_player_controls: true
 			})
@@ -1109,17 +1151,11 @@ async function openMovedToAnotherShow(options: { autoPlayNext?: boolean } = {}) 
 						status: 'finished'
 					})
 		),
-		http.get(`${API_BASE}/api/kitsu/franchise/:id`, ({ params }) =>
-			params.id === KITSU_ID
-				? HttpResponse.json<Franchise>(franchise())
-				: errorAnswer(502, { kind: 'upstream', status: 503, key: 'error.network.upstream' })
-		),
-		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-			const { ids } = (await request.json()) as { ids: string[] };
-			return HttpResponse.json<Record<string, HistoryEntry | null>>(
-				Object.fromEntries(ids.map((k) => [k, null]))
-			);
-		}),
+		// Long Saga's franchise cannot be read; Second Arc's is the Saga run.
+		upNextRoute((id) => ({
+			order: 'linked',
+			franchise: id === KITSU_ID ? franchise() : null
+		})),
 		http.get(`${API_BASE}/api/kitsu/airing/:id`, () =>
 			HttpResponse.json<AiringStatus>({
 				aired: OPENED_ON.episodes,
@@ -1159,7 +1195,7 @@ async function openMovedToAnotherShow(options: { autoPlayNext?: boolean } = {}) 
 	await fetches.settled('the first show');
 	setParams({ id: KITSU_ID });
 	await switchTo(video, EPISODES, 'session-2');
-	await fetches.settled('the franchise of the show the page moved to');
+	await fetches.settled('the Up next read of the show the page moved to');
 	return { video, fetches };
 }
 
@@ -1198,10 +1234,10 @@ describe('the Up next card on a player whose id moves to another show', () => {
 describe("the Up next card's read", () => {
 	it('is cancelled when the player goes, so a slow franchise walk holds no connection', async () => {
 		const { fetches } = await openEpisode({ franchise: 'held' });
-		const franchiseRead = (f: { path: string }) => f.path === `/api/kitsu/franchise/${KITSU_ID}`;
-		await until(() => fetches.sent.some(franchiseRead), 'the franchise read');
+		const upNextRead = (f: { path: string }) => f.path === `/api/watch-order/${KITSU_ID}/up-next`;
+		await until(() => fetches.sent.some(upNextRead), 'the Up next read');
 		unmount(app!);
 		app = null;
-		await until(() => fetches.failed.some(franchiseRead), 'the franchise read cancelled', 2000);
+		await until(() => fetches.failed.some(upNextRead), 'the Up next read cancelled', 2000);
 	});
 });

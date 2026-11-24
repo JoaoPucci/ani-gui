@@ -1,14 +1,12 @@
 /**
- * The strip's copy for the readings in `./strip-view` and
- * `./strip-wording`: Paraglide messages only, so the components stay
- * thin.
+ * The strip's copy for the backend's readings (`$lib/api` `StripWire`)
+ * and `./strip-wording`: Paraglide messages only, so the components
+ * stay thin.
  */
 import { m } from '$lib/paraglide/messages';
 import { loopText, numeral } from './meta';
-import type { Seam } from './chain-view';
-import type { StripCaption } from './page-model';
-import type { EmptyColumn, FranchiseSummary } from './strip-view';
-import type { ColumnKey, ColumnWord } from './strip-wording';
+import type { FranchiseSummary, Seam, StripCaption, StripKind } from '$lib/api';
+import type { ColumnKey, ColumnWord, EmptyColumn } from './strip-wording';
 
 const WORDS: Record<ColumnWord, readonly [() => string, () => string]> = {
 	prequel: [m.watchorder_strip_word_prequel, m.watchorder_strip_word_prequels],
@@ -37,7 +35,7 @@ export function columnKeyText(key: ColumnKey): string {
  * be short.
  */
 export function columnCountText(
-	kind: 'run' | 'side',
+	kind: StripKind,
 	side: 'before' | 'after',
 	count: number,
 	complete: boolean

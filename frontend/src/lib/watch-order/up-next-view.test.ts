@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { m } from '$lib/paraglide/messages';
-import type { WatchEntry } from './types';
+import type { NextWire, UpNextWire, ViewEntry } from '$lib/api';
 import {
 	franchiseCardLabel,
 	franchiseCardMeta,
@@ -8,9 +8,8 @@ import {
 	cardAnnouncement,
 	cardKey
 } from './up-next-view';
-import type { PlayerUpNext } from './chain-end';
 
-const e = (id: string): WatchEntry => ({
+const e = (id: string): ViewEntry => ({
 	id,
 	title: `T${id}`,
 	subtype: 'TV',
@@ -18,12 +17,13 @@ const e = (id: string): WatchEntry => ({
 	episodes: 12,
 	status: 'finished',
 	poster: null,
-	cover: null
+	cover: null,
+	unaired: false,
+	progress: { kind: 'none' }
 });
 const summary = { total: 7, main: 3, films: 4, sides: 0, recaps: 0, posters: [] };
-const entryCard = (upNext: Extract<PlayerUpNext, { kind: 'entry' }>['card']['upNext']) =>
-	({ kind: 'entry', card: { upNext, progress: {} } }) as const;
-const franchiseCard: PlayerUpNext = {
+const entryCard = (card: NextWire): UpNextWire => ({ kind: 'entry', card });
+const franchiseCard: UpNextWire = {
 	kind: 'franchise',
 	card: { name: 'Fate/stay night', id: '9', front: '3', summary }
 };

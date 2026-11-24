@@ -35,6 +35,7 @@ mod refill;
 mod sse_abort;
 mod syncplay;
 mod update;
+pub mod watch_order;
 
 use sse_abort::abort_on_drop;
 
@@ -173,6 +174,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .merge(airing::router())
         .merge(franchise::router())
         .merge(refill::router())
+        .merge(watch_order::router())
         .with_state(state.clone())
         // Every route answers only the app's own callers: a request
         // without the launch's secret is refused before any handler

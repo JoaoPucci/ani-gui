@@ -158,6 +158,7 @@ pub(crate) mod title_match_rows;
 pub(crate) mod title_match_store;
 pub(crate) mod title_match_year;
 pub(crate) mod tracker_map;
+pub mod watch_order;
 
 pub use app_info::app_info;
 pub use external_player::{open_external_player, LaunchArgs};

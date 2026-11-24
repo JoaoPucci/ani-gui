@@ -20,6 +20,7 @@ import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
+import { answerResponse } from './watch-order-answers';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { recordMotion, setReducedMotion, type Motion } from './motion';
@@ -48,7 +49,6 @@ import {
 	type FirstHopAnswer,
 	type Franchise,
 	type FranchiseEntry,
-	type HistoryEntry,
 	type HistoryRowByKitsu,
 	type KitsuAnimeRef,
 	type KitsuEpisode
@@ -154,8 +154,8 @@ interface ShowOptions {
 	/** The first hop's answer; held until `hopGate` opens, if given. */
 	hop?: () => Response;
 	hopGate?: Promise<void>;
-	/** The walk's answer; held until `walkGate` opens, if given. */
-	franchise?: () => Response;
+	/** The walk's answer, or its failure; held until `walkGate` opens, if given. */
+	franchise?: Franchise | 'fail';
 	walkGate?: Promise<void>;
 	/** The show's details and the settings, held until these open. */
 	detailsGate?: Promise<void>;
@@ -181,11 +181,21 @@ function useShow(opts: ShowOptions = {}) {
 			await opts.hopGate;
 			return opts.hop ? opts.hop() : HttpResponse.json<FirstHopAnswer>({ signal: 'strip' });
 		}),
-		http.get(`${API_BASE}/api/kitsu/franchise/${KITSU_ID}`, async () => {
+		// The show's watch-order answer: the backend's, recorded for the
+		// walk's answer, no history and the linked order.
+		http.post(`${API_BASE}/api/watch-order/${KITSU_ID}/show`, async () => {
 			calls.franchise++;
 			await opts.walkGate;
 			calls.walked++;
-			return opts.franchise ? opts.franchise() : HttpResponse.json<Franchise>(RUN);
+			const franchise = opts.franchise ?? RUN;
+			if (franchise === 'fail') return new HttpResponse(null, { status: 503 });
+			return answerResponse('detail-watch-order-arrival', {
+				route: 'show',
+				id: KITSU_ID,
+				order: 'linked',
+				franchise,
+				resumes: {}
+			});
 		}),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
 			HttpResponse.json<AiringStatus>({
@@ -214,12 +224,6 @@ function useShow(opts: ShowOptions = {}) {
 			HttpResponse.json<HistoryRowByKitsu | null>(null)
 		),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json<string | null>('/dl')),
-		http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-			const { ids } = (await request.json()) as { ids: string[] };
-			return HttpResponse.json<Record<string, HistoryEntry | null>>(
-				Object.fromEntries(ids.map((id) => [id, null]))
-			);
-		}),
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json<Record<string, number>>({}))
 	);
 	return calls;
@@ -262,7 +266,7 @@ describe('detail route — the watch-order strip arriving', () => {
 		const walk = gate();
 		useShow({
 			hop: () => HttpResponse.json<FirstHopAnswer>({ signal: 'link' }),
-			franchise: () => HttpResponse.json<Franchise>(LINK_ONLY),
+			franchise: LINK_ONLY,
 			walkGate: walk.opened
 		});
 		app = mount(DetailPage, { target });
@@ -280,7 +284,7 @@ describe('detail route — the watch-order strip arriving', () => {
 		const walk = gate();
 		const calls = useShow({
 			hop: () => HttpResponse.json<FirstHopAnswer>({ signal: 'none' }),
-			franchise: () => HttpResponse.json<Franchise>(ALONE),
+			franchise: ALONE,
 			walkGate: walk.opened
 		});
 		app = mount(DetailPage, { target });
@@ -297,7 +301,7 @@ describe('detail route — the watch-order strip arriving', () => {
 	it('fades the room and folds it away when the walk fails', async () => {
 		const walk = gate();
 		useShow({
-			franchise: () => new HttpResponse(null, { status: 503 }),
+			franchise: 'fail',
 			walkGate: walk.opened
 		});
 		app = mount(DetailPage, { target });
@@ -314,7 +318,7 @@ describe('detail route — the watch-order strip arriving', () => {
 	it('goes at once and keeps the scroll when the room is above the viewport', async () => {
 		const walk = gate();
 		useShow({
-			franchise: () => new HttpResponse(null, { status: 503 }),
+			franchise: 'fail',
 			walkGate: walk.opened
 		});
 		// The reader is 1000px down; the change is held from there, not
@@ -405,7 +409,7 @@ describe('detail route — the watch-order strip arriving', () => {
 		}
 	});
 
-	it('holds the strip’s room until the order setting is read, when the walk answered first', async () => {
+	it('draws the strip as soon as the walk answers, without waiting for the settings read', async () => {
 		const settings = gate();
 		const details = gate();
 		const hop = gate();
@@ -424,9 +428,8 @@ describe('detail route — the watch-order strip arriving', () => {
 			await new Promise((r) => setTimeout(r, 30));
 			hop.open();
 			await until(() => title() !== '', 'the page');
-			// The strip cannot draw before the order setting: its room is held.
-			expect(held()).not.toBeNull();
-			settings.open();
+			// The backend read the order setting itself: the page's own
+			// settings read, still out, holds nothing back.
 			await until(() => strip() !== null && held() === null, 'the strip');
 		} finally {
 			settings.open();
@@ -456,7 +459,7 @@ describe('detail route — the watch-order strip arriving', () => {
 		}
 	});
 
-	it('draws a show visited again with its strip even when the order setting is read last', async () => {
+	it('draws a show visited again with its strip in its first frame while the settings read is out', async () => {
 		useShow();
 		app = mount(DetailPage, { target });
 		await until(() => strip() !== null, 'the strip, first visit');
@@ -468,11 +471,11 @@ describe('detail route — the watch-order strip arriving', () => {
 		useShow({ settingsGate: settings.opened, walkGate: walk.opened });
 		app = mount(DetailPage, { target });
 		try {
-			await new Promise((r) => setTimeout(r, 100));
-			settings.open();
 			await until(() => title() !== '', 'the page, second visit');
-			// The page waited for the setting, so the strip came with it.
+			// The remembered answer is drawn with the page: nothing waits
+			// for the settings read, which has not answered.
 			expect(strip()).not.toBeNull();
+			expect(held()).toBeNull();
 		} finally {
 			settings.open();
 			walk.open();
@@ -497,7 +500,7 @@ describe('detail route — the watch-order strip arriving', () => {
 		await setReducedMotion(true);
 		const walk = gate();
 		useShow({
-			franchise: () => new HttpResponse(null, { status: 503 }),
+			franchise: 'fail',
 			walkGate: walk.opened
 		});
 		app = mount(DetailPage, { target });

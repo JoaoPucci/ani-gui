@@ -107,7 +107,12 @@
  * size, centred on its control as the window buttons place it: a
  * pseudo-element has no box a script can read. Every API request is
  * stubbed, but for the player tests' play and stream, which run on the
- * backend's replay of a seeded row (see real-play.ts).
+ * backend's replay of a seeded row (see real-play.ts), and the hand-off
+ * walk's rail, which the backend decides from what Home sends it. The
+ * strip's, the franchise page's and the Up next card's answers are the
+ * backend's recorded ones for the acceptance scenarios
+ * (tests/fixtures/watch-order/scenarios); the hand-off's is written
+ * in the test.
  *
  * A ring on an element inside a control is found only through a rule
  * that sets its outline or shadow under `:focus-visible`: one drawn
@@ -1352,24 +1357,33 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 	}
 });
 
-/** BLEACH's franchise as the backend serves it (the walk's recorded
- *  answer, which the frontend's strip tests read too). */
-const bleach = JSON.parse(
-	fs.readFileSync(
-		path.resolve(__dirname, '../../tests/fixtures/franchise/served-244.json'),
-		'utf8'
-	)
-) as { anchor: string; entries: { id: string; title: string }[] };
+/** The backend's recorded watch-order answers for the acceptance
+ *  scenarios (tests/fixtures/watch-order/scenarios), by the case's name. */
+function scenarioAnswer(file: string, name: string): unknown {
+	const scenario = JSON.parse(
+		fs.readFileSync(
+			path.resolve(__dirname, '../../tests/fixtures/watch-order/scenarios', `${file}.json`),
+			'utf8'
+		)
+	) as { cases: { name: string; answer: unknown }[] };
+	const found = scenario.cases.find((c) => c.name.includes(name));
+	if (!found) throw new Error(`no case "${name}" in ${file}.json`);
+	return found.answer;
+}
 
-/** A show the franchise places mid-run: the third part of BLEACH's
- *  last arc, with an entry before it and one after, while BLEACH itself
- *  is part-watched, so the strip shows its tiles, the line for the
- *  entry being watched and the franchise link. */
-const stripShow = {
-	...topRated[0],
-	id: '48015',
-	canonical_title: bleach.entries.find((e) => e.id === '48015')!.title
-};
+/** A show the backend places mid-run with another entry part-watched:
+ *  the strip shows its tiles, the line for the entry being watched and
+ *  the franchise link, and the franchise page resumes the entry being
+ *  watched. */
+const stripShow = { ...topRated[0], id: '42', canonical_title: 'Saga: Second Arc' };
+const stripAnswer = scenarioAnswer(
+	'detail-watch-order-strip',
+	'keeps the franchise link beside the card for the entry being watched'
+);
+const franchiseAnswer = scenarioAnswer(
+	'franchise-page',
+	'resumes the title being watched, and says where it is'
+);
 
 test("the rings on a show page's watch-order strip and its franchise page are drawn once and whole", async () => {
 	test.setTimeout(240_000);
@@ -1383,22 +1397,10 @@ test("the rings on a show page's watch-order strip and its franchise page are dr
 				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 			if (p === '/api/kitsu/top-rated') return j([stripShow]);
 			if (p.startsWith('/api/kitsu/anime/')) return j(stripShow);
-			// The walk answers from the show asked about: the same
-			// franchise, anchored there.
-			if (p.startsWith('/api/kitsu/franchise/')) {
-				return j({ ...bleach, anchor: decodeURIComponent(p.split('/').pop() ?? '') });
-			}
-			if (p === '/api/history/by-kitsu') {
-				const { ids } = r.request().postDataJSON() as { ids: string[] };
-				return j(
-					Object.fromEntries(
-						ids.map((i) => [
-							i,
-							i === '244' ? { id: 'allmanga-bleach', ep_no: '6', title: 'BLEACH' } : null
-						])
-					)
-				);
-			}
+			if (p === `/api/watch-order/${stripShow.id}/show`) return j(stripAnswer);
+			if (p === `/api/watch-order/${stripShow.id}/franchise`) return j(franchiseAnswer);
+			// The walk's first hop foretells the strip.
+			if (p === `/api/kitsu/franchise/${stripShow.id}/first-hop`) return j({ signal: 'strip' });
 			return r.fallback();
 		});
 		await remount(page);
@@ -1574,104 +1576,54 @@ async function walkPlayer(origin: string) {
  *  episode the card plays is the show's finale, so its end brings up the
  *  Up next card for what the franchise puts after it. */
 const finaleShow = { ...continueKitsuMatch, episode_count: 6 };
-const finaleEntry = (id: string, title: string, start: string, episodes: number) => ({
-	id,
-	title,
-	subtype: 'TV',
-	start,
-	episodes,
-	status: 'finished',
-	poster: null,
-	cover: null
-});
-/** The show's franchise with `after` following it. */
-const finaleFranchise = (after: ReturnType<typeof finaleEntry>[]): Record<string, unknown> => ({
-	anchor: finaleShow.id,
-	name: finaleShow.canonical_title,
-	name_from: finaleShow.id,
-	entries: [
-		finaleEntry(finaleShow.id, finaleShow.canonical_title, finaleShow.start_date, 6),
-		...after
-	],
-	links: after.map((e) => [finaleShow.id, e.id]),
-	versions: [],
-	films: [],
-	sides: [],
-	recaps: [],
-	parents: {},
-	complete: true
-});
-const season2 = finaleEntry(
-	`${finaleShow.id}-2`,
-	`${finaleShow.canonical_title} Season 2`,
-	'2025-01-10',
-	12
-);
-/** The show alone on a chain outside a main story of two seasons. */
-function chainEndFranchise(): Record<string, unknown> {
-	const own = finaleEntry(finaleShow.id, finaleShow.canonical_title, finaleShow.start_date, 6);
-	const main = [
-		finaleEntry('main-1', 'Main Story', '2020-01-10', 12),
-		finaleEntry('main-2', 'Main Story Season 2', '2021-01-10', 12)
-	];
-	return {
-		anchor: finaleShow.id,
-		name: 'Main Story',
-		name_from: 'main-1',
-		entries: main,
-		links: [['main-1', 'main-2']],
-		versions: [],
-		films: [],
-		sides: [own],
-		recaps: [],
-		parents: {},
-		complete: true,
-		chain: { entries: [own], links: [], seams: [] }
+/** The backend's recorded Up next answer for a scenario case, and the
+ *  links its rows carry. */
+function upNextAnswer(name: string): { answer: unknown; hrefs: string[] } {
+	const answer = scenarioAnswer('play-up-next', name) as {
+		card: {
+			kind: 'entry' | 'franchise';
+			card: { kind?: string; id?: string; entry?: { id: string }; entries?: { id: string }[] };
+		};
 	};
+	const { kind, card } = answer.card;
+	const hrefs =
+		kind === 'franchise'
+			? [`/anime/${card.id}/franchise`]
+			: card.kind === 'unaired'
+				? []
+				: (card.entries ?? [card.entry!]).map((e) => `/anime/${e.id}`);
+	return { answer, hrefs };
 }
-/** The card's forms: one entry after the show, a fork of two, one
- *  that has not aired, whose row links nowhere, and the end of a chain,
- *  which links to the franchise page. */
+/** The card's forms, as the backend answers them: one entry after the
+ *  show, a fork of two, one that has not aired, whose row links
+ *  nowhere, and the end of a chain, which links to the franchise page.
+ *  The answers were recorded for another show (Kitsu id 42), so the
+ *  chain's end links to that show's franchise page, not the played
+ *  one's: the card draws what the backend answers, whichever show. */
 const upNextForms = [
 	{
 		label: 'one entry',
-		after: [season2],
-		needs: ['.up-next a.row', '.up-next .dismiss'],
-		rows: 1
+		...upNextAnswer('names the next entry once the video ends'),
+		needs: ['.up-next a.row', '.up-next .dismiss']
 	},
 	{
 		label: 'a fork',
-		after: [
-			season2,
-			finaleEntry(
-				`${finaleShow.id}-film`,
-				`${finaleShow.canonical_title} The Movie`,
-				'2025-03-01',
-				1
-			)
-		],
-		needs: ['.up-next .choices a.row', '.up-next .dismiss'],
-		rows: 2
+		...upNextAnswer('lists the ways on at a fork'),
+		needs: ['.up-next .choices a.row', '.up-next .dismiss']
 	},
 	{
 		label: 'an entry not aired',
-		after: [{ ...season2, start: '2999-01-01', status: 'upcoming', episodes: null }],
-		needs: ['.up-next .dismiss'],
-		rows: 0
+		...upNextAnswer('shows a next entry that has not aired'),
+		needs: ['.up-next .dismiss']
 	},
 	{
-		// The show on a chain of its own outside the main story, with
-		// nothing after it: the card offers the franchise page.
 		label: 'the end of a chain',
-		after: [],
-		franchise: chainEndFranchise(),
-		needs: ['.up-next a.row.franchise', '.up-next .dismiss'],
-		rows: 1,
-		href: `/anime/${finaleShow.id}/franchise`
+		...upNextAnswer('offers the whole franchise at the end of a chain'),
+		needs: ['.up-next a.row.franchise', '.up-next .dismiss']
 	}
 ];
 
-/** Plays the finale with `form`'s franchise, brings the Up next card up
+/** Plays the finale with `form`'s answer, brings the Up next card up
  *  at the video's end and walks it. */
 async function walkUpNext(origin: string, form: (typeof upNextForms)[number]) {
 	const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ani-gui-focus-rings-up-next-'));
@@ -1696,16 +1648,11 @@ async function walkUpNext(origin: string, form: (typeof upNextForms)[number]) {
 			stream: { upstreamUrl: `${origin}/master.m3u8`, mediaKind: 'hls' },
 			show: { match: finaleShow, episode: continueKitsuEpisode6 }
 		});
-		const franchise = 'franchise' in form ? form.franchise : finaleFranchise(form.after);
 		await page.route('**/api/**', async (r) => {
 			const p = new URL(r.request().url()).pathname;
 			const j = (body: unknown) =>
 				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-			if (p.startsWith('/api/kitsu/franchise/')) return j(franchise);
-			if (p === '/api/history/by-kitsu') {
-				const { ids } = r.request().postDataJSON() as { ids: string[] };
-				return j(Object.fromEntries(ids.map((i) => [i, null])));
-			}
+			if (p === `/api/watch-order/${finaleShow.id}/up-next`) return j(form.answer);
 			return r.fallback();
 		});
 		await sizeViewport(page, 1440, 900);
@@ -1729,10 +1676,8 @@ async function walkUpNext(origin: string, form: (typeof upNextForms)[number]) {
 		await expect(card).toBeVisible({ timeout: 30_000 });
 		// The card names what follows: each row links to its entry.
 		const rows = card.locator('a.row');
-		await expect(rows).toHaveCount(form.rows);
-		const hrefs =
-			'href' in form ? [form.href] : form.after.slice(0, form.rows).map((e) => `/anime/${e.id}`);
-		for (const [i, href] of hrefs.entries()) {
+		await expect(rows).toHaveCount(form.hrefs.length);
+		for (const [i, href] of form.hrefs.entries()) {
 			await expect(rows.nth(i)).toHaveAttribute('href', new RegExp(`${href}$`));
 		}
 		for (const forced of [false, true]) {
@@ -1775,6 +1720,20 @@ test("the rings on Continue Watching's hand-off card are drawn once and whole", 
 		// One row, played through the finale of a show a second season
 		// follows, which no row resumes: its card moves on to the season.
 		const row = { ...guessedHistory[0], ep_no: '6' };
+		const entry = (id: string, title: string, start: string, episodes: number) => ({
+			id,
+			title,
+			subtype: 'TV',
+			start,
+			episodes,
+			status: 'finished',
+			poster: null,
+			cover: null
+		});
+		const handoff = {
+			finished: entry(finaleShow.id, finaleShow.canonical_title, finaleShow.start_date, 6),
+			next: entry(`${finaleShow.id}-2`, `${finaleShow.canonical_title} Season 2`, '2025-01-10', 12)
+		};
 		await page.route('**/api/**', async (r) => {
 			const p = new URL(r.request().url()).pathname;
 			const j = (body: unknown) =>
@@ -1788,11 +1747,11 @@ test("the rings on Continue Watching's hand-off card are drawn once and whole", 
 			if (p.startsWith('/api/allmanga-kitsu-map/')) return j(finaleShow.id);
 			if (p === `/api/kitsu/anime/${finaleShow.id}`) return j(finaleShow);
 			if (p === `/api/kitsu/episodes/${finaleShow.id}`) return j(continueEpisodes.slice(0, 6));
-			if (p.startsWith('/api/kitsu/franchise/')) return j(finaleFranchise([season2]));
-			if (p === '/api/history/by-kitsu') {
-				const { ids } = r.request().postDataJSON() as { ids: string[] };
-				return j(Object.fromEntries(ids.map((i) => [i, null])));
-			}
+			// The backend's hand-off from the show: on to its second season.
+			if (p === `/api/watch-order/${finaleShow.id}/handoff`) return j({ handoff });
+			// Which rows ask and which show a hand-off: the backend's own
+			// decision, over what Home has read.
+			if (p === '/api/watch-order/rail') return r.continue();
 			if (p.startsWith('/api/title-match')) return j(null);
 			// The source lists no episode past the sixth: the finale stands.
 			if (p === '/api/availability') {

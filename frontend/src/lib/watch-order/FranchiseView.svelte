@@ -10,23 +10,22 @@
   column: a caption, with a line under it only for a title part-way
   through a known total (`./row-progress`), in the one list-progress
   colour; the meta line keeps the episode count.
-  Every reading comes from the page model (`./franchise-page`); this
-  component only draws it.
+  Every reading is the backend's (`$lib/api` `FranchiseWire`); this
+  component only words and draws it.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { imageProxyUrl } from '$lib/api';
+	import { imageProxyUrl, type FranchiseWire, type RowWire, type WatchOrder } from '$lib/api';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
 	import MetaLine from './MetaLine.svelte';
-	import type { FranchisePageModel, FranchiseRow } from './franchise-page';
 	import { loopGroupText, metaLine, numeral, waysKeyText } from './meta';
 	import { asRef } from './poster-ref';
 	import { captionParts, rowProgress } from './row-progress';
 
-	let { model, today }: { model: FranchisePageModel; today: string } = $props();
+	let { model, order }: { model: FranchiseWire; order: WatchOrder } = $props();
 
 	const accent = $derived(accentFor(model.art.id));
 </script>
@@ -85,7 +84,7 @@
 					{/if}
 				</div>
 				<p class="order-note">
-					{model.order === 'linked'
+					{order === 'linked'
 						? m.watchorder_franchise_order_note_linked()
 						: m.watchorder_franchise_order_note_released()}
 					<a class="text-link" href={resolve('/settings')}
@@ -95,7 +94,7 @@
 			</div>
 		</section>
 
-		{#snippet row(r: FranchiseRow, numbered: boolean)}
+		{#snippet row(r: RowWire, numbered: boolean)}
 			{@const p = rowProgress(r)}
 			<li class:here={r.here} style:--row-accent={accentFor(r.entry.id)}>
 				<a
@@ -121,9 +120,9 @@
 					<span class="row-text">
 						{#if r.here}<span class="here-key">{m.watchorder_franchise_here()}</span>{/if}
 						<span class="row-title">{r.entry.title}</span>
-						<MetaLine segments={metaLine(r.entry, undefined, today)} />
-						{#if r.leadsInto !== null}
-							<span class="row-note">{m.watchorder_strip_leads_into({ title: r.leadsInto })}</span>
+						<MetaLine segments={metaLine(r.entry, false)} />
+						{#if r.leads_into !== null}
+							<span class="row-note">{m.watchorder_strip_leads_into({ title: r.leads_into })}</span>
 						{/if}
 					</span>
 					{#if p.kind !== 'none'}
@@ -220,9 +219,9 @@
 				<div class="recaps-head">
 					<h2 class="eyebrow">
 						<span class="eyebrow-key">{m.watchorder_franchise_recaps()}</span>
-						{#if model.recapCount !== null}
+						{#if model.recap_count !== null}
 							<span class="eyebrow-rule" aria-hidden="true"></span>
-							<span class="eyebrow-value">{model.recapCount}</span>
+							<span class="eyebrow-value">{model.recap_count}</span>
 						{/if}
 					</h2>
 				</div>

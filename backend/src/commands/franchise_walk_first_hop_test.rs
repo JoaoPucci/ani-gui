@@ -14,16 +14,16 @@ use super::super::Franchise;
 use super::{first_hop, FirstHop, Step};
 use crate::meta::kitsu::{FranchiseEntry, FranchiseListing};
 
-/// What the show page draws from the walk's answer, as the frontend
-/// reads it (`frontend/src/lib/watch-order/page-model.ts`): the strip
+/// What the show page draws from the walk's answer, as the watch order
+/// decides it (`crate::watch_order::page_model`): the strip
 /// where the run holds the anchor and something beside it, or the
 /// anchor is a side story with a parent story in the run
-/// (`stripFor`); else the lone franchise link where the franchise page
-/// would list anything but the anchor (`franchiseLinkOnly`); else
+/// (`strip_for`); else the lone franchise link where the franchise page
+/// would list anything but the anchor (`franchise_link_only`); else
 /// nothing.
 fn drawn(f: &Franchise) -> FirstHop {
     // A page with a chain is drawn on it, as the strip draws it
-    // (`frontend/src/lib/watch-order/chain-view.ts`).
+    // (`crate::watch_order::chain_view`).
     let run = f.chain.as_ref().map_or(&f.entries, |c| &c.entries);
     let members: BTreeSet<&str> = run.iter().map(|e| e.id.as_str()).collect();
     let anchor = f.anchor.as_str();

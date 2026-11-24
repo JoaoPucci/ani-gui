@@ -1,6 +1,6 @@
 <!--
   Continue Watching's hand-off card: a finished entry's card moved on
-  to the next entry (see ./handoff). It keeps the Continue card's 16:9
+  to the next entry (the backend decides it, `$lib/api` `Handoff`). It keeps the Continue card's 16:9
   shape and anatomy so the rail stays even; its art is the next
   entry's banner, else its poster, and its tag reads "NEXT". The small
   line says why the card changed ("After …"); the large line carries
@@ -10,10 +10,9 @@
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { imageProxyUrl } from '$lib/api';
+	import { imageProxyUrl, type Handoff } from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import { m } from '$lib/paraglide/messages';
-	import type { Handoff } from './handoff';
 
 	let { handoff }: { handoff: Handoff } = $props();
 

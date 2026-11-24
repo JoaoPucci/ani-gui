@@ -1,8 +1,10 @@
 // Acceptance: Home's hand-off walks leave the API lane to the viewer.
 //
-// Each Continue row played through its finale asks for its series, and
-// the franchise route holds its response open while the backend walks
-// the franchise, several rounds of Kitsu reads when Kitsu is slow.
+// Each Continue row played through its finale asks for its series'
+// hand-off (`POST /api/watch-order/:id/handoff`, which Home reads once
+// the rail, `POST /api/watch-order/rail`, says the row asks), and the
+// hand-off route holds its response open while the backend walks the
+// franchise, several rounds of Kitsu reads when Kitsu is slow.
 // Chromium opens at most six connections to one origin and queues the
 // rest. The walks go to the franchise lane, an origin of their own, so
 // six of them can be out at once while Home's own calls — a Continue
@@ -19,6 +21,7 @@ import { appConfig, homeHandlers, kitsuRef } from './home-handlers';
 import { sixConnections, type Connections } from './connections';
 import { watchPageFetches } from './page-fetches';
 import { availabilityAnswer } from '../answers';
+import { railHandler } from './watch-order-answers';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -37,7 +40,6 @@ import {
 	__resetApiBaseForTests,
 	type AvailabilityResponse,
 	type Config,
-	type HistoryEntry,
 	type KitsuAnimeRef
 } from '../../src/lib/api';
 
@@ -116,17 +118,12 @@ describe('Continue Watching hand-off — the franchise lane', () => {
 					const row = HISTORY.find((h) => h.kitsu_id === id);
 					return HttpResponse.json<KitsuAnimeRef>(kitsuRef(id, row?.title ?? id, 13));
 				}),
+				railHandler('continue-watching-handoff-share'),
 				// Kitsu is slow: every series walk stays open.
-				http.get(`${FRANCHISE_LANE}/api/kitsu/franchise/:id`, () => {
+				http.post(`${FRANCHISE_LANE}/api/watch-order/:id/handoff`, () => {
 					onLane += 1;
 					return new Promise<Response>((resolve) =>
 						holding.push(() => resolve(new HttpResponse(null, { status: 503 })))
-					);
-				}),
-				http.post(`${API_BASE}/api/history/by-kitsu`, async ({ request }) => {
-					const { ids } = (await request.json()) as { ids: string[] };
-					return HttpResponse.json<Record<string, HistoryEntry | null>>(
-						Object.fromEntries(ids.map((k) => [k, null]))
 					);
 				}),
 				http.post(`${API_BASE}/api/play`, async ({ request }) => {
@@ -139,7 +136,8 @@ describe('Continue Watching hand-off — the franchise lane', () => {
 		pool = sixConnections();
 		const fetches = watchPageFetches();
 		app = mount(HomePage, { target });
-		const walks = () => fetches.sent.filter((f) => f.path.startsWith('/api/kitsu/franchise/'));
+		const walks = () =>
+			fetches.sent.filter((f) => /^\/api\/watch-order\/[^/]+\/handoff$/.test(f.path));
 		await until(() => onLane === 6, 'the six series walks');
 		await until(() => resumeFor(MIDDLE) !== null, 'the part-way card');
 		resumeFor(MIDDLE)!.click();
