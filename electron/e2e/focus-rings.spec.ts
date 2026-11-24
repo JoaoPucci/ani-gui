@@ -1017,6 +1017,14 @@ async function ringCoveredOnce(page: Page): Promise<string | null> {
 		// A transition still running (a hover's lift) ends here, where the
 		// ring is read, not after it is read.
 		touch(el, 'transition', 'none');
+		// And where it stands is held: a hover that comes or goes while it
+		// is pictured (on CI's Xvfb the window's real pointer, which sits
+		// over the page, takes the hover back from the test's whenever
+		// the page is pictured) does not lift or drop it in between.
+		const held = getComputedStyle(el);
+		for (const name of ['transform', 'translate', 'scale', 'rotate'] as const) {
+			touch(el, name, held.getPropertyValue(name));
+		}
 		const px = (v: string) => Number.parseFloat(v) || 0;
 		const cs = getComputedStyle(el);
 		const r = el.getBoundingClientRect();
