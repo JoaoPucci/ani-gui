@@ -4032,5 +4032,11 @@
 			color: HighlightText;
 			border-color: Highlight;
 		}
+		/* Its keyboard ring is drawn in the app's colours, which the
+		   opt-out would bring back; the theme's own outline shows
+		   focus (tokens.css). */
+		.seg-btn.active:focus-visible {
+			box-shadow: none;
+		}
 	}
 </style>

@@ -759,7 +759,10 @@
 			color: HighlightText;
 			border-color: Highlight;
 		}
-		.dl-mode-btn.active * {
+		/* Named as the count's own colour rule names it, which would
+		   otherwise outrank a bare descendant here and keep the accent. */
+		.dl-mode-btn.active *,
+		.dl-mode-btn.active .dl-mode-num {
 			color: HighlightText;
 		}
 	}

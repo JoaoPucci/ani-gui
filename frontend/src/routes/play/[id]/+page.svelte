@@ -6852,6 +6852,9 @@
 		.pc-scrubber-thumb {
 			forced-color-adjust: none;
 			background: CanvasText;
+			/* The timeline's thumb rests on a shadow, which the opt-out
+			   would bring back. */
+			box-shadow: none;
 		}
 	}
 </style>
