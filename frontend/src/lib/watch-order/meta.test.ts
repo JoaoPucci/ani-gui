@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { getLocale, overwriteGetLocale } from '$lib/paraglide/runtime';
 import type { ProgressView, ViewEntry } from '$lib/api';
 import { loopGroupText, metaLine, numeral, splitMeta, waysKeyText } from './meta';
 
@@ -75,6 +76,21 @@ describe('meta line', () => {
 			'word:TV',
 			'word:Coming July 2026'
 		]);
+	});
+
+	describe('in Russian', () => {
+		const initialLocale = getLocale();
+		afterEach(() => overwriteGetLocale(() => initialLocale));
+
+		// The month and year come from Intl in the nominative («июль
+		// 2026 г.»), which «Выходит …» would need in another case.
+		it('dates an unaired entry with a label the nominative date fits', () => {
+			overwriteGetLocale(() => 'ru');
+			expect(line(entry({ start: '2026-07-01', unaired: true }))).toEqual([
+				'word:ТВ',
+				'word:Выход: июль 2026 г.'
+			]);
+		});
 	});
 
 	it('reads progress without a total as the episode alone', () => {

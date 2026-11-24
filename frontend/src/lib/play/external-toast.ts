@@ -1,5 +1,5 @@
 /**
- * Pure helpers behind the play page's "Open in external" success
+ * Pure helpers behind the play page's "Open in …" (external player) success
  * surface. The launch flow used to set an inline `<p
  * class="external-notice">` banner under the player header; that
  * landed in a spot easy to miss (the user often clicked the

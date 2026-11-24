@@ -601,12 +601,6 @@ starting it, and delete it when you find it done.
   ("dragon ball" is 3 pages, "gundam" 9), bounded by the deepest
   offset a search walks to.
 - **Update notifier is not resilient to GitHub rate limits.**
-- **The OAuth callback pages still speak English whatever the app's
-  language.** The pages the OAuth callback server answers the browser
-  with after a sign-in — "Connected to ani-gui", "Connection failed" —
-  are written into `electron/oauth-server.js`; the main process has a
-  message table in every shipped locale for its dialogs
-  (`electron/lib/main-messages.cjs`), and they belong in it.
 - **Picture-in-picture shows no subtitles; a mini-player window is to
   replace it.** Chromium's picture-in-picture window draws the video's
   picture and not its text tracks, so the subtitles stay behind in the
@@ -645,13 +639,6 @@ starting it, and delete it when you find it done.
   page appends only what follows the point. When this entry was
   written the maintainer's recorded plays were all hls, so the gap
   reaches only sources the provider serves as mp4.
-- **A flatpak-only mpv goes undetected by the external-player
-  surface.** Upstream ani-cli fixed exactly this for its own player
-  launch just before the repositories parted (pystardust/ani-cli
-  #1858 and #1863: system-wide installs under `/var/lib/flatpak`,
-  user-level under `~/.local/share/flatpak`, app id `io.mpv.Mpv`) —
-  kept here as a reference for probing the same locations, not as
-  code to port.
 - **Subtitle presentation: user styling, and the anime's own
   colours.** Subtitle cues render as the browser draws them — the
   play page only picks which track shows — with no styling and no

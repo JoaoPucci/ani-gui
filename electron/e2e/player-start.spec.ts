@@ -198,7 +198,7 @@ const startingCaption: Record<string, string> = {
   en: "Loading episode 367",
   "pt-BR": "Carregando episódio 367",
   "es-419": "Cargando episodio 367",
-  ru: "Загрузка серии 367",
+  ru: "Загрузка эпизода 367",
 };
 
 /** The window the layout case is measured in, set on the page's own

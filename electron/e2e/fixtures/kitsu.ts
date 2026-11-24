@@ -78,7 +78,7 @@ export const defaultSettings = {
 	auto_skip_outro: false,
 	subtitle_track_index: 0,
 	external_player: '',
-	external_player_kind: 'Mpv',
+	external_player_kind: 'mpv',
 	external_player_custom_args: '',
 	syncplay_binary: 'syncplay',
 	download_dir: '',

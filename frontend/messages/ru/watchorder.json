@@ -7,7 +7,7 @@
 				"countPlural=one": "{count} тайтл",
 				"countPlural=few": "{count} тайтла",
 				"countPlural=many": "{count} тайтлов",
-				"countPlural=*": "{count} тайтла"
+				"countPlural=*": "{count} тайтлов"
 			}
 		}
 	],
@@ -24,7 +24,7 @@
 				"countPlural=one": "{count} связанный тайтл, порядок неясен",
 				"countPlural=few": "{count} связанных тайтла, порядок неясен",
 				"countPlural=many": "{count} связанных тайтлов, порядок неясен",
-				"countPlural=*": "{count} связанного тайтла, порядок неясен"
+				"countPlural=*": "{count} связанных тайтлов, порядок неясен"
 			}
 		}
 	],
@@ -39,19 +39,19 @@
 	"franchise_resume": "Продолжить",
 	"franchise_retry": "Повторить",
 	"franchise_sides": "Побочные истории и спецвыпуски",
-	"franchise_start": "Начать с начала",
+	"franchise_start": "Смотреть с начала",
 	"franchise_unplaced": "Место в порядке просмотра неясно",
 	"franchise_versions": "Другие версии",
 	"handoff_after": "После «{title}»",
-	"handoff_aria": "Далее: {title}, после «{finished}»",
+	"handoff_aria": "Далее: «{title}», после «{finished}»",
 	"handoff_next": "Далее",
-	"meta_coming": "Выходит {date}",
+	"meta_coming": "Выход: {date}",
 	"meta_no_date": "Дата не объявлена",
 	"meta_progress": "ЭП {episode} из {total}",
 	"meta_progress_open": "ЭП {episode}",
 	"meta_watched": "Просмотрено",
 	"setting_aria": "Порядок просмотра",
-	"setting_hint": "Как упорядочены сезоны, фильмы и спецвыпуски серии: как их связывают базы данных аниме или по дате выхода. Связи обычно следуют сюжету, но их ведёт сообщество каждой базы, и в них бывают ошибки.",
+	"setting_hint": "Как упорядочены сезоны, фильмы и спецвыпуски франшизы: как их связывают базы данных аниме или по дате выхода. Связи обычно следуют сюжету, но их ведёт сообщество каждой базы, и в них бывают ошибки.",
 	"setting_key": "Порядок просмотра",
 	"setting_linked": "По связям",
 	"setting_released": "По выходу",
@@ -95,7 +95,7 @@
 				"countPlural=one": "{count} вариант продолжения",
 				"countPlural=few": "{count} варианта продолжения",
 				"countPlural=many": "{count} вариантов продолжения",
-				"countPlural=*": "{count} варианта продолжения"
+				"countPlural=*": "{count} вариантов продолжения"
 			}
 		}
 	],
@@ -107,12 +107,12 @@
 	"strip_word_released_before": "Вышло раньше",
 	"strip_word_sequel": "Сиквел",
 	"strip_word_sequels": "Сиквелы",
-	"upnext_announce": "Далее: {title}",
+	"upnext_announce": "Далее: «{title}»",
 	"upnext_choices": "Варианты продолжения",
 	"upnext_coming": "Далее, когда выйдет",
 	"upnext_dismiss": "Закрыть",
 	"upnext_franchise_key": "Вся франшиза",
-	"upnext_franchise_announce": "Далее: вся франшиза, {name}",
-	"upnext_franchise_label": "Вся франшиза: {name}",
+	"upnext_franchise_announce": "Далее: вся франшиза «{name}»",
+	"upnext_franchise_label": "Вся франшиза: «{name}»",
 	"upnext_eyebrow": "Далее"
 }
