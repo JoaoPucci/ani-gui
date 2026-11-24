@@ -620,8 +620,16 @@
 						<kbd>/</kbd>
 					{/if}
 				</span>
-				<!-- Submit on Enter; the explicit button is sr-only for a11y. -->
-				<button type="submit" class="sr-only" disabled={topbarQuery.trim().length === 0}>
+				<!-- Submit on Enter; the explicit button is sr-only for a11y.
+				     Out of the Tab order: a stop the eye cannot see, whose
+				     focus showed no ring in a forced-colours theme. Enter in
+				     the field submits the form. -->
+				<button
+					type="submit"
+					class="sr-only"
+					tabindex="-1"
+					disabled={topbarQuery.trim().length === 0}
+				>
 					{m.app_search_submit_button()}
 				</button>
 
@@ -745,8 +753,10 @@
 		min-block-size: 100dvh;
 		/* Approximate topbar block size — exposed so route hero/banner
 		   blocks can pull up under it (margin-block-start: calc(-1 *
-		   var(--topbar-h))) for the bleed-through effect. Matches the
-		   computed height of .topbar (padding-block + control row). */
+		   var(--topbar-h))) for the bleed-through effect. Shorter than
+		   .topbar itself, which measures about 5.25rem (padding-block +
+		   control row); the page's scroll padding (tokens.css) clears
+		   the measured height. */
 		--topbar-h: 4.5rem;
 	}
 	@media (max-inline-size: 720px) {
@@ -816,8 +826,11 @@
 		display: grid;
 		justify-items: center;
 		gap: var(--space-2);
-		padding-block-end: var(--space-5);
-		margin-block-end: var(--space-5);
+		/* The same room around the mark and its name above and below, for
+		   the focus ring that is drawn inside this box; the margins keep
+		   the mark where it was and the gap under the name as it was. */
+		padding-block: var(--space-2);
+		margin-block: calc(-1 * var(--space-2)) calc(2 * var(--space-5) - var(--space-2));
 		/* No divider line — the gap below already separates the
 		   brand mark from the home icon, and a hard rule fought
 		   the hero/banner bleed-through. */
@@ -847,15 +860,17 @@
 	}
 	/* Drop the browser default focus ring (the chunky blue outline
 	   visible on first paint when Chromium auto-focuses the first
-	   tabbable element). Keyboard users still get a visible halo
-	   via :focus-visible — accent-tinted to match the rail. */
+	   tabbable element). Keyboard users get the ring the rail's links
+	   show, drawn inside the mark's box: the rail starts at the window's
+	   edge, which cut the side off a ring drawn outside it. */
 	.brand:focus {
 		outline: none;
 	}
 	.brand:focus-visible {
-		outline: 2px solid color-mix(in oklab, var(--accent) 70%, transparent);
-		outline-offset: 4px;
-		border-radius: var(--radius-pill);
+		box-shadow: var(--ring-inset);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
+		--ring-forced-offset: -4px;
+		border-radius: var(--radius-control);
 	}
 	.brand-word {
 		display: inline-flex;
@@ -934,6 +949,17 @@
 			align-items: center;
 			padding-block: var(--space-2);
 		}
+	}
+	/* Inside the link's box: the rail starts at the window's edge. The
+	   active link's rule steps inside the ring rather than over it. */
+	.nav-link:focus-visible {
+		box-shadow: var(--ring-inset);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
+		--ring-forced-offset: -4px;
+	}
+	.nav-link.active:focus-visible::before,
+	.rail-foot.active:focus-visible::before {
+		inset-inline-start: 4px;
 	}
 	.nav-link:hover {
 		color: var(--bone-100);
@@ -1064,11 +1090,15 @@
 		color: var(--bone-100);
 		background: color-mix(in oklab, var(--bone-100) 4%, transparent);
 	}
+	/* Inside the link's box, in the brand's colour: the rail starts at
+	   the window's edge. */
 	.rail-foot:focus-visible {
 		outline: none;
 		box-shadow:
-			0 0 0 2px var(--ink-000),
-			0 0 0 4px var(--brand);
+			inset 0 0 0 2px var(--brand),
+			inset 0 0 0 4px var(--ink-000);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
+		--ring-forced-offset: -4px;
 	}
 	.rail-foot.active {
 		color: var(--bone-100);
@@ -1140,6 +1170,11 @@
 			inset-inline: var(--space-2);
 			inline-size: auto;
 			block-size: 2px;
+		}
+		.nav-link.active:focus-visible::before,
+		.rail-foot.active:focus-visible::before {
+			inset-inline-start: var(--space-2);
+			inset-block-end: 4px;
 		}
 	}
 	.rail-foot-val {
