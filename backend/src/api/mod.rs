@@ -965,6 +965,10 @@ mod kitsu_search_page_test;
 mod flags_tests;
 
 #[cfg(test)]
+#[path = "hero_test.rs"]
+mod hero_tests;
+
+#[cfg(test)]
 #[path = "wire_probe_test.rs"]
 mod wire_probe;
 
