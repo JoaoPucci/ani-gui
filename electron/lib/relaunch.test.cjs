@@ -109,6 +109,46 @@ test("an AppImage that runs extracted, not mounted, restarts extracted too", () 
   assert.ok(!mounted.args.includes("--appimage-extract-and-run"));
 });
 
+test("an extracted AppImage's restart waits for the runtime to remove what it extracted", () => {
+  // Run extracted, the runtime forks the app and, once it exits, removes
+  // the extraction; the next launch extracts into the same directory,
+  // named by the image's hash. So the waiter outlives the runtime, this
+  // process's parent, when that parent is the image itself.
+  const dir = "/tmp/appimage_extracted_0123abcd";
+  const of = (exeOf) =>
+    relaunchPlan({
+      platform: "linux",
+      env: { ...appImageEnv, APPDIR: dir },
+      execPath: `${dir}/ani-gui.bin`,
+      argv: [`${dir}/ani-gui.bin`],
+      pid: 4242,
+      ppid: 4241,
+      exeOf,
+      realpath: (p) => p,
+    });
+  assert.equal(of((pid) => (pid === 4241 ? appImageEnv.APPIMAGE : "/other")).args[3], "4241");
+  // A parent that is not the image (it is gone, and something else took
+  // the process over) is not waited on: this process is.
+  assert.equal(of(() => "/usr/lib/systemd/systemd").args[3], "4242");
+  assert.equal(
+    of(() => {
+      throw new Error("ENOENT");
+    }).args[3],
+    "4242",
+  );
+  // Mounted, each launch has a mount of its own: this process is waited on.
+  const mounted = relaunchPlan({
+    platform: "linux",
+    env: appImageEnv,
+    execPath: appImageExec,
+    argv: [appImageExec],
+    pid: 4242,
+    ppid: 4241,
+    exeOf: () => appImageEnv.APPIMAGE,
+  });
+  assert.equal(mounted.args[3], "4242");
+});
+
 test("everywhere else the plan is Electron's own relaunch (this binary, these arguments)", () => {
   const cases = [
     // The .deb, through its wrapper's environment and switches.

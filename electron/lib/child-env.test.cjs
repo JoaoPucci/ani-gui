@@ -358,6 +358,45 @@ test("from a portable AppImage, a child gets the user's home, not the image's", 
   assert.deepStrictEqual(env, { HOME: "/home/me", PATH: "/usr/bin" });
 });
 
+test("the app's own backend keeps a portable AppImage's home, where the app keeps its data", () => {
+  // The portable home and config are the person's choice for the app:
+  // the backend keeps its config, cache, history and downloads there.
+  // Only programs that are not the app get the account's home.
+  const launch = launchedFromImage({ HOME: "/home/me", PATH: "/usr/bin" });
+  launch.HOME = `${launch.APPIMAGE}.home`;
+  launch.XDG_CONFIG_HOME = `${launch.APPIMAGE}.config`;
+  const env = childEnv({
+    platform: "linux",
+    launch,
+    now: launch,
+    execPath: IMAGE_EXEC,
+    realpath: (p) => p,
+    accountHome: () => "/home/me",
+    keepPortable: true,
+  });
+  assert.deepStrictEqual(env, { HOME: launch.HOME, XDG_CONFIG_HOME: launch.XDG_CONFIG_HOME, PATH: "/usr/bin" });
+});
+
+test("from a portable AppImage, an account with no home on record keeps the portable one", () => {
+  // os.userInfo throws for a uid with no passwd entry (a container's
+  // arbitrary uid). A child is better started in the portable home than
+  // with none, and a link still opens.
+  const launch = launchedFromImage({ HOME: "/home/me", PATH: "/usr/bin" });
+  launch.HOME = `${launch.APPIMAGE}.home`;
+  launch.XDG_CONFIG_HOME = `${launch.APPIMAGE}.config`;
+  const env = childEnv({
+    platform: "linux",
+    launch,
+    now: launch,
+    execPath: IMAGE_EXEC,
+    realpath: (p) => p,
+    accountHome: () => {
+      throw new Error("uv_os_get_passwd returned ENOENT");
+    },
+  });
+  assert.deepStrictEqual(env, { HOME: launch.HOME, XDG_CONFIG_HOME: launch.XDG_CONFIG_HOME, PATH: "/usr/bin" });
+});
+
 test("a HOME or XDG_CONFIG_HOME the user set elsewhere is theirs, from the AppImage too", () => {
   const launch = launchedFromImage({ HOME: "/srv/me", XDG_CONFIG_HOME: "/srv/me/cfg", PATH: "/usr/bin" });
   const env = childEnv({
