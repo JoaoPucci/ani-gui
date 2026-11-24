@@ -29,6 +29,7 @@
 // portal's session monitor, which needs a D-Bus connection of the
 // app's own) gets no early quit; its logout reaches the app as signals.
 
+const { readerEnv } = require("./reduced-motion.cjs");
 const { StringDecoder } = require("node:string_decoder");
 
 /** gnome-session's object, and the line `gdbus monitor` prints for its
@@ -107,12 +108,16 @@ function lineSplitter(onLine) {
  *   platform      process.platform
  *   powerMonitor  Electron's (only touched on Linux, after ready)
  *   spawn         child_process.spawn
- *   env           the environment the watcher runs in
+ *   envs          lib/child-env.cjs userEnvs: the watcher runs in a
+ *                 program's environment, without DISPLAY (readerEnv)
  *   onEnding      (reason) => void
  *   logError      (...args) => void
  */
-function watchSessionEnd({ platform, powerMonitor, spawn, env, onEnding, logError }) {
+function watchSessionEnd({ platform, powerMonitor, spawn, envs, onEnding, logError }) {
   if (platform !== "linux") return { stop() {} };
+  // System programs only (sh, setpriv, gdbus): nothing of the app's own
+  // environment, and no DISPLAY for gdbus to autolaunch a bus on.
+  const env = readerEnv(envs.forProgram());
   let ended = false;
   const ending = (reason) => {
     if (ended) return;

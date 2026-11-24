@@ -175,7 +175,8 @@ impl AniListProvider {
     /// token; route layer surfaces "Sign in again"), 429 →
     /// [`AniError::RateLimited`] with the advertised wait
     /// ([`super::rate_limit`]), any other non-2xx →
-    /// [`AniError::Upstream`].
+    /// [`AniError::from_tracker_status`] (a 4xx the tracker's rejection;
+    /// a 5xx, a 408 or a 425 the upstream failing).
     async fn post_graphql(
         &self,
         tokens: &Tokens,
@@ -240,9 +241,7 @@ impl AniListProvider {
             return Err(super::rate_limit::rate_limited("anilist", &resp));
         }
         if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
+            return Err(AniError::from_tracker_status(status.as_u16()));
         }
         resp.bytes().await.map_err(|_| AniError::Network)
     }
@@ -352,9 +351,7 @@ impl UserListProvider for AniListProvider {
             return Err(super::rate_limit::rate_limited("anilist", &resp));
         }
         if !status.is_success() {
-            return Err(AniError::Upstream {
-                status: status.as_u16(),
-            });
+            return Err(AniError::from_tracker_status(status.as_u16()));
         }
         let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
         parse_token_response(&bytes)

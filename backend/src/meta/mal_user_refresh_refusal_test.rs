@@ -110,8 +110,7 @@ async fn a_refused_authorization_code_stays_the_endpoints_error() {
         .exchange_code("code", &crate::account::pkce::Pkce::new_plain())
         .await
         .expect_err("a refused code is an error");
-    assert!(
-        matches!(err, AniError::Upstream { status: 400 }),
-        "got {err:?}"
-    );
+    assert_eq!(err.key(), "error.account.tracker_rejected", "{err:?}");
+    assert_eq!(err.http_status_code(), 422);
+    assert_eq!(serde_json::to_value(&err).expect("envelope")["status"], 400);
 }
