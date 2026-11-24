@@ -72,8 +72,18 @@ export function originLabel(origin: string): string {
 	return label ? label() : origin;
 }
 
-/** A show's status: airing, or Kitsu's own word for it. */
+const STATUS: Record<string, () => string> = {
+	finished: m.diagnostics_hero_walk_status_finished,
+	upcoming: m.diagnostics_hero_walk_status_upcoming,
+	unreleased: m.diagnostics_hero_walk_status_unreleased,
+	tba: m.diagnostics_hero_walk_status_tba
+};
+
+/** A show's status: airing, or the name of Kitsu's status for it; a
+ *  status this build does not know is shown as Kitsu names it. */
 export function statusLabel(step: Pick<HeroWalkStep, 'status' | 'airing'>): string {
 	if (step.airing) return m.diagnostics_hero_walk_status_airing();
-	return step.status ?? m.diagnostics_hero_walk_status_unknown();
+	if (step.status === null) return m.diagnostics_hero_walk_status_unknown();
+	const label = Object.hasOwn(STATUS, step.status) ? STATUS[step.status] : undefined;
+	return label ? label() : step.status;
 }
