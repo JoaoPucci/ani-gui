@@ -86,18 +86,18 @@ async fn the_route_never_waits_past_the_stores_limit() {
     assert!(started.elapsed() <= SETTLE_LIMIT + std::time::Duration::from_millis(100));
 }
 
-/// A release declares no flags yet. A test-run build (the
-/// `test-run-key` feature) declares only the probe the end-to-end
-/// suite drives, off by default.
+/// A release declares the home hero's airing preference, off by
+/// default. A test-run build (the `test-run-key` feature) declares the
+/// probe the end-to-end suite drives as well, off too.
 #[tokio::test]
-async fn the_shipped_build_declares_no_flags_yet() {
+async fn the_shipped_build_declares_the_hero_airing_preference_off() {
     let td = TempDir::new().expect("tempdir");
     let (status, body) = get_flags(test_app_state(&td)).await;
     assert_eq!(status, StatusCode::OK);
     let expected = if cfg!(feature = "test-run-key") {
-        serde_json::json!({ "test_run_probe": false })
+        serde_json::json!({ "hero_airing_first": false, "test_run_probe": false })
     } else {
-        serde_json::json!({})
+        serde_json::json!({ "hero_airing_first": false })
     };
     assert_eq!(body["flags"], expected);
 }

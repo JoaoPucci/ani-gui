@@ -1,239 +1,115 @@
-import { describe, expect, it } from 'vitest';
-import fc from 'fast-check';
+import { describe, expect, it, vi } from 'vitest';
 
-import { HERO_ROTATION_COUNT, hasRealArt, splitTrending, type HeroArtInput } from './rotation';
+import { applyHeroPick, heroShow, NO_SPLIT, pickTrending } from './rotation';
+import type { HeroPick, HeroPickBody, KitsuAnimeRef } from '$lib/api';
 
-interface Show extends HeroArtInput {
-	id: string;
-}
+// The pick itself, and its rules, are the backend's (backend/src/hero,
+// whose tests the rules' cases moved to). What is left here is the
+// renderer's side of it: what it sends, and how the answer's ids
+// become the shows it draws.
 
 const BANNER = 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/1.jpg';
 const COVER = 'https://media.kitsu.app/anime/1/cover_image/large.jpg';
 
-const banner = (id: string): Show => ({ id, anilist_banner: BANNER, cover_image: null });
-const cover = (id: string): Show => ({ id, cover_image: { large: COVER } });
-const bare = (id: string): Show => ({ id, anilist_banner: null, cover_image: null });
-const ids = (shows: readonly Show[]) => shows.map((s) => s.id);
-
-describe('hasRealArt', () => {
-	it('counts an AniList banner or any slot of a Kitsu cover', () => {
-		expect(hasRealArt(banner('a'))).toBe(true);
-		expect(hasRealArt(cover('a'))).toBe(true);
-		expect(hasRealArt({ cover_image: { original: COVER } })).toBe(true);
-		expect(hasRealArt({ cover_image: { small: COVER } })).toBe(true);
-	});
-
-	it('does not count a show with neither, or a cover with every slot empty', () => {
-		expect(hasRealArt(bare('a'))).toBe(false);
-		expect(hasRealArt({ cover_image: { large: null, original: null, small: null } })).toBe(false);
-		expect(hasRealArt({ anilist_banner: '', cover_image: { large: '' } })).toBe(false);
-	});
-});
-
-describe('splitTrending', () => {
-	it('takes the first three shows with art, in trending order', () => {
-		const t = [bare('1'), banner('2'), bare('3'), cover('4'), cover('5'), banner('6')];
-		expect(ids(splitTrending(t).hero)).toEqual(['2', '4', '5']);
-	});
-
-	it('leads the row with the shows it skipped, then the rest in trending order', () => {
-		const t = [bare('1'), banner('2'), bare('3'), cover('4'), cover('5'), banner('6'), bare('7')];
-		expect(ids(splitTrending(t).row)).toEqual(['1', '3', '6', '7']);
-	});
-
-	it('is the plain top three when every show has art', () => {
-		const t = [cover('1'), banner('2'), cover('3'), cover('4')];
-		const s = splitTrending(t);
-		expect(ids(s.hero)).toEqual(['1', '2', '3']);
-		expect(ids(s.row)).toEqual(['4']);
-	});
-
-	it('fills the rest of the hero with the first shows without art when fewer than three have it', () => {
-		const t = [bare('1'), bare('2'), cover('3'), bare('4'), bare('5')];
-		const s = splitTrending(t);
-		expect(ids(s.hero)).toEqual(['3', '1', '2']);
-		expect(ids(s.row)).toEqual(['4', '5']);
-	});
-
-	it('takes every show when there are fewer than three, art first', () => {
-		const s = splitTrending([bare('1'), cover('2')]);
-		expect(ids(s.hero)).toEqual(['2', '1']);
-		expect(s.row).toEqual([]);
-	});
-
-	it('is empty for an empty list', () => {
-		expect(splitTrending([])).toEqual({ hero: [], row: [] });
-	});
-
-	it('rotates through three shows', () => {
-		expect(HERO_ROTATION_COUNT).toBe(3);
-	});
-
-	it('takes a show listed twice in the first three once, and the next show with art instead', () => {
-		const t = [cover('1'), banner('1'), cover('2'), cover('3'), bare('4')];
-		const s = splitTrending(t);
-		expect(ids(s.hero)).toEqual(['1', '2', '3']);
-		expect(ids(s.row)).toEqual(['4']);
-	});
-
-	it('leaves out of the row a show the hero already took', () => {
-		const t = [cover('1'), cover('2'), cover('3'), bare('4'), cover('2'), bare('5')];
-		const s = splitTrending(t);
-		expect(ids(s.hero)).toEqual(['1', '2', '3']);
-		expect(ids(s.row)).toEqual(['4', '5']);
-	});
-
-	it('lists a show repeated in the row once, in its first place', () => {
-		const t = [cover('1'), cover('2'), cover('3'), bare('4'), bare('5'), bare('4')];
-		expect(ids(splitTrending(t).row)).toEqual(['4', '5']);
-	});
-
-	it('keeps one show when every entry is the same show', () => {
-		const t = [cover('1'), cover('1'), banner('1')];
-		const s = splitTrending(t);
-		expect(s.hero).toEqual([t[0]]);
-		expect(s.row).toEqual([]);
-	});
-
-	it('keeps the first entry of a repeated show, even when a later one has art', () => {
-		const t = [bare('1'), cover('2'), cover('1'), cover('3'), cover('4')];
-		const s = splitTrending(t);
-		expect(ids(s.hero)).toEqual(['2', '3', '4']);
-		expect(s.row).toEqual([t[0]]);
-	});
-});
-
-type Art = 'banner' | 'cover' | 'whole' | 'small' | 'both' | 'empty-cover' | 'none';
-
-function make(art: Art, id: string): Show {
-	switch (art) {
-		case 'banner':
-			return banner(id);
-		case 'cover':
-			return cover(id);
-		case 'whole':
-			return { id, cover_image: { original: COVER } };
-		case 'small':
-			return { id, cover_image: { small: COVER } };
-		case 'both':
-			return { id, anilist_banner: BANNER, cover_image: { large: COVER } };
-		case 'empty-cover':
-			return { id, anilist_banner: null, cover_image: { large: null, original: null } };
-		case 'none':
-			return bare(id);
-	}
+function ref(id: string, extra: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
+	return {
+		id,
+		canonical_title: `Show ${id}`,
+		titles: {},
+		abbreviated_titles: [],
+		slug: null,
+		synopsis: null,
+		start_date: null,
+		end_date: null,
+		episode_count: null,
+		average_rating: null,
+		subtype: null,
+		status: 'finished',
+		age_rating: null,
+		popularity_rank: null,
+		poster_image: null,
+		cover_image: null,
+		...extra
+	};
 }
 
-const ART: Art[] = ['banner', 'cover', 'whole', 'small', 'both', 'empty-cover', 'none'];
+const walk = { airing_first: false, count: 3, entries: 0, steps: [] };
 
-const trendingList = fc
-	.array(fc.constantFrom(...ART), { maxLength: 30 })
-	.map((arts) => arts.map((art, i) => make(art, String(i))));
-
-const rank = (s: Show) => Number(s.id);
-const isAscending = (xs: readonly Show[]) =>
-	xs.every((s, i) => i === 0 || rank(xs[i - 1]) < rank(s));
-
-describe('splitTrending properties', () => {
-	it('drops nothing and duplicates nothing', () => {
-		fc.assert(
-			fc.property(trendingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
-				const { hero, row } = splitTrending(t, n);
-				const all = [...hero, ...row];
-				expect(all.length).toBe(t.length);
-				expect(new Set(all).size).toBe(t.length);
-				for (const s of t) expect(all).toContain(s);
-			})
-		);
+describe('heroShow', () => {
+	it('sends the id, the title, the status and the art the pick reads, nothing else', () => {
+		const show = ref('7', {
+			status: 'current',
+			anilist_banner: BANNER,
+			cover_image: { tiny: COVER, small: null, large: COVER, original: null },
+			synopsis: 'not read'
+		});
+		expect(heroShow(show)).toEqual({
+			id: '7',
+			title: 'Show 7',
+			status: 'current',
+			anilist_banner: BANNER,
+			cover_image: { large: COVER, original: null, small: null }
+		});
 	});
 
-	it('keeps trending order inside the row, and among the hero’s shows with art and without', () => {
-		fc.assert(
-			fc.property(trendingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
-				const { hero, row } = splitTrending(t, n);
-				expect(isAscending(row)).toBe(true);
-				expect(isAscending(hero.filter(hasRealArt))).toBe(true);
-				expect(isAscending(hero.filter((s) => !hasRealArt(s)))).toBe(true);
-			})
-		);
-	});
-
-	it('puts art first: the first shows with art, then the first without it only when those run out', () => {
-		fc.assert(
-			fc.property(trendingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
-				const { hero } = splitTrending(t, n);
-				const withArt = t.filter(hasRealArt);
-				const without = t.filter((s) => !hasRealArt(s));
-				expect(hero.length).toBe(Math.min(n, t.length));
-				const artCount = Math.min(n, withArt.length);
-				expect(ids(hero.slice(0, artCount))).toEqual(ids(withArt.slice(0, artCount)));
-				expect(ids(hero.slice(artCount))).toEqual(ids(without.slice(0, hero.length - artCount)));
-			})
-		);
-	});
-
-	it('lists in the row exactly the shows the hero did not take, in trending order', () => {
-		fc.assert(
-			fc.property(trendingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
-				const { hero, row } = splitTrending(t, n);
-				expect(ids(row)).toEqual(ids(t.filter((s) => !hero.includes(s))));
-			})
-		);
-	});
-
-	it('leads the row with the shows the hero skipped', () => {
-		fc.assert(
-			fc.property(trendingList, (t) => {
-				const { hero, row } = splitTrending(t);
-				const last = hero.filter(hasRealArt).at(-1);
-				fc.pre(last !== undefined);
-				const cut = rank(last as Show);
-				const skipped = t.filter((s) => rank(s) < cut && !hero.includes(s));
-				expect(ids(row.slice(0, skipped.length))).toEqual(ids(skipped));
-			})
-		);
+	it('sends no banner and no cover for a show without them', () => {
+		expect(heroShow(ref('7', { status: null }))).toEqual({
+			id: '7',
+			title: 'Show 7',
+			status: null,
+			anilist_banner: null,
+			cover_image: null
+		});
 	});
 });
 
-/** Trending lists whose shows may repeat: ids come from a small pool,
- *  and each entry carries its own art, so a repeat can differ from its
- *  first entry. */
-const repeatingList = fc
-	.array(fc.tuple(fc.constantFrom(...ART), fc.integer({ min: 0, max: 7 })), { maxLength: 30 })
-	.map((entries) => entries.map(([art, id]) => make(art, String(id))));
-
-/** Each show's first entry, in trending order. */
-const firstEntries = (t: readonly Show[]) =>
-	t.filter((s, i) => t.findIndex((o) => o.id === s.id) === i);
-
-describe('splitTrending properties with repeated shows', () => {
-	it('shows no show twice across the hero and the row', () => {
-		fc.assert(
-			fc.property(repeatingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
-				const { hero, row } = splitTrending(t, n);
-				const all = ids([...hero, ...row]);
-				expect(new Set(all).size).toBe(all.length);
-			})
-		);
+describe('applyHeroPick', () => {
+	it('draws the hero and the row in the order the pick gives', () => {
+		const t = [ref('1'), ref('2'), ref('3'), ref('4')];
+		const split = applyHeroPick(t, { hero: ['3', '1'], row: ['2', '4'] });
+		expect(split.hero).toEqual([t[2], t[0]]);
+		expect(split.row).toEqual([t[1], t[3]]);
 	});
 
-	it('keeps every show, as its first entry, and drops only the repeats', () => {
-		fc.assert(
-			fc.property(repeatingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
-				const { hero, row } = splitTrending(t, n);
-				const all = [...hero, ...row];
-				const firsts = firstEntries(t);
-				expect(all.length).toBe(firsts.length);
-				for (const s of firsts) expect(all).toContain(s);
-			})
-		);
+	it("draws a show's first entry when the list repeats it", () => {
+		const first = ref('1', { canonical_title: 'First entry' });
+		const t = [first, ref('2'), ref('1', { canonical_title: 'Repeat' })];
+		expect(applyHeroPick(t, { hero: ['1'], row: ['2'] }).hero).toEqual([first]);
 	});
 
-	it('splits as if each show were listed once, at its first place', () => {
-		fc.assert(
-			fc.property(repeatingList, fc.integer({ min: 0, max: 6 }), (t, n) => {
-				expect(splitTrending(t, n)).toEqual(splitTrending(firstEntries(t), n));
-			})
-		);
+	it('leaves out an id the list does not hold', () => {
+		const t = [ref('1'), ref('2')];
+		expect(applyHeroPick(t, { hero: ['9', '1'], row: ['2', '8'] })).toEqual({
+			hero: [t[0]],
+			row: [t[1]]
+		});
+	});
+
+	it('is empty for an empty pick', () => {
+		expect(applyHeroPick([ref('1')], { hero: [], row: [] })).toEqual(NO_SPLIT);
+	});
+});
+
+describe('pickTrending', () => {
+	it('asks the backend for the pick over every entry, in trending order, and draws its answer', async () => {
+		const t = [ref('1'), ref('2', { anilist_banner: BANNER }), ref('1')];
+		const ask = vi.fn(async (body: HeroPickBody, opts?: unknown): Promise<HeroPick> => {
+			void body;
+			void opts;
+			return { hero: ['2', '1'], row: [], walk };
+		});
+		const signal = new AbortController().signal;
+		const split = await pickTrending(t, { signal }, ask);
+		expect(ask).toHaveBeenCalledOnce();
+		expect(ask.mock.calls[0][0]).toEqual({ shows: t.map(heroShow) });
+		expect(ask.mock.calls[0][1]).toEqual({ signal });
+		expect(split).toEqual({ hero: [t[1], t[0]], row: [] });
+	});
+
+	it('fails when the backend does', async () => {
+		const ask = vi.fn(async (): Promise<HeroPick> => {
+			throw new Error('backend down');
+		});
+		await expect(pickTrending([ref('1')], {}, ask)).rejects.toThrow('backend down');
 	});
 });

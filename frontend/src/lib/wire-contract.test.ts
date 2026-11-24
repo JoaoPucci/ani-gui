@@ -68,6 +68,18 @@ import {
 	type DownloadResponse,
 	type ExternalPlayerKind,
 	type Franchise,
+	type HeroCoverSlots,
+	type HeroFlagView,
+	type HeroPick,
+	type HeroPickBody,
+	type HeroShow,
+	type HeroVerdict,
+	type HeroWalk,
+	type HeroWalkStep,
+	type HeroWalkView,
+	HERO_ARTS,
+	HERO_SKIPPED_BECAUSE,
+	HERO_TAKEN_BECAUSE,
 	type AskRow,
 	type ChainEndCard,
 	type Eyebrow,
@@ -775,7 +787,35 @@ const RESPONSES: Record<string, Record<string, string>> = {
 	} satisfies Spec<LinkVerdict>,
 	SwitchEpisode: {
 		episode: 'number|null'
-	} satisfies Spec<SwitchEpisode>
+	} satisfies Spec<SwitchEpisode>,
+	HeroPick: { hero: 'string[]', row: 'string[]', walk: 'object' } satisfies Spec<HeroPick>,
+	HeroWalk: {
+		airing_first: 'boolean',
+		count: 'number',
+		entries: 'number',
+		steps: 'object[]'
+	} satisfies Spec<HeroWalk>,
+	HeroWalkStep: {
+		rank: 'number',
+		id: 'string',
+		title: 'string',
+		art: 'string',
+		status: 'string|null',
+		airing: 'boolean',
+		preference_applied: 'boolean',
+		verdict: 'object'
+	} satisfies Spec<HeroWalkStep>,
+	'HeroVerdict.taken': {
+		kind: 'string',
+		slot: 'number',
+		because: 'string'
+	} satisfies Spec<Tagged<HeroVerdict, 'taken'>>,
+	'HeroVerdict.skipped': {
+		kind: 'string',
+		because: 'string'
+	} satisfies Spec<Tagged<HeroVerdict, 'skipped'>>,
+	HeroFlagView: { name: 'string', on: 'boolean', origin: 'string' } satisfies Spec<HeroFlagView>,
+	HeroWalkView: { flag: 'object', walk: 'object|null' } satisfies Spec<HeroWalkView>
 };
 
 /** Each body the backend reads, by its backend name: the spec of the
@@ -884,6 +924,23 @@ const REQUESTS: Record<string, { spec: Record<string, string>; unsent?: string[]
 	KitsuByMalIdsBody: { spec: { mal_ids: 'required' } satisfies BodySpec<KitsuByMalIdsBody> },
 	WatchOrderDayBody: {
 		spec: { today: 'required' } satisfies BodySpec<WatchOrderDayBody>
+	},
+	HeroPickBody: { spec: { shows: 'required' } satisfies BodySpec<HeroPickBody> },
+	HeroShow: {
+		spec: {
+			id: 'required',
+			title: 'optional',
+			status: 'optional',
+			anilist_banner: 'optional',
+			cover_image: 'optional'
+		} satisfies BodySpec<HeroShow>
+	},
+	HeroCoverSlots: {
+		spec: {
+			large: 'optional',
+			original: 'optional',
+			small: 'optional'
+		} satisfies BodySpec<HeroCoverSlots>
 	},
 	WatchOrderUpNextBody: {
 		spec: { today: 'required', episode: 'required' } satisfies BodySpec<WatchOrderUpNextBody>
@@ -1071,7 +1128,10 @@ const ENUMS: Record<string, readonly string[]> = {
 	OfferKind: OFFER_KINDS,
 	WatchOrder: WATCH_ORDERS,
 	StripKind: STRIP_KINDS,
-	Seam: SEAMS
+	Seam: SEAMS,
+	HeroArt: HERO_ARTS,
+	HeroTakenBecause: HERO_TAKEN_BECAUSE,
+	HeroSkippedBecause: HERO_SKIPPED_BECAUSE
 };
 
 // — The error envelope ——————————————————————————————————————————————

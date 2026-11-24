@@ -103,14 +103,14 @@ async fn a_test_run_makes_no_request_for_the_flags_file() {
     assert_eq!(heard, None);
 }
 
-/// The declared flags at their defaults: none in a build without the
-/// `test-run-key` feature, every release; the probe a test-run
-/// build declares, off, in one with it.
+/// The declared flags at their defaults: the home hero's airing
+/// preference, off, in every build; beside it the probe a test-run
+/// build declares, off, in one with the `test-run-key` feature.
 fn defaults() -> serde_json::Value {
     if cfg!(feature = "test-run-key") {
-        serde_json::json!({ "test_run_probe": false })
+        serde_json::json!({ "hero_airing_first": false, "test_run_probe": false })
     } else {
-        serde_json::json!({})
+        serde_json::json!({ "hero_airing_first": false })
     }
 }
 

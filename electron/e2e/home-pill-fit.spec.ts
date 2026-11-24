@@ -95,6 +95,8 @@ async function launchOnce(locale: string, onLaunch: (app: ElectronApplication) =
 			answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 		if (p === '/api/app-info') return j(appInfo);
 		if (p === '/api/settings') return j({ ...defaultSettings, locale });
+		// The hero's pick is the backend's own, made from the stubbed list.
+		if (p === '/api/home/hero') return r.continue();
 		if (p === '/api/kitsu/trending-anilist') return j(trending);
 		if (p === '/api/kitsu/top-rated') return j(topRated);
 		if (p.startsWith('/api/image')) {

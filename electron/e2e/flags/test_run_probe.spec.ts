@@ -26,6 +26,9 @@ import { minisign, writeFlagsFile, type Signer } from '../flags-file';
 import { appWindow, launchPackagedApp, packagedBinary, stopApp } from '../launch';
 
 const FLAG = 'test_run_probe';
+/** The release's own flags, which a file naming only the probe leaves
+ *  at their default. */
+const OTHERS = { hero_airing_first: false } as const;
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
@@ -73,26 +76,26 @@ async function launchWith(
 const signed = (signer: Signer) => (dir: string) => writeFlagsFile(dir, { [FLAG]: true }, signer);
 
 test('test_run_probe off: no flags file named, the default', async () => {
-	expect(await launchWith(() => null)).toEqual({ origin: 'test', flags: { [FLAG]: false } });
+	expect(await launchWith(() => null)).toEqual({ origin: 'test', flags: { ...OTHERS, [FLAG]: false } });
 });
 
 test('test_run_probe off: the named file cannot be read', async () => {
 	const seen = await launchWith((dir) => path.join(dir, 'missing.json'));
-	expect(seen).toEqual({ origin: 'test', flags: { [FLAG]: false } });
+	expect(seen).toEqual({ origin: 'test', flags: { ...OTHERS, [FLAG]: false } });
 });
 
 test('test_run_probe off: a file turns it on, but nobody signed it', async () => {
-	expect(await launchWith(signed('unsigned'))).toEqual({ origin: 'test', flags: { [FLAG]: false } });
+	expect(await launchWith(signed('unsigned'))).toEqual({ origin: 'test', flags: { ...OTHERS, [FLAG]: false } });
 });
 
 test('test_run_probe off: a file turns it on, signed by a key no build trusts', async () => {
 	const seen = await launchWith(signed('untrusted key'));
-	expect(seen).toEqual({ origin: 'test', flags: { [FLAG]: false } });
+	expect(seen).toEqual({ origin: 'test', flags: { ...OTHERS, [FLAG]: false } });
 });
 
 test('test_run_probe on: a file turns it on, signed by the test-run key', async () => {
 	const seen = await launchWith(signed('test-run key'));
-	expect(seen).toEqual({ origin: 'test', flags: { [FLAG]: true } });
+	expect(seen).toEqual({ origin: 'test', flags: { ...OTHERS, [FLAG]: true } });
 });
 
 test("the suite's signer makes the backend fixtures' signatures", () => {

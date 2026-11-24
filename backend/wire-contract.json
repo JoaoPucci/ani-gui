@@ -17,6 +17,22 @@
       "iina",
       "custom"
     ],
+    "HeroArt": [
+      "banner",
+      "cover",
+      "none"
+    ],
+    "HeroSkippedBecause": [
+      "repeat",
+      "not_airing",
+      "hero_full",
+      "no_art"
+    ],
+    "HeroTakenBecause": [
+      "art",
+      "airing_art",
+      "fill"
+    ],
     "Lane": [
       "api",
       "stream",
@@ -377,6 +393,34 @@
         "episode_count",
         "id",
         "status"
+      ],
+      "requires": [
+        "id"
+      ]
+    },
+    "HeroCoverSlots": {
+      "accepts": [
+        "large",
+        "original",
+        "small"
+      ],
+      "requires": []
+    },
+    "HeroPickBody": {
+      "accepts": [
+        "shows"
+      ],
+      "requires": [
+        "shows"
+      ]
+    },
+    "HeroShow": {
+      "accepts": [
+        "anilist_banner",
+        "cover_image",
+        "id",
+        "status",
+        "title"
       ],
       "requires": [
         "id"
@@ -1479,6 +1523,178 @@
       },
       "min": {
         "handoff": null
+      }
+    },
+    "HeroFlagView": {
+      "full": {
+        "name": "hero_airing_first",
+        "on": true,
+        "origin": "file"
+      },
+      "min": {
+        "name": "hero_airing_first",
+        "on": true,
+        "origin": "file"
+      }
+    },
+    "HeroPick": {
+      "full": {
+        "hero": [
+          "46474"
+        ],
+        "row": [
+          "7158"
+        ],
+        "walk": {
+          "airing_first": true,
+          "count": 3,
+          "entries": 1,
+          "steps": [
+            {
+              "airing": true,
+              "art": "banner",
+              "id": "46474",
+              "preference_applied": true,
+              "rank": 1,
+              "status": "current",
+              "title": "Sousou no Frieren",
+              "verdict": {
+                "because": "airing_art",
+                "kind": "taken",
+                "slot": 0
+              }
+            }
+          ]
+        }
+      },
+      "min": {
+        "hero": [],
+        "row": [],
+        "walk": {
+          "airing_first": false,
+          "count": 3,
+          "entries": 1,
+          "steps": []
+        }
+      }
+    },
+    "HeroVerdict.skipped": {
+      "full": {
+        "because": "not_airing",
+        "kind": "skipped"
+      },
+      "min": {
+        "because": "not_airing",
+        "kind": "skipped"
+      }
+    },
+    "HeroVerdict.taken": {
+      "full": {
+        "because": "airing_art",
+        "kind": "taken",
+        "slot": 0
+      },
+      "min": {
+        "because": "airing_art",
+        "kind": "taken",
+        "slot": 0
+      }
+    },
+    "HeroWalk": {
+      "full": {
+        "airing_first": true,
+        "count": 3,
+        "entries": 1,
+        "steps": [
+          {
+            "airing": true,
+            "art": "banner",
+            "id": "46474",
+            "preference_applied": true,
+            "rank": 1,
+            "status": "current",
+            "title": "Sousou no Frieren",
+            "verdict": {
+              "because": "airing_art",
+              "kind": "taken",
+              "slot": 0
+            }
+          }
+        ]
+      },
+      "min": {
+        "airing_first": false,
+        "count": 3,
+        "entries": 1,
+        "steps": []
+      }
+    },
+    "HeroWalkStep": {
+      "full": {
+        "airing": true,
+        "art": "banner",
+        "id": "46474",
+        "preference_applied": true,
+        "rank": 1,
+        "status": "current",
+        "title": "Sousou no Frieren",
+        "verdict": {
+          "because": "airing_art",
+          "kind": "taken",
+          "slot": 0
+        }
+      },
+      "min": {
+        "airing": false,
+        "art": "banner",
+        "id": "46474",
+        "preference_applied": false,
+        "rank": 1,
+        "status": null,
+        "title": "Sousou no Frieren",
+        "verdict": {
+          "because": "airing_art",
+          "kind": "taken",
+          "slot": 0
+        }
+      }
+    },
+    "HeroWalkView": {
+      "full": {
+        "flag": {
+          "name": "hero_airing_first",
+          "on": true,
+          "origin": "file"
+        },
+        "walk": {
+          "airing_first": true,
+          "count": 3,
+          "entries": 1,
+          "steps": [
+            {
+              "airing": true,
+              "art": "banner",
+              "id": "46474",
+              "preference_applied": true,
+              "rank": 1,
+              "status": "current",
+              "title": "Sousou no Frieren",
+              "verdict": {
+                "because": "airing_art",
+                "kind": "taken",
+                "slot": 0
+              }
+            }
+          ]
+        }
+      },
+      "min": {
+        "flag": {
+          "name": "hero_airing_first",
+          "on": true,
+          "origin": "file"
+        },
+        "walk": null
       }
     },
     "HistoryEntry": {

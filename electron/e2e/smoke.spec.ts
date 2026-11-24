@@ -116,6 +116,8 @@ async function launchAppWithStubsOnce(
     answer(r, json(cardLinesAnswer(r.request().postDataJSON()))),
   );
   await stub("**/api/kitsu/trending-anilist", (r) => answer(r, json(trending)));
+  // The hero's pick is the backend's own, made from the stubbed list.
+  await stub("**/api/home/hero", (r) => r.continue());
   await stub("**/api/kitsu/top-rated", (r) => {
     topRatedAsked?.();
     return answer(r, json(topRated));
@@ -293,7 +295,8 @@ test("a test launch takes its flags from the test, not from GitHub", async () =>
   // backend decided, before its first page rendered: with no file, the
   // defaults of what the package declares. The package under test is a
   // test-run build (`pnpm run package:e2e`), which declares the probe
-  // the flags specs turn on and off (e2e/flags/), off.
+  // the flags specs turn on and off (e2e/flags/) beside the release's
+  // own flags, all off.
   const { app, page } = await launchAppWithStubs();
   try {
     const seen = await page.evaluate(() => ({
@@ -302,7 +305,7 @@ test("a test launch takes its flags from the test, not from GitHub", async () =>
     }));
     expect(seen).toEqual({
       origin: "test",
-      flags: { test_run_probe: false },
+      flags: { hero_airing_first: false, test_run_probe: false },
     });
   } finally {
     await app.close();
@@ -820,7 +823,7 @@ test("the renderer cannot change the launch's flags", async () => {
     expect(seen).toEqual({
       flagsFrozen: true,
       bridgeFrozen: true,
-      flags: { test_run_probe: false },
+      flags: { hero_airing_first: false, test_run_probe: false },
     });
   } finally {
     await app.close();

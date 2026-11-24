@@ -359,14 +359,17 @@ Create the branch before the first release that carries this.
 OFF: a flag the file does not mention, or one it gives any other value,
 is off. `true` turns a flag's feature on, and counts only in a signed
 file (see [Signing the flags file](#signing-the-flags-file)); `false`
-counts in any file. A release declares no flag yet, so the file
-changes nothing (only a test-run build declares one, the probe the
-end-to-end suite drives):
+counts in any file. A release declares one flag, `hero_airing_first`
+(the home hero's airing preference, in
+[`architecture.md`](./architecture.md#the-hero-banner)); a test-run
+build also declares the probe the end-to-end suite drives. Once a
+release trusts a key ([Signing the flags file](#signing-the-flags-file),
+step 2), a signed file like this turns the airing preference on:
 
 ```json
 {
   "flags": {
-    "some_feature": true
+    "hero_airing_first": true
   }
 }
 ```
@@ -464,6 +467,14 @@ same origin, and each fetch that gets a valid flags file logs the
 signature's verdict as `flags file signature checked` (`Verified`,
 `Unsigned` or `Invalid`). The app's window gets the same values from
 the preload, as `window.aniGui.flags`.
+
+The airing preference can also be checked without DevTools, in any
+build: open Home, then the diagnostics page (**Debug** in the rail).
+Its "Home banner pick" section shows the flag's value, where the
+launch's flags came from, and every trending show the last pick read
+with what it did with each, so an airing show taken ahead of a
+finished one, or none airing that week, is visible there
+([`architecture.md`](./architecture.md#the-hero-banner)).
 
 **Development and test runs.** `pnpm dev` is a normal launch: it reads
 the live file, so a flag flipped on the branch reaches a dev run too.

@@ -24,9 +24,19 @@ pub(crate) struct FlagCase {
     pub(crate) check: fn(&Resolved),
 }
 
-/// Every consumer's cases. None for a real flag until the first is
-/// declared; a test-run build's probe has its two.
+/// Every consumer's cases: the home hero's airing preference, and a
+/// test-run build's probe.
 pub(crate) const CASES: &[FlagCase] = &[
+    FlagCase {
+        flag: crate::hero::HERO_AIRING_FIRST,
+        value: FlagValue::Bool(false),
+        check: crate::hero::check_off,
+    },
+    FlagCase {
+        flag: crate::hero::HERO_AIRING_FIRST,
+        value: FlagValue::Bool(true),
+        check: crate::hero::check_on,
+    },
     #[cfg(feature = "test-run-key")]
     FlagCase {
         flag: super::test_run::PROBE,

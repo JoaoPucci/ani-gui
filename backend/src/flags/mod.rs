@@ -58,9 +58,10 @@ pub use decl::{FlagDecl, FlagKind, FlagValue};
 pub use resolve::Resolved;
 pub use store::FlagStore;
 
-/// Every flag this build declares. None yet: a declaration comes with
-/// the code that reads it. A test-run build (the `test-run-key`
-/// feature, which no release has) also declares [`test_run::PROBE`],
+/// Every flag this build declares: the home hero's airing preference
+/// ([`crate::hero::HERO_AIRING_FIRST`]), read where the hero's pick is
+/// made. A test-run build (the `test-run-key` feature, which no
+/// release has) also declares [`test_run::PROBE`],
 /// which gates nothing and lets the end-to-end suite drive the flags in
 /// each state.
 ///
@@ -71,6 +72,7 @@ pub use store::FlagStore;
 /// other value it allows in `matrix::CASES`: a test fails while any
 /// value of a declared flag has none.
 pub const DECLARED: &[FlagDecl] = &[
+    crate::hero::HERO_AIRING_FIRST,
     #[cfg(feature = "test-run-key")]
     test_run::PROBE,
 ];
