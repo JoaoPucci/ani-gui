@@ -333,8 +333,10 @@ test("Restart in the AppImage starts the waiter from the user's environment, not
   };
   const now = { ...launch, GDK_BACKEND: "wayland", NO_AT_BRIDGE: "1", ANI_GUI_BACKEND_PORT: "4100" };
   const spawned = [];
+  const { userEnvs } = require("./child-env.cjs");
+  const proc = { platform: "linux", env: now, execPath: appImageExec, argv: [appImageExec], pid: 4242 };
   restart(
-    { platform: "linux", launch, now, execPath: appImageExec, argv: [appImageExec], pid: 4242 },
+    { proc, envs: userEnvs(proc, launch) },
     {
       app: { relaunch: () => assert.fail("the AppImage does not use Electron's relaunch") },
       spawn: (cmd, args, opts) => (spawned.push(opts.env), { unref: () => {}, on: () => {} }),
@@ -358,28 +360,25 @@ test("Restart in the AppImage starts the waiter from the user's environment, not
 test("Restart everywhere else asks for Electron's relaunch inside the user's environment", () => {
   let inside = false;
   const calls = [];
-  restart(
-    {
-      platform: "linux",
-      launch: { HOME: "/home/me" },
-      now: { HOME: "/home/me" },
-      execPath: "/opt/ani-gui/ani-gui",
-      argv: ["/opt/ani-gui/ani-gui"],
-      pid: 1,
+  const proc = {
+    platform: "linux",
+    env: { HOME: "/home/me" },
+    execPath: "/opt/ani-gui/ani-gui",
+    argv: ["/opt/ani-gui/ani-gui"],
+    pid: 1,
+  };
+  const envs = {
+    forProgram: () => assert.fail("Electron's relaunch takes no environment"),
+    asUser: (open) => {
+      inside = true;
+      try {
+        return open();
+      } finally {
+        inside = false;
+      }
     },
-    {
-      app: { relaunch: () => calls.push(inside) },
-      spawn: () => assert.fail(),
-      asUser: (open) => {
-        inside = true;
-        try {
-          return open();
-        } finally {
-          inside = false;
-        }
-      },
-    },
-  );
+  };
+  restart({ proc, envs }, { app: { relaunch: () => calls.push(inside) }, spawn: () => assert.fail() });
   assert.deepEqual(calls, [true]);
 });
 

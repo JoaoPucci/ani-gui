@@ -491,3 +491,41 @@ test("the AppRun fixture carries the exports the installed electron-builder writ
   );
   assert.strictEqual(written.length, 4);
 });
+
+// What main.js uses: built from the process itself, so no call can be
+// handed the wrong binary path or environment.
+test("userEnvs: from a portable AppImage, the backend keeps its home, a program gets the account's", () => {
+  const { userEnvs } = require("./child-env.cjs");
+  const launch = launchedFromImage({ HOME: "/home/me", PATH: "/usr/bin" });
+  launch.HOME = `${launch.APPIMAGE}.home`;
+  launch.XDG_CONFIG_HOME = `${launch.APPIMAGE}.config`;
+  const proc = { platform: "linux", env: { ...launch, GDK_BACKEND: "wayland" }, execPath: IMAGE_EXEC };
+  const envs = userEnvs(proc, launch, { realpath: (p) => p, accountHome: () => "/home/me" });
+  assert.deepStrictEqual(envs.forBackend(), {
+    HOME: launch.HOME,
+    XDG_CONFIG_HOME: launch.XDG_CONFIG_HOME,
+    PATH: "/usr/bin",
+  });
+  assert.deepStrictEqual(envs.forProgram(), { HOME: "/home/me", PATH: "/usr/bin" });
+});
+
+test("userEnvs: a link or folder opens with the program's environment, and the process gets its own back", () => {
+  const { userEnvs } = require("./child-env.cjs");
+  const launch = launchedFromImage({ HOME: "/home/me", PATH: "/usr/bin" });
+  const own = { ...launch, GDK_BACKEND: "wayland" };
+  const proc = { platform: "linux", env: { ...own }, execPath: IMAGE_EXEC };
+  const envs = userEnvs(proc, launch, { realpath: (p) => p, accountHome: () => "/home/me" });
+  const seen = envs.asUser(() => ({ ...proc.env }));
+  assert.deepStrictEqual(seen, { HOME: "/home/me", PATH: "/usr/bin" });
+  assert.deepStrictEqual(proc.env, own);
+});
+
+test("userEnvs: off Linux every environment is the process's own, untouched", () => {
+  const { userEnvs } = require("./child-env.cjs");
+  const env = { USERPROFILE: "C:\\Users\\me" };
+  const proc = { platform: "win32", env, execPath: "C:\\ani-gui.exe" };
+  const envs = userEnvs(proc, env);
+  assert.strictEqual(envs.forProgram(), env);
+  assert.strictEqual(envs.forBackend(), env);
+  assert.strictEqual(envs.asUser(() => 7), 7);
+});
