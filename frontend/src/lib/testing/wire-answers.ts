@@ -107,6 +107,7 @@ export function configAnswer(fields: Partial<Config> = {}): Config {
 		use_custom_player_controls: true,
 		update_include_prereleases: true,
 		primary_account: '',
+		watch_order: 'linked',
 		...fields
 	};
 }

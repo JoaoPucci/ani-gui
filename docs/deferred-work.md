@@ -1335,10 +1335,10 @@ for when AniList's listing is the show's.
 - **Relations.** AniList `relations` names prequels, sequels, side
   stories, adaptations and looser links by `relationType`, and includes
   manga and novel entries, so grouping anime filters on the related
-  node's `type`. The franchise proposal
-  ([`proposals/franchise-watch-order.md`](./proposals/franchise-watch-order.md))
-  compared it with Kitsu's relations and chose Kitsu's, so this stays
-  unused.
+  node's `type`. The franchise walk's design compared it with Kitsu's relations
+  and chose Kitsu's
+  ([`title-resolution.md`](./title-resolution.md#what-the-links-say-and-what-they-do-not)),
+  so this stays unused.
 - **Spoiler-safe tags.** AniList `tags` carry a relevance rank and two
   spoiler flags: `isMediaSpoiler` (spoils this show) and
   `isGeneralSpoiler` (spoils any show it is on). Showing tags without

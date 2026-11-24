@@ -720,6 +720,7 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 | `auto_skip_ed` | `false` | Same as above, for the ED. |
 | `use_custom_player_controls` | `true` | Replace the browser's native controls with the in-app two-row bar. The native bar gives free PiP/captions menus; the custom bar keeps the Skip OP/ED button visible during fullscreen. With the native bar, the quality picker is in the ⋯ menu below the player. |
 | `download_bottom_bar_enabled` | `true` | Show the per-download progress dock at the bottom of the window when downloads are active. |
+| `watch_order` | `"linked"` | Stored and served for the watch-order surfaces, which no screen reads yet: `"linked"` follows Kitsu's prequel and sequel links, `"released"` the start dates. A string this build does not know reads as `"linked"`, so one a newer build wrote degrades instead of failing the whole file. Which entries form the run does not depend on it ([the franchise walk](./title-resolution.md#kitsus-relations-walked-into-a-franchise)). |
 
 ## Reduced motion
 

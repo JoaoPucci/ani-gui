@@ -87,7 +87,8 @@ const config = (): Config => ({
 	auto_skip_ed: false,
 	use_custom_player_controls: true,
 	update_include_prereleases: false,
-	primary_account: ''
+	primary_account: '',
+	watch_order: 'linked'
 });
 
 /** Every search request Kitsu was asked, as `query@offset/sort`. */

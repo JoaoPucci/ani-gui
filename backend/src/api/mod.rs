@@ -28,6 +28,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 mod account;
 mod airing;
 mod flags;
+mod franchise;
 pub mod gate;
 mod link_rules;
 mod refill;
@@ -169,6 +170,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/watched-at", get(get_watched_at_all))
         .merge(account::router())
         .merge(airing::router())
+        .merge(franchise::router())
         .merge(refill::router())
         .with_state(state.clone())
         // Every route answers only the app's own callers: a request

@@ -1,0 +1,277 @@
+//! Properties of the franchise walk over random catalogues.
+//!
+//! Every strategy returns a `BoxedStrategy`, for the Windows test
+//! build's PDB limit (see `meta/kitsu_relations_prop_test.rs`).
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use proptest::prelude::*;
+
+use super::rules::{alt, listed, run};
+use super::tests::{read_without_music, Catalogue};
+use super::*;
+
+const ROLES: [&str; 11] = [
+    "prequel",
+    "sequel",
+    "prequel",
+    "sequel",
+    "alternative_version",
+    "alternative_setting",
+    "summary",
+    "side_story",
+    "parent_story",
+    "character",
+    "spinoff",
+];
+const SUBTYPES: [&str; 5] = ["TV", "movie", "OVA", "special", "music"];
+
+/// An entry: its subtype, its start year (or none), whether its listing
+/// is complete, and its relations as (role, target index).
+type Spec = (usize, Option<u16>, bool, Vec<(usize, usize)>);
+
+fn spec(n: usize) -> BoxedStrategy<Spec> {
+    (
+        0..SUBTYPES.len(),
+        proptest::option::weighted(0.85, 1990u16..2030),
+        prop::bool::weighted(0.95),
+        prop::collection::vec((0..ROLES.len(), 0..n), 0..6),
+    )
+        .boxed()
+}
+
+pub(super) fn catalogue() -> BoxedStrategy<(Catalogue, String)> {
+    (2usize..14)
+        .prop_flat_map(|n| (prop::collection::vec(spec(n), n), 0..n))
+        .prop_map(|(specs, anchor)| {
+            let id = |i: usize| (i + 1).to_string();
+            let mut c = Catalogue::default();
+            for (i, (subtype, year, _, _)) in specs.iter().enumerate() {
+                let start = year.map(|y| format!("{y}-01-01"));
+                c.add(&id(i), SUBTYPES[*subtype], start.as_deref());
+            }
+            for (i, (_, _, complete, rels)) in specs.iter().enumerate() {
+                for (role, to) in rels {
+                    c.rel(&id(i), ROLES[*role], &id(*to));
+                }
+                c.listings.get_mut(&id(i)).expect("listing").complete = *complete;
+            }
+            (c, id(anchor))
+        })
+        .boxed()
+}
+
+type Read = (
+    BTreeMap<String, FranchiseListing>,
+    BTreeMap<String, FranchiseEntry>,
+);
+
+/// Drive the walk from `anchor` with `prefetched` listings already
+/// read, answering each need in reverse order; the result and what was
+/// read.
+pub(super) fn drive_with(
+    anchor: &str,
+    cat: &Catalogue,
+    prefetched: &[String],
+) -> (Franchise, Read) {
+    let mut known: BTreeMap<String, FranchiseListing> = prefetched
+        .iter()
+        .map(|id| (id.clone(), cat.listings[id].clone()))
+        .collect();
+    let mut details = BTreeMap::new();
+    for _ in 0..500 {
+        match plan(anchor, &known, &details) {
+            Plan::Done(f) => return (*f, (known, details)),
+            Plan::Need {
+                listings,
+                details: d,
+            } => {
+                assert!(!listings.is_empty() || !d.is_empty());
+                for id in listings.into_iter().rev() {
+                    assert!(!known.contains_key(&id), "asked again for {id}");
+                    known.insert(id.clone(), cat.listings[&id].clone());
+                }
+                for id in d.into_iter().rev() {
+                    assert!(!details.contains_key(&id), "asked again for {id}");
+                    details.insert(id.clone(), cat.entries[&id].clone());
+                }
+            }
+        }
+    }
+    panic!("the walk did not finish");
+}
+
+fn id_set(entries: &[FranchiseEntry]) -> BTreeSet<String> {
+    entries.iter().map(|e| e.id.clone()).collect()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    /// The answer depends on what the listings say, not on which were
+    /// read first or what else was read beside them.
+    #[test]
+    fn the_walk_does_not_depend_on_read_order(
+        (cat, anchor) in catalogue(),
+        extra in prop::collection::vec(any::<prop::sample::Index>(), 0..6),
+    ) {
+        let (base, _) = drive_with(&anchor, &cat, &[]);
+        let ids: Vec<String> = cat.listings.keys().cloned().collect();
+        let prefetched: Vec<String> = extra.iter().map(|i| i.get(&ids).clone()).collect();
+        let (again, _) = drive_with(&anchor, &cat, &prefetched);
+        prop_assert_eq!(base, again);
+    }
+
+    /// The shape of the answer: the anchor is a member, or a side-story
+    /// anchor among the sides (the films, for a movie) under parents in
+    /// the run or in the chain it is drawn on, or listed around a main
+    /// story that leaves it out; every
+    /// movie around the run is a film, and no TV series is a recap; the
+    /// run is bounded; sections are disjoint from one another and from
+    /// the run; every link joins members; asked again, the walk answers
+    /// the same.
+    #[test]
+    fn the_answer_keeps_its_shape((cat, anchor) in catalogue()) {
+        let (f, (known, details)) = drive_with(&anchor, &cat, &[]);
+        let members = id_set(&f.entries);
+        if members.contains(&anchor) {
+            prop_assert!(f.parents.is_empty());
+        } else if let Some(parents) = f.parents.get(&anchor) {
+            let film = cat.entries[&anchor].subtype.as_deref() == Some("movie");
+            let around = if film { &f.films } else { &f.sides };
+            prop_assert!(id_set(around).contains(&anchor));
+            let chain = f.chain.as_ref().map(|c| id_set(&c.entries)).unwrap_or_default();
+            prop_assert!(parents.iter().all(|p| members.contains(p) || chain.contains(p)));
+        } else {
+            let around = [&f.versions, &f.films, &f.sides, &f.recaps];
+            prop_assert!(around.iter().any(|s| id_set(s).contains(&anchor)));
+        }
+        prop_assert!(members.len() <= MAX_MEMBERS);
+        let sections = [&f.versions, &f.films, &f.sides, &f.recaps];
+        let mut seen = members.clone();
+        for s in sections {
+            for e in s {
+                prop_assert!(seen.insert(e.id.clone()), "{} twice", e.id);
+            }
+        }
+        for (a, b) in &f.links {
+            prop_assert!(members.contains(a) && members.contains(b));
+        }
+        for e in f.films.iter().chain(&f.sides).chain(&f.recaps) {
+            prop_assert!(e.subtype.as_deref() != Some("music"));
+        }
+        for e in f.versions.iter().chain(&f.sides).chain(&f.recaps) {
+            prop_assert!(e.subtype.as_deref() != Some("movie"), "the film {} is not a film", e.id);
+        }
+        for e in &f.recaps {
+            prop_assert!(e.subtype.as_deref() != Some("TV"), "the series {} is a recap", e.id);
+        }
+        prop_assert_eq!(plan(&anchor, &known, &details), Plan::Done(Box::new(f.clone())));
+        let everything = cat.listings.clone();
+        prop_assert_eq!(plan(&anchor, &everything, &details), Plan::Done(Box::new(f)));
+    }
+
+    /// A member's listing never names, in one role, two members that
+    /// are versions of each other when either joined in the step that
+    /// walked from it: a group of versions it lists keeps one. Two that
+    /// were both in the run before it was walked from cannot be undone.
+    #[test]
+    fn a_listing_keeps_one_of_each_group_it_lists((cat, anchor) in catalogue()) {
+        let (_, (known, details)) = drive_with(&anchor, &cat, &[]);
+        let known = read_without_music(&cat, &anchor, &known);
+        let look = Lookup { known: &known, details: &details };
+        let walked = run(&anchor, &look).expect("decided");
+        let depth = |m: &str| {
+            let mut d = 0;
+            let mut at = walked.members[m].clone();
+            while let Some(p) = at {
+                d += 1;
+                at = walked.members[&p].clone();
+            }
+            d
+        };
+        for l in walked.members.keys() {
+            for role in ["prequel", "sequel"] {
+                let both: BTreeSet<String> = listed(&look, l, &[role])
+                    .map(|r| r.id.clone())
+                    .filter(|id| walked.members.contains_key(id))
+                    .collect();
+                for a in &both {
+                    for b in both.range::<String, _>((std::ops::Bound::Excluded(a), std::ops::Bound::Unbounded)) {
+                        if alt(&look, a, b) {
+                            prop_assert!(
+                                depth(a) <= depth(l) && depth(b) <= depth(l),
+                                "{} lists {} and {} as {}", l, a, b, role
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// No member and an entry on its path list each other as another
+    /// version or setting.
+    #[test]
+    fn no_member_is_an_alternative_of_its_path((cat, anchor) in catalogue()) {
+        let (_, (known, details)) = drive_with(&anchor, &cat, &[]);
+        let known = read_without_music(&cat, &anchor, &known);
+        let look = Lookup { known: &known, details: &details };
+        let walked = run(&anchor, &look).expect("decided");
+        for (m, via) in &walked.members {
+            let mut at = via.clone();
+            while let Some(p) = at {
+                prop_assert!(!alt(&look, m, &p), "{} and {} on its path", m, p);
+                at = walked.members[&p].clone();
+            }
+        }
+    }
+
+    /// No music video is part of a show's franchise answer: not its
+    /// main story, its name, a section, a parent or a page's chain. A
+    /// music video's own page answers with the music video alone.
+    #[test]
+    fn no_music_video_is_in_a_franchise_answer((cat, anchor) in catalogue()) {
+        let f = drive_with(&anchor, &cat, &[]).0;
+        let music = |id: &str| cat.entries[id].subtype.as_deref() == Some("music");
+        if music(&anchor) {
+            prop_assert_eq!(id_set(&f.entries), BTreeSet::from([anchor.clone()]));
+            prop_assert!(f.links.is_empty());
+            let around = [&f.versions, &f.films, &f.sides, &f.recaps];
+            prop_assert!(around.iter().all(|s| s.is_empty()));
+            prop_assert!(f.parents.is_empty());
+            prop_assert!(f.chain.is_none());
+            prop_assert_eq!(&f.name_from, &anchor);
+        } else {
+            for id in answer_ids(&f) {
+                prop_assert!(!music(&id), "the music video {} is in the answer", id);
+            }
+        }
+    }
+}
+
+/// Every id a franchise answer names: its main story and links, every
+/// section, the parents, the chain and the entry the name comes from.
+pub(super) fn answer_ids(f: &Franchise) -> BTreeSet<String> {
+    let mut out = BTreeSet::from([f.name_from.clone()]);
+    for s in [&f.entries, &f.versions, &f.films, &f.sides, &f.recaps] {
+        out.extend(s.iter().map(|e| e.id.clone()));
+    }
+    for (a, b) in &f.links {
+        out.insert(a.clone());
+        out.insert(b.clone());
+    }
+    for (side, parents) in &f.parents {
+        out.insert(side.clone());
+        out.extend(parents.iter().cloned());
+    }
+    if let Some(c) = &f.chain {
+        out.extend(c.entries.iter().map(|e| e.id.clone()));
+        for (a, b) in &c.links {
+            out.insert(a.clone());
+            out.insert(b.clone());
+        }
+        out.extend(c.seams.iter().cloned());
+    }
+    out
+}
