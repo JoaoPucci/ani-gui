@@ -10,7 +10,7 @@
 //! Crunchyroll promotional crops AniList carries.
 
 use crate::app::AppState;
-use crate::cache::ttl::{ANILIST_STREAMING_EPS_NO_IDS_TTL, ANILIST_STREAMING_EPS_TTL};
+use crate::cache::ttl::{show_row_ttl, ANILIST_STREAMING_EPS_NO_IDS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::error::AniError;
 use crate::meta::anilist_streaming_eps::StreamingListing;
@@ -35,7 +35,8 @@ pub(crate) fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
 }
 
 /// Writes the outcome of an AniList lookup to the cache. `Ok(listing)`
-/// uses the full [`ANILIST_STREAMING_EPS_TTL`]; `Err(())` uses the
+/// keeps a settled finished show's for the week and any other's for a
+/// day ([`listing_ttl`]); `Err(())` uses the
 /// short [`ANILIST_STREAMING_EPS_NO_IDS_TTL`]: a show Kitsu maps to
 /// neither tracker. A lookup that got no answer never comes here.
 fn cache_anilist_eps_thumbs(
@@ -44,15 +45,24 @@ fn cache_anilist_eps_thumbs(
     outcome: &std::result::Result<StreamingListing, ()>,
 ) {
     let key = anilist_eps_thumbs_key(kitsu_id);
-    let (listing, ttl) = match outcome {
-        Ok(l) => (l.clone(), ANILIST_STREAMING_EPS_TTL.as_secs()),
-        Err(()) => (
-            StreamingListing::default(),
-            ANILIST_STREAMING_EPS_NO_IDS_TTL.as_secs(),
-        ),
-    };
+    let listing = outcome.clone().unwrap_or_default();
     if let Ok(body) = serde_json::to_string(&listing) {
-        let _ = meta_cache_put(pool, &key, &body, ttl);
+        let settled = crate::commands::show_settled::held_settled(pool, kitsu_id);
+        let _ = meta_cache_put(pool, &key, &body, listing_ttl(outcome, settled));
+    }
+}
+
+/// How long the outcome of an AniList lookup is kept, in seconds
+/// ([`show_row_ttl`]). The week only when AniList's status for the
+/// media says FINISHED and Kitsu's held detail says the show has
+/// `settled` ([`crate::commands::show_settled`]): by then its stills,
+/// or its having none, no longer change. Any other show's are asked
+/// again daily, an airing show's as its episodes air and a just
+/// finished show's while its last stills come in.
+fn listing_ttl(outcome: &std::result::Result<StreamingListing, ()>, settled: bool) -> u64 {
+    match outcome {
+        Ok(listing) => show_row_ttl(listing.finished && settled).as_secs(),
+        Err(()) => ANILIST_STREAMING_EPS_NO_IDS_TTL.as_secs(),
     }
 }
 

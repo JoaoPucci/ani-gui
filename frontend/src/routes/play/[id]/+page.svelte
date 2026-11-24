@@ -5594,10 +5594,10 @@
 		background: rgba(15, 15, 17, 0.92);
 		border: 1px solid color-mix(in oklab, var(--accent) 70%, #fff 0%);
 		border-radius: var(--radius-pill);
-		box-shadow:
-			0 1px 0 rgba(255, 255, 255, 0.08) inset,
-			0 8px 24px rgba(0, 0, 0, 0.45),
+		--skip-shadow-rest:
+			0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 8px 24px rgba(0, 0, 0, 0.45),
 			0 2px 8px rgba(0, 0, 0, 0.3);
+		box-shadow: var(--skip-shadow-rest);
 		cursor: pointer;
 		z-index: 3;
 		transition:
@@ -5618,6 +5618,9 @@
 	.player-skip-btn:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: 3px;
+		/* The outline is the ring: the resting shadows, without the
+		   spread the hover adds, which under the mouse drew a second. */
+		box-shadow: var(--skip-shadow-rest);
 	}
 	.player-skip-btn:active {
 		transform: translateY(0);
@@ -5911,6 +5914,19 @@
 		opacity: 0;
 		cursor: pointer;
 	}
+	/* The slider's field is transparent, so the ring it takes from the
+	   keyboard is drawn on the slider around it; in a forced-colours
+	   theme, which drops shadows, as an outline. */
+	.pc-volume-slider:has(input:focus-visible) {
+		box-shadow: var(--ring);
+		border-radius: 999px;
+	}
+	@media (forced-colors: active) {
+		.pc-volume-slider:has(input:focus-visible) {
+			outline: var(--ring-forced, 2px solid CanvasText);
+			outline-offset: var(--ring-forced-offset, 2px);
+		}
+	}
 	.pc-volume-slider input[type='range']::-webkit-slider-thumb {
 		appearance: none;
 		-webkit-appearance: none;
@@ -6144,6 +6160,8 @@
 	.player-error-action:focus-visible {
 		outline: 2px solid var(--bone-100);
 		outline-offset: 2px;
+		/* The outline is the ring: the app's (tokens.css) drew a second. */
+		box-shadow: none;
 	}
 	.player-error-action:disabled {
 		opacity: 0.4;
@@ -6318,6 +6336,14 @@
 			0 0 8px color-mix(in oklab, var(--accent) 50%, transparent),
 			0 0 16px color-mix(in oklab, var(--accent) 25%, transparent);
 	}
+	/* The app's ring on the pill while its field has focus: the field
+	   turns its own off. The Go button inside it rings itself. */
+	.ep-jump-pill:has(.jump-input:focus-visible) {
+		box-shadow:
+			var(--ring),
+			0 0 8px color-mix(in oklab, var(--accent) 50%, transparent),
+			0 0 16px color-mix(in oklab, var(--accent) 25%, transparent);
+	}
 	.jump-input {
 		flex: 1;
 		min-inline-size: 0;
@@ -6412,6 +6438,13 @@
 		border-color: color-mix(in oklab, var(--accent) 80%, transparent);
 		background: color-mix(in oklab, var(--accent) 10%, transparent);
 		box-shadow: 0 0 12px color-mix(in oklab, var(--accent) 30%, transparent);
+	}
+	/* Under the mouse, a button the keyboard focused keeps the app's ring
+	   in front of its hover glow, which replaced it. */
+	.ep-pager-mini-btn:focus-visible:hover:not(:disabled) {
+		box-shadow:
+			var(--ring),
+			0 0 12px color-mix(in oklab, var(--accent) 30%, transparent);
 	}
 	.ep-pager-mini-btn:first-child:hover:not(:disabled) svg {
 		transform: translateX(-2px);

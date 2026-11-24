@@ -134,6 +134,8 @@
 	.action:focus-visible {
 		outline: 2px solid var(--toast-accent);
 		outline-offset: 2px;
+		/* The outline is the ring: the app's (tokens.css) drew a second. */
+		box-shadow: none;
 	}
 	.dismiss {
 		flex: 0 0 auto;
@@ -159,5 +161,6 @@
 	.dismiss:focus-visible {
 		outline: 2px solid var(--toast-accent);
 		outline-offset: 2px;
+		box-shadow: none;
 	}
 </style>
