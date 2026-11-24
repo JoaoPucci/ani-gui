@@ -1343,6 +1343,75 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 	}
 });
 
+/** A show the watch-order mockups' fixtures place mid-run: Gintama°,
+ *  with entries before and after it and another entry part-watched, so
+ *  the strip shows its tiles, the line for the entry being watched and
+ *  the franchise link. */
+const mockShow = { ...topRated[0], id: '10083', canonical_title: 'Gintama°' };
+
+test("the rings on the watch-order mockups' strip and franchise page are drawn once and whole", async () => {
+	test.setTimeout(240_000);
+	const { app, page } = await launch();
+	try {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await sizeViewport(page, 1440, 900);
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p === '/api/kitsu/top-rated') return j([mockShow]);
+			if (p.startsWith('/api/kitsu/anime/')) return j(mockShow);
+			return r.fallback();
+		});
+		// Diagnostics' switch, as it stores it: the mockups on.
+		await page.evaluate(() =>
+			localStorage.setItem('ani-gui:watch-order-mockups', JSON.stringify({ enabled: true }))
+		);
+		await remount(page);
+
+		await page.locator(`a[href$="/anime/${mockShow.id}"]`).first().click();
+		await expect.poll(() => page.url()).toContain(`/anime/${mockShow.id}`);
+		await expect(page.locator('.trio .tile').first()).toBeVisible({ timeout: 15_000 });
+		const stripNeeds = ['.trio .tile', '.trio .chip', '.trio .stack'];
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `the mockups' strip${forced ? ', forced colours' : ''}, ${key}`;
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, {
+					selectors: stripNeeds,
+					hovered: underMouse ? hovered : undefined
+				});
+				if (forced) assertForced(stops, at, [], stripNeeds);
+				else assertStops(stops, at, [], stripNeeds);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
+			}
+		}
+		await forcedColours(page, false);
+
+		await page.locator('.trio .stack').click();
+		await expect.poll(() => page.url()).toContain(`/anime/${mockShow.id}/franchise`);
+		await expect(page.locator('main a[href*="/anime/"]').first()).toBeVisible({
+			timeout: 15_000
+		});
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `the mockups' franchise page${forced ? ', forced colours' : ''}, ${key}`;
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, { hovered: underMouse ? hovered : undefined });
+				if (forced) assertForced(stops, at, []);
+				else assertStops(stops, at, []);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
+			}
+		}
+	} finally {
+		await stopApp(app);
+	}
+});
+
 /** A server for the captions media fixture, standing in for a
  *  provider's CDN (see player-start.spec.ts). */
 async function mediaServer(): Promise<{ origin: string; close: () => void }> {
