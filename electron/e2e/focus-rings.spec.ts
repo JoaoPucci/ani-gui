@@ -69,9 +69,11 @@
  * with a download in flight, which shows the download bar; the
  * player's page with the skip button up and the note on a guessed
  * session; a show's page with its watch-order strip (its tiles and
- * the line for the entry being watched); and the player at the end of
- * a show's last episode, with the Up next card naming the entry after
- * it. Each requires the walk to reach those controls.
+ * the line for the entry being watched); the player at the end of a
+ * show's last episode, with the Up next card naming the entry after
+ * it; and Home with a Continue Watching card that moved on from a
+ * finale to the entry after it. Each requires the walk to reach those
+ * controls.
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
@@ -112,9 +114,9 @@
  *
  * Under the mouse: at the desktop size, the forward walks of the four
  * pages (and of the show's page with an episode typed), of the hero's
- * empty and failed states, of the player, of the watch-order strip and
- * of the Up next card rest the mouse on every
- * stop that shows, and a hover style must neither replace its ring nor
+ * empty and failed states, of the player, of the watch-order strip, of
+ * the Up next card and of Home with a hand-off card rest the mouse on
+ * every stop that shows, and a hover style must neither replace its ring nor
  * add a second; the read must find the control under the mouse.
  * Whether a lifted, hovered control's ring stays whole is not checked,
  * and the other state tests (Continue Watching, its link dialog, the
@@ -1640,6 +1642,63 @@ test("the rings on the player's Up next card are drawn once and whole", async ()
 	} finally {
 		await stopApp(app);
 		media.close();
+	}
+});
+
+test("the rings on Continue Watching's hand-off card are drawn once and whole", async () => {
+	test.setTimeout(240_000);
+	const { app, page } = await launch();
+	try {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await sizeViewport(page, 1440, 900);
+		// One row, played through the finale of a show a second season
+		// follows, which no row resumes: its card moves on to the season.
+		const row = { ...guessedHistory[0], ep_no: '6' };
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p === '/api/history') return j([row]);
+			if (p === '/api/history/card-lines') {
+				return j(cardLinesAnswer(r.request().postDataJSON()));
+			}
+			if (p === '/api/watched-at') return j({ [row.id]: 1_700_000_000 });
+			if (p.endsWith('/played')) return j(null);
+			if (p.startsWith('/api/allmanga-kitsu-map/')) return j(finaleShow.id);
+			if (p === `/api/kitsu/anime/${finaleShow.id}`) return j(finaleShow);
+			if (p === `/api/kitsu/episodes/${finaleShow.id}`) return j(continueEpisodes.slice(0, 6));
+			if (p.startsWith('/api/kitsu/franchise/')) return j(finaleFranchise);
+			if (p === '/api/history/by-kitsu') {
+				const { ids } = r.request().postDataJSON() as { ids: string[] };
+				return j(Object.fromEntries(ids.map((i) => [i, null])));
+			}
+			if (p.startsWith('/api/title-match')) return j(null);
+			// The source lists no episode past the sixth: the finale stands.
+			if (p === '/api/availability') {
+				return j({ available: true, episode_count: 6, extra_episodes: [] });
+			}
+			return r.fallback();
+		});
+		await remount(page);
+		await expect(page.locator('.handoff-card').first()).toBeVisible({ timeout: 15_000 });
+		const needs = ['.handoff-card'];
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `home with a hand-off card${forced ? ', forced colours' : ''}, ${key}`;
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, {
+					selectors: needs,
+					hovered: underMouse ? hovered : undefined
+				});
+				if (forced) assertForced(stops, at, ['brand'], needs);
+				else assertStops(stops, at, ['brand'], needs);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
+			}
+		}
+	} finally {
+		await stopApp(app);
 	}
 });
 
