@@ -1,0 +1,256 @@
+//! Home's hero: which trending shows it rotates through, which the
+//! trending row below it lists, and the walk that explains the choice.
+//!
+//! The renderer fetches the trending list and drops the shows the
+//! availability filter knows are gone, then hands what is left here
+//! (`POST /api/home/hero`). The pick is made once, by [`pick`], which
+//! returns the walk beside the result: the Debug page shows the last
+//! one (`GET /api/home/hero/walk`), so what it shows is what made the
+//! pick, never a second computation of it.
+//!
+//! The rule: a show listed more than once counts once, at its first
+//! entry. The hero takes the first [`HERO_ROTATION_COUNT`] shows with
+//! art of their own ([`art`]: AniList's banner, or any slot of Kitsu's
+//! cover), in trending order. When fewer have art, the first shows
+//! without it fill the rest, in trending order, after the ones with
+//! art; they are drawn as their poster, blurred. The row lists every
+//! other show in trending order, so the shows the hero passed over lead
+//! it: no show leaves Home and none appears twice.
+//!
+//! With [`HERO_AIRING_FIRST`] on, the shows with art that are airing
+//! now (Kitsu's status `current`) come before the other shows with art,
+//! each group in trending order. The fill is untouched. With it off the
+//! pick is exactly the rule above.
+
+use serde::{Deserialize, Serialize};
+
+use crate::flags::{FlagDecl, FlagKind, Resolved};
+
+/// How many shows the hero rotates through.
+pub const HERO_ROTATION_COUNT: usize = 3;
+
+/// The most shows one request may carry. The trending list is a few
+/// dozen; anything near this is not a trending list.
+pub const MAX_SHOWS: usize = 500;
+
+/// The flag that puts airing shows first among the hero's shows with
+/// art.
+pub const HERO_AIRING_FIRST: FlagDecl = FlagDecl {
+    name: "hero_airing_first",
+    kind: FlagKind::Rollout,
+    safe_because: "on, it only reorders which trending shows with art the home banner \
+                   rotates through, airing ones first; every show stays on Home either way, \
+                   and off is the build's own order",
+};
+
+/// One trending show, as much of it as the pick reads.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeroShow {
+    /// Kitsu id.
+    pub id: String,
+    /// The title the walk shows.
+    #[serde(default)]
+    pub title: String,
+    /// Kitsu's status: `current` while it airs.
+    #[serde(default)]
+    pub status: Option<String>,
+    /// AniList's banner, when the backend has it.
+    #[serde(default)]
+    pub anilist_banner: Option<String>,
+    /// Kitsu's cover, in the slots the hero can draw.
+    #[serde(default)]
+    pub cover_image: Option<CoverSlots>,
+}
+
+/// The slots of Kitsu's cover that count as art.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoverSlots {
+    /// The large slot.
+    #[serde(default)]
+    pub large: Option<String>,
+    /// The original upload.
+    #[serde(default)]
+    pub original: Option<String>,
+    /// The small slot.
+    #[serde(default)]
+    pub small: Option<String>,
+}
+
+/// What art of its own a show has for the hero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Art {
+    /// AniList's banner.
+    Banner,
+    /// A slot of Kitsu's cover, and no banner.
+    Cover,
+    /// Neither: the hero would draw its poster, blurred.
+    None,
+}
+
+/// Why the walk took a show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TakenBecause {
+    /// It has art, and came early enough in trending order.
+    Art,
+    /// It has art and is airing, and the airing preference put it
+    /// ahead of the shows with art that are not.
+    AiringArt,
+    /// It has no art, and too few shows did: it fills a slot.
+    Fill,
+}
+
+/// Why the walk passed a show over. A show passed over is in the row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkippedBecause {
+    /// An earlier entry is the same show; only the first counts.
+    Repeat,
+    /// It has art and would have been taken in trending order, but it
+    /// is not airing and airing shows took its place.
+    NotAiring,
+    /// The hero had its shows before this one's turn.
+    HeroFull,
+    /// It has no art, and enough shows did.
+    NoArt,
+}
+
+/// What the walk did with one entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Verdict {
+    /// Taken into the hero, at `slot` (0 first).
+    Taken {
+        /// Its place in the rotation.
+        slot: usize,
+        /// Why.
+        because: TakenBecause,
+    },
+    /// Left to the row.
+    Skipped {
+        /// Why.
+        because: SkippedBecause,
+    },
+}
+
+/// One entry of the trending list, as the walk saw it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WalkStep {
+    /// Its place in the list it came in, 1 first.
+    pub rank: usize,
+    /// Kitsu id.
+    pub id: String,
+    /// Its title.
+    pub title: String,
+    /// Its art.
+    pub art: Art,
+    /// Kitsu's status, as sent.
+    pub status: Option<String>,
+    /// Whether it is airing now.
+    pub airing: bool,
+    /// Whether the airing preference decided this entry: taken because
+    /// it airs, or passed over because it does not.
+    pub preference_applied: bool,
+    /// What the walk did with it.
+    pub verdict: Verdict,
+}
+
+/// The walk behind one pick: every entry considered, in trending
+/// order, up to the one that settled the hero.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Walk {
+    /// Whether airing shows came first.
+    pub airing_first: bool,
+    /// How many shows the hero takes.
+    pub count: usize,
+    /// How many entries the list had. Those past the last step were
+    /// not needed to settle the hero, and are in the row.
+    pub entries: usize,
+    /// The entries considered.
+    pub steps: Vec<WalkStep>,
+}
+
+/// The hero's shows and the row's, by id, and the walk that chose them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Pick {
+    /// The hero's rotation, in order.
+    pub hero: Vec<String>,
+    /// The row's shows, in trending order.
+    pub row: Vec<String>,
+    /// How they were chosen.
+    pub walk: Walk,
+}
+
+/// What art of its own `show` has: AniList's banner first, then any
+/// slot of Kitsu's cover. An empty string is no art.
+#[must_use]
+pub fn art(show: &HeroShow) -> Art {
+    todo!()
+}
+
+/// Whether `show` is airing now: Kitsu's status `current`.
+#[must_use]
+pub fn is_airing(show: &HeroShow) -> bool {
+    todo!()
+}
+
+/// The pick under the launch's flags.
+#[must_use]
+pub fn pick_for(flags: &Resolved, shows: &[HeroShow]) -> Pick {
+    pick(
+        shows,
+        HERO_ROTATION_COUNT,
+        flags.enabled(&HERO_AIRING_FIRST),
+    )
+}
+
+/// Split `shows`, in trending order, into the hero's `count` and the
+/// row, airing shows with art first when `airing_first`; see the
+/// module's rule.
+#[must_use]
+pub fn pick(shows: &[HeroShow], count: usize, airing_first: bool) -> Pick {
+    todo!()
+}
+
+/// The flag-matrix check with the airing preference off: the hero is
+/// the trending order's shows with art.
+#[cfg(test)]
+pub(crate) fn check_off(r: &Resolved) {
+    let p = pick_for(r, &matrix_list());
+    assert_eq!(p.hero, ["1", "2", "3"]);
+    assert!(!p.walk.airing_first);
+}
+
+/// The same, on: the airing shows with art lead it.
+#[cfg(test)]
+pub(crate) fn check_on(r: &Resolved) {
+    let p = pick_for(r, &matrix_list());
+    assert_eq!(p.hero, ["4", "1", "2"]);
+    assert!(p.walk.airing_first);
+}
+
+/// Three finished shows with covers, then an airing one.
+#[cfg(test)]
+fn matrix_list() -> Vec<HeroShow> {
+    let show = |id: &str, status: &str| HeroShow {
+        id: id.into(),
+        status: Some(status.into()),
+        anilist_banner: Some(format!("https://banner.example/{id}.jpg")),
+        ..HeroShow::default()
+    };
+    vec![
+        show("1", "finished"),
+        show("2", "finished"),
+        show("3", "finished"),
+        show("4", "current"),
+    ]
+}
+
+#[cfg(test)]
+#[path = "pick_test.rs"]
+mod pick_tests;
+
+#[cfg(test)]
+#[path = "pick_prop_test.rs"]
+mod pick_prop_tests;
