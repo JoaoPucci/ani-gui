@@ -87,6 +87,21 @@ proptest! {
     }
 
     #[test]
+    fn the_registration_taken_is_the_first_usable_one_and_none_after_it_is_asked(
+        entries in proptest::collection::vec(("[A-Z]:\\\\[a-z]{1,6}\\\\vlc\\.exe", any::<bool>()), 0..6),
+    ) {
+        let var = |_: &str| None;
+        let usable: Vec<String> = entries.iter().filter(|(_, ok)| *ok).map(|(p, _)| p.clone()).collect();
+        let exists = |p: &str| usable.iter().any(|u| u == p);
+        let asked = std::cell::Cell::new(0usize);
+        let registrations = entries.iter().map(|(p, _)| p.clone()).inspect(|_| asked.set(asked.get() + 1));
+        let got = first_registered(registrations, &var, &exists);
+        let want = entries.iter().position(|(p, _)| exists(p));
+        prop_assert_eq!(got, want.map(|i| entries[i].0.clone()));
+        prop_assert_eq!(asked.get(), want.map_or(entries.len(), |i| i + 1));
+    }
+
+    #[test]
     fn syncplay_looks_up_off_linux_only_and_takes_the_answer_as_is(
         os in os(),
         n in name(),

@@ -239,6 +239,57 @@ fn a_registered_path_keeps_a_variable_it_cannot_expand_and_a_lone_percent() {
     }
 }
 
+#[test]
+fn a_registration_whose_program_is_gone_gives_way_to_the_next() {
+    // A per-user registration left behind by an uninstall points at a
+    // file that is gone; the machine-wide one, outside every folder
+    // searched, is where the program is.
+    let var = vars(&[("ProgramFiles", "C:\\Program Files")]);
+    let registered = |_: &str| -> Registrations {
+        Box::new(
+            strings(&[
+                "C:\\Users\\u\\AppData\\Local\\Old\\vlc.exe",
+                "%ProgramFiles%\\Media\\VLC\\vlc.exe",
+            ])
+            .into_iter(),
+        )
+    };
+    let exists = |p: &str| p == "C:\\Program Files\\Media\\VLC\\vlc.exe";
+    assert_eq!(
+        locate("vlc", Os::Windows, &var, &exists, &registered).as_deref(),
+        Some("C:\\Program Files\\Media\\VLC\\vlc.exe")
+    );
+}
+
+#[test]
+fn the_registrations_after_the_one_taken_are_not_asked() {
+    // Each registration is a reg.exe run: once one is usable, the
+    // rest are not exported.
+    let var = vars(&[]);
+    let asked = std::cell::Cell::new(0);
+    let registrations = [
+        "C:\\gone\\vlc.exe",
+        "C:\\VLC\\vlc.exe",
+        "C:\\later\\vlc.exe",
+    ]
+    .into_iter()
+    .inspect(|_| asked.set(asked.get() + 1))
+    .map(str::to_string);
+    let exists = |p: &str| p != "C:\\gone\\vlc.exe";
+    assert_eq!(
+        first_registered(registrations, &var, &exists).as_deref(),
+        Some("C:\\VLC\\vlc.exe")
+    );
+    assert_eq!(asked.get(), 2);
+}
+
+#[cfg(windows)]
+#[test]
+fn a_program_nobody_registered_has_no_registrations() {
+    let file = format!("ani-gui-unregistered-{}.exe", std::process::id());
+    assert_eq!(registry::registered_app_paths(&file).next(), None);
+}
+
 /// `text` as reg.exe writes an export: UTF-16LE behind a byte-order
 /// mark, CRLF line ends.
 fn reg_file(text: &str) -> Vec<u8> {
