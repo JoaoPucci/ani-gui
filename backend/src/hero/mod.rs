@@ -443,3 +443,7 @@ mod pick_tests;
 #[cfg(test)]
 #[path = "pick_prop_test.rs"]
 mod pick_prop_tests;
+
+#[cfg(test)]
+#[path = "golden_test.rs"]
+mod golden_tests;
