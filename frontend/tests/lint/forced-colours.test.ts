@@ -26,9 +26,12 @@
 // too). A value written as `var(--name, fallback)` is held by its
 // fallback's words.
 //
-// What it does not see: a colour set on an element that opts out from
-// a rule outside the block (its resting colour or shadow), which the
-// block must override; a custom property's own value, wherever it is
+// What it does not see: a colour set on an element that opts out, or
+// on anything inside it (opting out is inherited), from a rule outside
+// the block (its resting colour or shadow, or a state's rule that names
+// it more specifically than the block does), which the block must
+// override, and which the Electron e2e reads from what the page
+// computes; a custom property's own value, wherever it is
 // set; colour properties outside the list (`fill`, `stroke`,
 // `caret-color`, `text-decoration-color`, `accent-color`, ...); styles
 // set in markup (`style=`, `style:`), from script or in `app.html`; and

@@ -40,7 +40,11 @@
  * the theme's colours, the spec also reads that what it draws stays in
  * the theme: a switch's thumb inside its track's border, a chosen
  * button's separator and words, a picked result's words, and the bars
- * drawn whole. Keyboard focus in this theme
+ * drawn whole. And in every state it pictures, and with each of the
+ * download dialog's modes chosen, it reads what the page computes for
+ * every element that opts out, with what it holds, since opting out is
+ * inherited: each colour it paints is a system colour, whichever rule
+ * paints it. Keyboard focus in this theme
  * is not checked here (focus-rings.spec.ts). Every API request is
  * stubbed, but for the player test's play and stream (see
  * real-play.ts).
@@ -234,9 +238,11 @@ async function shows(
 	};
 	await settle();
 	const before = await target.screenshot();
+	await inTheme(page, `${what}, before`);
 	await change();
 	await settle();
 	const after = await target.screenshot();
+	await inTheme(page, what);
 	const slug = what.replace(/[^a-z0-9]+/gi, '-');
 	fs.writeFileSync(test.info().outputPath(`${slug}-before.png`), before);
 	fs.writeFileSync(test.info().outputPath(`${slug}-after.png`), after);
@@ -264,6 +270,131 @@ function systemColour(page: Page, name: string): Promise<string> {
 /** The computed value of `prop` on the first element `target` finds. */
 const computed = (target: Locator, prop: string) =>
 	target.first().evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
+
+/**
+ * Every element on the page that opts out of the theme's colours, and
+ * each of their `::before` and `::after` boxes, paints in system
+ * colours only: its words, its fill, each border and outline that is
+ * drawn, an SVG's fill and stroke, no shadow and no background image.
+ * Opting out
+ * is inherited, so a child the block never names (a chosen mode's
+ * episode count) paints whatever colour its own rules give it, and a
+ * rule outside the block that names it more specifically than the block
+ * does wins. This reads what the page computes, so it finds that child
+ * whichever rule paints it. Returns each offender as
+ * `element: property value`.
+ */
+function outOfTheme(page: Page): Promise<string[]> {
+	return page.evaluate(() => {
+		const SYSTEM = [
+			'Canvas',
+			'CanvasText',
+			'LinkText',
+			'VisitedText',
+			'ActiveText',
+			'ButtonFace',
+			'ButtonText',
+			'ButtonBorder',
+			'Field',
+			'FieldText',
+			'Highlight',
+			'HighlightText',
+			'SelectedItem',
+			'SelectedItemText',
+			'Mark',
+			'MarkText',
+			'GrayText',
+			'AccentColor',
+			'AccentColorText'
+		];
+		const probe = document.createElement('span');
+		probe.style.setProperty('forced-color-adjust', 'none');
+		document.body.append(probe);
+		const allowed = new Set(['rgba(0, 0, 0, 0)']);
+		for (const k of SYSTEM) {
+			probe.style.color = k;
+			allowed.add(getComputedStyle(probe).color);
+		}
+		probe.remove();
+		const name = (el: Element, pseudo: string) =>
+			`${el.tagName.toLowerCase()}${[...el.classList].map((c) => `.${c}`).join('')}${pseudo}`;
+		const found: string[] = [];
+		for (const el of document.querySelectorAll('*')) {
+			if (getComputedStyle(el).getPropertyValue('forced-color-adjust') !== 'none') continue;
+			for (const pseudo of ['', '::before', '::after']) {
+				const cs = getComputedStyle(el, pseudo || null);
+				if (pseudo && (cs.content === 'none' || cs.content === 'normal')) continue;
+				if (cs.display === 'none') continue;
+				const check = (prop: string) => {
+					const v = cs.getPropertyValue(prop);
+					if (!allowed.has(v)) found.push(`${name(el, pseudo)}: ${prop} ${v}`);
+				};
+				// The text colour paints the box's own words (a border or an
+				// SVG drawn in `currentColor` is read as the colour it
+				// resolves to, below): a box with no words of its own, a
+				// switch's thumb, paints nothing with it.
+				const words = pseudo
+					? !/^(""|'')$/.test(cs.content)
+					: [...el.childNodes].some(
+							(n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim() !== ''
+						);
+				if (words) check('color');
+				check('background-color');
+				for (const side of ['top', 'right', 'bottom', 'left']) {
+					const style = cs.getPropertyValue(`border-${side}-style`);
+					if (
+						style !== 'none' &&
+						style !== 'hidden' &&
+						parseFloat(cs.getPropertyValue(`border-${side}-width`)) > 0
+					) {
+						check(`border-${side}-color`);
+					}
+				}
+				if (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) check('outline-color');
+				if (el instanceof SVGElement) {
+					for (const prop of ['fill', 'stroke']) {
+						const v = cs.getPropertyValue(prop);
+						if (v !== 'none' && !allowed.has(v)) found.push(`${name(el, pseudo)}: ${prop} ${v}`);
+					}
+				}
+				// Opting out brings shadows back, in the colours they were
+				// written in: none is drawn.
+				for (const prop of ['box-shadow', 'text-shadow']) {
+					const v = cs.getPropertyValue(prop);
+					if (v !== 'none') found.push(`${name(el, pseudo)}: ${prop} ${v}`);
+				}
+				if (cs.backgroundImage !== 'none') {
+					found.push(`${name(el, pseudo)}: background-image ${cs.backgroundImage}`);
+				}
+			}
+		}
+		return found;
+	});
+}
+
+/** `target` focused as the keyboard focuses it (`:focus-visible`), and
+ *  what opts out of the theme then painting in its colours: a focused
+ *  control's own ring rules name it more specifically than a
+ *  forced-colours block may. Focus is let go after. */
+async function inThemeFocused(page: Page, target: Locator, what: string) {
+	await page.keyboard.press('Shift');
+	await target.first().focus();
+	expect(
+		await target.first().evaluate((el) => el.matches(':focus-visible')),
+		`${what} is focused as the keyboard focuses it`
+	).toBe(true);
+	await page.evaluate(
+		() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+	);
+	await inTheme(page, `${what}, focused`);
+	await target.first().evaluate((el) => (el as HTMLElement).blur());
+}
+
+/** What opts out of the theme in this state paints in its colours. */
+async function inTheme(page: Page, what: string) {
+	const found = await outOfTheme(page);
+	expect.soft(found, `${what}: what opts out of the theme paints in its colours`).toEqual([]);
+}
 
 /** A message from the shipped English catalogue. */
 function message(file: string, key: string): string {
@@ -462,6 +593,7 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 				"a chosen button's separator is the highlight"
 			)
 			.toBe(await systemColour(page, 'Highlight'));
+		await inThemeFocused(page, page.locator('.seg .seg-btn.active'), "a settings' chosen button");
 
 		// A show's Sub/Dub control.
 		await page.locator('a.brand').click();
@@ -496,6 +628,12 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			);
 		}
 
+		// Where the chosen one stays chosen (the other was there to pick).
+		const audioChosen = audio.locator('.seg-btn.active');
+		if (await audioChosen.count()) {
+			await inThemeFocused(page, audioChosen, "a show's chosen Sub/Dub button");
+		}
+
 		// The download bar's progress, shown and hidden.
 		await page.evaluate(() => {
 			class SilentSource {
@@ -522,6 +660,24 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		});
 		await expect(range).toBeVisible();
 		await shows(page, range, "the download dialog's Range mode, chosen", () => range.click(), 6);
+		// Each mode the dialog offers chosen in turn, for what it holds:
+		// This episode and All carry an episode count, which Range does
+		// not. A show's page offers All and Range; the player, This
+		// episode too.
+		const modes = dialog.locator('.dl-mode-btn:not([aria-disabled="true"])');
+		const modeCount = await modes.count();
+		expect(modeCount, 'the dialog offers more than Range').toBeGreaterThan(1);
+		for (let i = 0; i < modeCount; i++) {
+			const mode = modes.nth(i);
+			const label = (await mode.textContent())?.trim() ?? '';
+			await mode.click();
+			await expect(mode).toHaveAttribute('aria-pressed', 'true');
+			await still(page);
+			await inTheme(page, `the download dialog's ${label} mode, chosen`);
+			await inThemeFocused(page, mode, `the download dialog's ${label} mode, chosen`);
+		}
+		await range.click();
+		await still(page);
 		const highlightText = await systemColour(page, 'HighlightText');
 		for (const words of await range.locator('*').all()) {
 			if (!(await words.evaluate((el) => (el.textContent ?? '').trim().length > 0))) continue;
@@ -730,6 +886,9 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 			await expect(vFill).toBeVisible();
 			await apart(volume, vFill, "the volume's fill");
 			await apart(volume, page.locator('.pc-volume-track'), "the volume's track");
+			await hidden(page.locator('.pc-volume-track'), false);
+			await hidden(vFill, false);
+			await inTheme(page, "the player's controls");
 		} finally {
 			await stopApp(app);
 		}
