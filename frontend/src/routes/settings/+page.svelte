@@ -1042,6 +1042,20 @@
 	.seg-btn:last-child {
 		border-inline-end: 0;
 	}
+	/* Inside the button's box: a segmented control's track clips what
+	   overflows it. The browse buttons share the class and ring the same
+	   way. On the chosen button, whose fill is the accent, the ring's
+	   colours swap so it still shows. */
+	.seg-btn:focus-visible {
+		box-shadow: var(--ring-inset);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
+		--ring-forced-offset: -4px;
+	}
+	.seg-btn.active:focus-visible {
+		box-shadow:
+			inset 0 0 0 2px var(--ink-000),
+			inset 0 0 0 4px var(--bone-100);
+	}
 	.seg-btn:hover:not(.active) {
 		color: var(--bone-100);
 	}
@@ -1309,6 +1323,14 @@
 	}
 	.switch input:focus-visible + .switch-track {
 		box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 60%, transparent);
+	}
+	/* A forced-colours theme drops the track's shadow, and the field
+	   that takes focus is transparent: the track draws an outline. */
+	@media (forced-colors: active) {
+		.switch input:focus-visible + .switch-track {
+			outline: var(--ring-forced, 2px solid CanvasText);
+			outline-offset: var(--ring-forced-offset, 2px);
+		}
 	}
 	.switch-state {
 		font-family: var(--font-mono);
