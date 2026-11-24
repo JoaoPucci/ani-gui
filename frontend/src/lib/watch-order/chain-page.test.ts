@@ -30,6 +30,8 @@ const hf3 = e('12008', '2020-08-15');
 function fate(anchor: string, chain: ChainData | undefined, complete = true): FranchiseData {
 	return {
 		anchor,
+		name: 'N',
+		name_from: '',
 		entries: [fsn, fz, fz2],
 		links: [
 			['6028', '7658'],
@@ -70,6 +72,24 @@ describe('watchOrderPage on a page outside the main story', () => {
 		expect(p.seams).toEqual({ before: null, after: null });
 	});
 
+	it("stacks the strip's franchise link from the main story, and hides the whole franchise from Similar titles", () => {
+		const p = watchOrderPage(
+			{ franchise: fate('12007', heavensFeel), rows: [] },
+			'12007',
+			'linked'
+		)!;
+		expect(ids(p.mainRun.entries)).toEqual(['323', '6028', '7658']);
+		expect(ids(p.run.entries)).toEqual(['7658', '8675', '12007', '12008']);
+		for (const other of ['323', '6028', '7658', '8675', '12008'])
+			expect(p.similarHidden.has(other)).toBe(true);
+		const main = watchOrderPage(
+			{ franchise: fate('7658', undefined), rows: [] },
+			'7658',
+			'linked'
+		)!;
+		expect(main.mainRun).toBe(main.run);
+	});
+
 	it('shows the main-story title it branches off from, uncounted, as where it comes from', () => {
 		const p = watchOrderPage({ franchise: fate('8675', heavensFeel), rows: [] }, '8675', 'linked')!;
 		expect(p.caption).toEqual({ kind: 'position', position: 1, total: 3 });
@@ -94,6 +114,8 @@ describe('watchOrderPage on a page outside the main story', () => {
 		const tv = e('11655', '2016-07-01', 'TV');
 		const franchise: FranchiseData = {
 			anchor: '6665',
+			name: 'N',
+			name_from: '',
 			entries: [e('24', '1997-10-08', 'TV'), tv],
 			links: [['24', '11655']],
 			versions: [],
@@ -124,6 +146,8 @@ describe('watchOrderPage on a page outside the main story', () => {
 		const ova = e('7730', '2000-05-25', 'OVA');
 		const franchise: FranchiseData = {
 			anchor: '7730',
+			name: 'N',
+			name_from: '',
 			entries: [tv, e('8063', '2014-04-05', 'TV')],
 			links: [['7158', '8063']],
 			versions: [old, ova],
@@ -285,6 +309,8 @@ describe('watchOrderPage on a page outside the main story', () => {
 					if (into) links.push([own[n - 1].id, '2']);
 					const franchise: FranchiseData = {
 						anchor: '',
+						name: 'N',
+						name_from: '',
 						entries: [before, after],
 						links: [['1', '2']],
 						versions: [],

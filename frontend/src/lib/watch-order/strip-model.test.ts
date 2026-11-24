@@ -14,6 +14,8 @@ function payload(key: string, anchor: string): FranchiseData {
 	const r = run(key);
 	return {
 		anchor,
+		name: `The ${key} franchise`,
+		name_from: r.nameId,
 		entries: r.entries,
 		links: r.links,
 		versions: r.versions,
@@ -51,6 +53,11 @@ describe('runOf', () => {
 });
 
 describe('stripFor', () => {
+	it('fronts the poster stack with the entry the walk names the franchise after', () => {
+		const f = { ...payload('fate', '6028'), name_from: '323' };
+		expect(stripFor(f, '6028', 'linked')!.front).toBe('323');
+	});
+
 	it('carries whether the franchise was read whole', () => {
 		expect(stripFor(payload('bleach', '48015'), '48015', 'linked')!.complete).toBe(true);
 		const part = { ...payload('bleach', '48015'), complete: false };

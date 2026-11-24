@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
 import type { WatchOrderData } from './loader';
-import { captionOf, orderOf, settledOrder, watchOrderPage } from './page-model';
+import { franchisePage } from './franchise-page';
+import { captionOf, franchiseLinkOnly, orderOf, settledOrder, watchOrderPage } from './page-model';
 import type { HistoryRow } from './progress';
 import { stripFor } from './strip-model';
-import { franchiseArb } from './testing/arbitraries';
+import { franchiseArb, franchiseAroundArb } from './testing/arbitraries';
 import type { FranchiseData, WatchEntry } from './types';
 
 const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
@@ -16,6 +17,8 @@ function payload(key: string, anchor: string): FranchiseData {
 	const r = run(key);
 	return {
 		anchor,
+		name: `The ${key} franchise`,
+		name_from: r.nameId,
 		entries: r.entries,
 		links: r.links,
 		versions: r.versions,
@@ -121,14 +124,12 @@ describe('watchOrderPage', () => {
 		expect(got.progress).toEqual({ '244': 'watched', '43078': 4 });
 	});
 
-	it('names the entry being watched elsewhere in the run, and leaves it out of Similar titles', () => {
+	it('names the entry being watched elsewhere in the run, which Similar titles leaves out', () => {
 		// On Golden Wind, the viewer is on Steel Ball Run, episode 1.
 		const rows: HistoryRow[] = [{ kitsu_id: '49847', ep_no: '1' }];
 		const got = watchOrderPage(data('jojo', '41410', rows), '41410', 'linked')!;
 		expect(got.watching).toMatchObject({ entry: { id: '49847' }, episode: 1 });
-		expect([...got.similarHidden].sort()).toEqual(
-			[...ids(got.view.before), ...ids(got.view.after), '49847'].sort()
-		);
+		expect(got.similarHidden.has('49847')).toBe(true);
 	});
 
 	it('names no entry being watched where a tile already shows it', () => {
@@ -137,9 +138,17 @@ describe('watchOrderPage', () => {
 		expect(watchOrderPage(data('jojo', '46598', rows), '46598', 'linked')!.watching).toBeNull();
 	});
 
-	it('leaves only the tiles out of Similar titles, not the rest of the run', () => {
+	it('leaves the whole franchise out of Similar titles, not only the tiles', () => {
+		// The strip links to the franchise page, which lists all of it.
+		const b = run('bleach');
 		const got = watchOrderPage(data('bleach', '48015'), '48015', 'linked')!;
-		expect([...got.similarHidden].sort()).toEqual(['46903', '49444']);
+		const all = [...b.entries, ...b.versions, ...b.films, ...b.sides, ...b.recaps];
+		expect([...got.similarHidden].sort()).toEqual(
+			ids(all)
+				.filter((x) => x !== '48015')
+				.sort()
+		);
+		expect(got.similarHidden.has('244')).toBe(true);
 	});
 
 	it('changes the neighbours with the order where release dates disagree with the links', () => {
@@ -174,15 +183,17 @@ describe('watchOrderPage', () => {
 		);
 	});
 
-	it('never hides the entry itself, and hides only what the strip shows', () => {
+	it('never hides the entry itself, and hides the rest of what the franchise page lists', () => {
 		fc.assert(
 			fc.property(anyPage, ({ f, id, order, rows }) => {
 				const got = watchOrderPage({ franchise: f, rows }, id, order);
 				if (!got) return;
 				expect(got.similarHidden.has(id)).toBe(false);
-				const shown = new Set([...got.view.before, ...got.view.after].map((e) => e.id));
-				if (got.watching) shown.add(got.watching.entry.id);
-				expect(got.similarHidden).toEqual(shown);
+				const listed = [...f.entries, ...f.versions, ...f.films, ...f.sides, ...f.recaps];
+				expect(got.similarHidden).toEqual(new Set(listed.map((e) => e.id).filter((x) => x !== id)));
+				for (const e of [...got.view.before, ...got.view.after])
+					expect(got.similarHidden.has(e.id)).toBe(true);
+				if (got.watching) expect(got.similarHidden.has(got.watching.entry.id)).toBe(true);
 			})
 		);
 	});
@@ -283,6 +294,116 @@ describe('watchOrderPage', () => {
 				expect(got.progress[w]).toBe(got.watching.episode);
 				expect([...got.view.before, ...got.view.after].some((e) => e.id === w)).toBe(false);
 			})
+		);
+	});
+});
+
+describe('franchiseLinkOnly', () => {
+	/** Bleach with its first season as the whole run: one main-story entry, films, side stories and recaps. */
+	const oneMain = (complete = true): FranchiseData => ({
+		...payload('bleach', '244'),
+		entries: [run('bleach').entries[0]],
+		links: [],
+		complete
+	});
+	const alone = (complete = true): FranchiseData => ({
+		...oneMain(complete),
+		versions: [],
+		films: [],
+		sides: [],
+		recaps: []
+	});
+
+	it('links a show that is its run alone to the franchise page that lists its films and side stories', () => {
+		const link = franchiseLinkOnly({ franchise: oneMain(), rows: [] }, '244')!;
+		expect(link).not.toBeNull();
+		expect(link.complete).toBe(true);
+		expect(ids(link.run.entries)).toEqual(['244']);
+		const b = run('bleach');
+		expect(link.similarHidden).toEqual(
+			new Set([...b.films, ...b.sides, ...b.recaps].map((e) => e.id))
+		);
+	});
+
+	it('fronts its poster stack with the entry the walk names the franchise after', () => {
+		// A Bleach film with no parent story: the link shows on its own,
+		// fronted by whichever main-story entry the walk names.
+		const film = run('bleach').films[0].id;
+		const f = { ...payload('bleach', film), name_from: '46903' };
+		expect(franchiseLinkOnly({ franchise: f, rows: [] }, film)!.front).toBe('46903');
+	});
+
+	it('links there from a franchise read in part too, carrying that it was', () => {
+		const link = franchiseLinkOnly({ franchise: oneMain(false), rows: [] }, '244')!;
+		expect(link).not.toBeNull();
+		expect(link.complete).toBe(false);
+	});
+
+	it('gives no link for a show that is the franchise alone, read whole or in part', () => {
+		expect(franchiseLinkOnly({ franchise: alone(), rows: [] }, '244')).toBeNull();
+		expect(franchiseLinkOnly({ franchise: alone(false), rows: [] }, '244')).toBeNull();
+	});
+
+	it("links a film's page, outside the run, to the franchise page that lists the run", () => {
+		const b = run('bleach');
+		const film = b.films[0];
+		const link = franchiseLinkOnly({ franchise: payload('bleach', film.id), rows: [] }, film.id)!;
+		expect(link).not.toBeNull();
+		expect(
+			watchOrderPage({ franchise: payload('bleach', film.id), rows: [] }, film.id, 'linked')
+		).toBeNull();
+		expect(link.similarHidden.has(film.id)).toBe(false);
+		for (const e of b.entries) expect(link.similarHidden.has(e.id)).toBe(true);
+	});
+
+	it('gives no link alone where the strip shows, which carries its own', () => {
+		expect(franchiseLinkOnly(data('fate', '6028'), '6028')).toBeNull();
+	});
+
+	it('gives no link when the franchise could not be read or answers another show', () => {
+		expect(franchiseLinkOnly({ franchise: null, rows: [] }, '244')).toBeNull();
+		expect(franchiseLinkOnly({ franchise: oneMain(), rows: [] }, '43078')).toBeNull();
+	});
+
+	const anyShow = fc.oneof(franchiseAroundArb(), franchiseArb()).chain((f) =>
+		fc.record({
+			f: fc.constant(f),
+			id: fc.oneof(
+				{ weight: 3, arbitrary: fc.constant(f.anchor) },
+				{ weight: 1, arbitrary: fc.constantFrom(f.anchor, ...f.entries.map((e) => e.id)) }
+			),
+			order: fc.constantFrom('linked' as const, 'released' as const)
+		})
+	);
+
+	it('reaches the franchise page, by the strip or alone, exactly where it lists more than the show', () => {
+		fc.assert(
+			fc.property(anyShow, ({ f, id, order }) => {
+				const d = { franchise: f, rows: [] };
+				const strip = watchOrderPage(d, id, order);
+				const link = franchiseLinkOnly(d, id);
+				expect(strip !== null && link !== null).toBe(false);
+				const target = franchisePage(d, id, order);
+				const beyond =
+					target !== null &&
+					[
+						...target.run.entries,
+						...target.versions,
+						...target.films,
+						...target.sides,
+						...target.recaps
+					].some((e) => e.id !== id);
+				expect(strip !== null || link !== null).toBe(beyond);
+				if (link) {
+					expect(link.complete).toBe(f.complete);
+					expect(link.similarHidden.has(id)).toBe(false);
+					const listed = [...f.entries, ...f.versions, ...f.films, ...f.sides, ...f.recaps];
+					expect(link.similarHidden).toEqual(
+						new Set(listed.map((e) => e.id).filter((x) => x !== id))
+					);
+				}
+			}),
+			{ numRuns: 1000 }
 		);
 	});
 });

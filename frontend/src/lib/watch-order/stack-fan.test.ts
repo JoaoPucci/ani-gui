@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { MOCK_RUNS } from './fixtures';
-import { FAN_RADIUS_REM, fanPoses, stackCards, type FanPose } from './stack-fan';
-import { franchiseSummary } from '../strip-view';
-import type { MockRun } from './types';
+import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
+import {
+	CARD_BLOCK_REM,
+	CARD_INLINE_REM,
+	FAN_RADIUS_REM,
+	fanBox,
+	fanPoses,
+	stackCards,
+	type FanPose
+} from './stack-fan';
+import { franchiseSummary } from './strip-view';
 
-const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;
+const run = (key: string): FixtureRun => FIXTURE_RUNS.find((r) => r.key === key)!;
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
 describe('stackCards', () => {
-	const posters = franchiseSummary(run('jojo')).posters;
+	const posters = franchiseSummary(run('jojo'), run('jojo').nameId).posters;
 
 	it('holds up to the limit of posters, in order', () => {
 		expect(stackCards(posters, 3).map((c) => (c.kind === 'poster' ? c.entry.id : '-'))).toEqual(
@@ -108,5 +115,53 @@ describe('fanPoses', () => {
 				});
 			})
 		);
+	});
+});
+
+describe('fanBox', () => {
+	// A card's corners: its foot's middle at the pose's x and y, the
+	// card rotated about that point by the pose's angle (y grows
+	// downwards, the angle clockwise), the card standing above its foot.
+	const corners = (p: FanPose) => {
+		const r = (p.rotate * Math.PI) / 180;
+		const half = CARD_INLINE_REM / 2;
+		return [
+			[-half, 0],
+			[half, 0],
+			[-half, -CARD_BLOCK_REM],
+			[half, -CARD_BLOCK_REM]
+		].map(([x, y]) => ({
+			x: p.x + x * Math.cos(r) - y * Math.sin(r),
+			y: p.y + x * Math.sin(r) + y * Math.cos(r)
+		}));
+	};
+
+	it('holds every card whole, at rest and fanned out, for one to three cards', () => {
+		for (const count of [1, 2, 3])
+			for (const state of ['rest', 'open'] as const)
+				for (const c of fanPoses(count, state).flatMap(corners)) {
+					const box = fanBox(count);
+					expect(Math.abs(c.x)).toBeLessThanOrEqual(box.inline / 2 + 1e-9);
+					// The foot stands `box.foot` above the box's bottom edge.
+					expect(c.y).toBeLessThanOrEqual(box.foot + 1e-9);
+					expect(box.foot - c.y).toBeLessThanOrEqual(box.block + 1e-9);
+				}
+	});
+
+	it('is no bigger than the cards need', () => {
+		const box = fanBox(3);
+		expect(box.inline).toBeLessThan(6.5);
+		expect(box.block).toBeLessThan(4);
+	});
+
+	it('fits a lone card to the card itself, lifted, and three to their widest spread', () => {
+		// Worked by hand: a lone card stands upright, 2.3rem wide, and
+		// rises 0.25rem when the fan opens; three cards fanned out at 9°
+		// on an arc of 1.3125 / sin 9° reach 2.952rem either side.
+		const lone = fanBox(1);
+		expect(lone.inline).toBeCloseTo(2.3, 6);
+		expect(lone.block).toBeCloseTo(3.22 + 0.25, 6);
+		expect(lone.foot).toBeCloseTo(0, 6);
+		expect(fanBox(3).inline).toBeCloseTo(5.904, 3);
 	});
 });

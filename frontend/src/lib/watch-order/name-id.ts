@@ -1,8 +1,9 @@
 /**
- * The run's first entry, the one the franchise is named after and its
- * positions are counted from: among the members no prequel link
- * reaches, the earliest start, then the lowest id; where every member
- * has a prequel (the run is one loop), the earliest member.
+ * The run's first entry, the one its positions are counted from: among
+ * the members no prequel link reaches, the earliest start, then the
+ * lowest id; where every member has a prequel (the run is one loop),
+ * the earliest member. The franchise's name is the walk's
+ * (`FranchiseData.name`), not this entry's.
  */
 import { byStart } from './by-start';
 import type { RunLink, WatchEntry } from './types';

@@ -42,6 +42,9 @@ export function franchiseArb(): fc.Arbitrary<FranchiseData> {
 		const anyId = fc.constantFrom(...ids, '999', '0');
 		return fc.record({
 			anchor: anyId,
+			name: fc.string({ maxLength: 8 }),
+			// The backend names it after one of its run's entries.
+			name_from: ids.length > 0 ? fc.constantFrom(...ids) : fc.constant('0'),
 			entries: fc.constant(entries),
 			links: fc.array(fc.tuple(anyId, anyId), { maxLength: 10 }),
 			versions: fc.constant([]),
@@ -52,4 +55,44 @@ export function franchiseArb(): fc.Arbitrary<FranchiseData> {
 			complete: fc.boolean()
 		});
 	});
+}
+
+/**
+ * A payload whose run has titles around it too: other versions, films,
+ * side stories and recaps, with ids apart from the run's and from each
+ * other's, as the backend serves them. The anchor is a run member or
+ * one of those titles.
+ */
+export function franchiseAroundArb(): fc.Arbitrary<FranchiseData> {
+	return fc
+		.tuple(
+			entriesArb(1, 6),
+			fc.uniqueArray(fc.integer({ min: 100, max: 140 }), { maxLength: 8 }),
+			fc.array(fc.integer({ min: 0, max: 3 }), { minLength: 8, maxLength: 8 })
+		)
+		.chain(([entries, aroundIds, kinds]) =>
+			fc.tuple(
+				fc.constant(entries),
+				fc.tuple(...aroundIds.map((i) => entryArb(String(i)))),
+				fc.constant(kinds)
+			)
+		)
+		.chain(([entries, around, kinds]) => {
+			const of = (k: number) => around.filter((_, i) => kinds[i] === k);
+			const ids = entries.map((e) => e.id);
+			const id = fc.constantFrom(...ids);
+			return fc.record({
+				anchor: fc.constantFrom(...ids, ...around.map((e) => e.id)),
+				name: fc.string({ maxLength: 8 }),
+				name_from: id,
+				entries: fc.constant(entries),
+				links: fc.array(fc.tuple(id, id), { maxLength: 8 }),
+				versions: fc.constant(of(0)),
+				films: fc.constant(of(1)),
+				sides: fc.constant(of(2)),
+				recaps: fc.constant(of(3)),
+				parents: fc.constant({}),
+				complete: fc.boolean()
+			});
+		});
 }

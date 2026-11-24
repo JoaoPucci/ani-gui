@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FIXTURE_RUNS, type FixtureRun } from './fixtures/runs';
-import { loopGroupText, metaLine, numeral, railKeyText, splitMeta } from './meta';
+import { loopGroupText, metaLine, numeral, splitMeta, waysKeyText } from './meta';
 import type { WatchEntry, WatchRun } from './types';
 
 const TODAY = '2026-11-02';
@@ -44,27 +44,6 @@ describe('meta line', () => {
 	});
 });
 
-describe('rail key text', () => {
-	const e = entryIn(run('gintama'), '43683')!;
-	const label = (x: { title: string }) => x.title;
-	it('says where the viewer is first', () => {
-		expect(railKeyText({ kind: 'loop', count: 10 }, true, label)).toBe('You are here');
-	});
-	it('names a way, a loop, or the entry a side entry leads into', () => {
-		expect(railKeyText({ kind: 'way', n: 2, count: 2 }, false, label)).toBe('Way 2 of 2');
-		expect(railKeyText({ kind: 'loop', count: 10 }, false, label)).toBe(
-			'Linked with 9 others, order unclear'
-		);
-		expect(railKeyText({ kind: 'leads-into', entry: e, position: 10 }, false, label)).toBe(
-			'Leads into 10'
-		);
-		expect(railKeyText({ kind: 'leads-into', entry: e, position: null }, false, label)).toBe(
-			'Leads into Gintama: The Final'
-		);
-		expect(railKeyText(null, false, label)).toBeNull();
-	});
-});
-
 describe('splitMeta', () => {
 	const parts = (key: string, id: string, today = TODAY) =>
 		splitMeta(metaLine(entryIn(run(key), id)!, run(key).progress[id], today)).map((p) =>
@@ -89,9 +68,21 @@ describe('splitMeta', () => {
 	});
 });
 
+describe('waysKeyText', () => {
+	it('counts the ways on, except for a franchise read in part', () => {
+		expect(waysKeyText(2, true)).toBe('2 ways to continue');
+		expect(waysKeyText(2, false)).toBe('Ways to continue');
+	});
+});
+
 describe('loopGroupText', () => {
 	it('heads a loop as the group of titles it is', () => {
-		expect(loopGroupText(10)).toBe('10 linked titles, order unclear');
-		expect(loopGroupText(2)).toBe('2 linked titles, order unclear');
+		expect(loopGroupText(10, true)).toBe('10 linked titles, order unclear');
+		expect(loopGroupText(2, true)).toBe('2 linked titles, order unclear');
+	});
+
+	it('gives no count for a franchise read in part, where it may be short', () => {
+		expect(loopGroupText(10, false)).toBe('Linked titles, order unclear');
+		expect(loopGroupText(2, false)).toBe('Linked titles, order unclear');
 	});
 });

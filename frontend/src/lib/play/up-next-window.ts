@@ -27,7 +27,7 @@ export function atVideoEnd(currentTime: number, duration: number, ended: boolean
 
 /** What the play page knows when it decides whether the card shows. */
 export interface UpNextState {
-	/** `finaleCard` found something to name. */
+	/** `playerUpNext` found a card to show: a next title, or the franchise. */
 	readonly card: boolean;
 	/** The player's own next-episode step is open (`stepOpen`): not the
 	 *  entry's end. */
@@ -58,8 +58,9 @@ export function upNextShown(state: UpNextState): boolean {
  * counts allow; `countsStale` says they were read for another show (a
  * page that sees its id change: the route mounts a new page for another
  * show, `routes/play/[id]/+layout.svelte`, but the guard predates that
- * and still holds for any page that does); `finale` says this show's franchise found
- * the episode its finale (`finaleCard` named something).
+ * and still holds for any page that does); `finale` says this show's
+ * franchise found the episode its finale (`playerUpNext` found a card
+ * to show).
  */
 export function stepOpen(hasNext: boolean, countsStale: boolean, finale: boolean): boolean {
 	// A step counted for another show is not this show's at the finale

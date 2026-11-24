@@ -1,6 +1,6 @@
 /**
- * The "Whole franchise" poster stack's geometry (mockup, third round):
- * which cards it holds, and where each sits at rest and once the stack
+ * The strip's link to the franchise page, a stack of posters: which
+ * cards it holds, and where each sits at rest and once the stack
  * is hovered or focused. The cards stand on one arc, so opening the
  * fan moves each one along it, away from the middle: the stack draws
  * a card by rotating it about the arc's centre, `FAN_RADIUS_REM` below
@@ -8,11 +8,11 @@
  * arc rather than cutting across it. Under reduced motion the stack
  * is drawn open and stays there.
  */
-import type { MockEntry } from './types';
+import type { WatchEntry } from './types';
 
 /** One card of the stack: an entry's poster, or a blank frame when no entry has one. */
 export type StackCard =
-	| { readonly kind: 'poster'; readonly entry: MockEntry }
+	| { readonly kind: 'poster'; readonly entry: WatchEntry }
 	| { readonly kind: 'blank' };
 
 /** Fanned, neighbouring cards stand this many degrees apart. */
@@ -44,7 +44,7 @@ export interface FanPose {
 }
 
 /** The cards: up to `limit` of `posters`, or three blank frames when there are none. */
-export function stackCards(posters: readonly MockEntry[], limit: number): StackCard[] {
+export function stackCards(posters: readonly WatchEntry[], limit: number): StackCard[] {
 	const shown = posters.slice(0, Math.max(0, limit));
 	if (shown.length === 0) return [{ kind: 'blank' }, { kind: 'blank' }, { kind: 'blank' }];
 	return shown.map((entry) => ({ kind: 'poster', entry }));
@@ -63,4 +63,50 @@ export function fanPoses(count: number, state: FanState): FanPose[] {
 			rotate
 		};
 	});
+}
+
+/** A card's width, in rem. */
+export const CARD_INLINE_REM = 2.3;
+/** A card's height, in rem: the poster's 5:7. */
+export const CARD_BLOCK_REM = (CARD_INLINE_REM * 7) / 5;
+
+/** The fan's box, in rem, and how far above its bottom edge the cards' feet stand. */
+export interface FanBox {
+	readonly inline: number;
+	readonly block: number;
+	readonly foot: number;
+}
+
+/** A card's corners at `pose`: its foot's middle there, the card turned about it. */
+function cornersAt(pose: FanPose): { x: number; y: number }[] {
+	const r = (pose.rotate * Math.PI) / 180;
+	const half = CARD_INLINE_REM / 2;
+	const corners: [number, number][] = [
+		[-half, 0],
+		[half, 0],
+		[-half, -CARD_BLOCK_REM],
+		[half, -CARD_BLOCK_REM]
+	];
+	return corners.map(([x, y]) => ({
+		x: pose.x + x * Math.cos(r) - y * Math.sin(r),
+		y: pose.y + x * Math.sin(r) + y * Math.cos(r)
+	}));
+}
+
+/**
+ * The box `count` cards of a fan stay inside, at rest and fanned out:
+ * as wide as their widest spread on both sides of the middle, as tall
+ * as the highest card above the lowest corner, the feet standing as far
+ * above the bottom edge as a turned card's corner drops below its foot.
+ * The open transition's elastic ease overshoots the open pose for a
+ * moment, by a pixel or two past this box.
+ */
+export function fanBox(count: number): FanBox {
+	const all = (['rest', 'open'] as const).flatMap((state) =>
+		fanPoses(count, state).flatMap(cornersAt)
+	);
+	const reach = Math.max(...all.map((c) => Math.abs(c.x)));
+	const foot = Math.max(0, ...all.map((c) => c.y));
+	const top = Math.min(...all.map((c) => c.y));
+	return { inline: 2 * reach, block: foot - top, foot };
 }

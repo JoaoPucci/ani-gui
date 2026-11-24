@@ -1,5 +1,5 @@
 <!--
-  A mockup card's meta line in PosterCard's voice: uppercase and
+  A watch-order card's meta line in PosterCard's voice: uppercase and
   tracked, the figure bright and the word faint, with a check before
   "Watched". A unit ("EP") joins the figure before it, without a dot.
   The dot sits inside the segment it introduces, so a wrapped line

@@ -68,14 +68,14 @@
  * toast and the update badge; the card's link dialog; a show's page
  * with a download in flight, which shows the download bar; the
  * player's page with the skip button up and the note on a guessed
- * session; a show's page with its watch-order strip (its tiles and
- * the line for the entry being watched); with the watch-order mockups
- * on, their franchise page (its rows and its play button), opened by
- * its address; the player at the end of a show's last episode, with
- * the Up next card naming what follows it in each of its forms (one
- * entry, a fork of two, one not aired); and Home with a Continue
- * Watching card that moved on from a finale to the entry after it.
- * Each requires the walk to reach those controls.
+ * session; a show's page with its watch-order strip (its tiles, the
+ * line for the entry being watched and the franchise link) and the
+ * franchise page it links to (its rows and its play button); the
+ * player at the end of a show's last episode, with the Up next card
+ * naming what follows it in each of its forms (one entry, a fork of
+ * two, one not aired, the franchise page at a chain's end); and Home with a Continue Watching card that
+ * moved on from a finale to the entry after it. Each requires the walk
+ * to reach those controls.
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
@@ -117,10 +117,10 @@
  * Under the mouse: at the desktop size, the forward walks of the four
  * pages (and of the show's page with an episode typed), of the hero's
  * empty and failed states, of the player, of the watch-order strip, of
- * the mockups' franchise page, of the Up next card and of Home with a
- * hand-off card rest the mouse on every stop that shows, and a hover
- * style must neither replace its ring nor add a second; the read must
- * find the control under the mouse.
+ * the franchise page, of the Up next card and of Home with a hand-off
+ * card rest the mouse on every stop that shows, and a hover style must
+ * neither replace its ring nor add a second; the read must find the
+ * control under the mouse.
  * Whether a lifted, hovered control's ring stays whole is not checked,
  * and the other state tests (Continue Watching, its link dialog, the
  * download bar and list) do not rest the mouse.
@@ -1363,15 +1363,15 @@ const bleach = JSON.parse(
 
 /** A show the franchise places mid-run: the third part of BLEACH's
  *  last arc, with an entry before it and one after, while BLEACH itself
- *  is part-watched, so the strip shows its tiles and the line for the
- *  entry being watched. */
+ *  is part-watched, so the strip shows its tiles, the line for the
+ *  entry being watched and the franchise link. */
 const stripShow = {
 	...topRated[0],
 	id: '48015',
 	canonical_title: bleach.entries.find((e) => e.id === '48015')!.title
 };
 
-test("the rings on a show page's watch-order strip are drawn once and whole", async () => {
+test("the rings on a show page's watch-order strip and its franchise page are drawn once and whole", async () => {
 	test.setTimeout(240_000);
 	const { app, page } = await launch();
 	try {
@@ -1406,7 +1406,7 @@ test("the rings on a show page's watch-order strip are drawn once and whole", as
 		await page.locator(`a[href$="/anime/${stripShow.id}"]`).first().click();
 		await expect.poll(() => page.url()).toContain(`/anime/${stripShow.id}`);
 		await expect(page.locator('.trio .tile').first()).toBeVisible({ timeout: 15_000 });
-		const stripNeeds = ['.trio .tile', '.trio .chip'];
+		const stripNeeds = ['.trio .tile', '.trio .chip', '.trio .stack'];
 		for (const forced of [false, true]) {
 			await forcedColours(page, forced);
 			for (const key of ['Tab', 'Shift+Tab'] as const) {
@@ -1422,49 +1422,25 @@ test("the rings on a show page's watch-order strip are drawn once and whole", as
 				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
 			}
 		}
-	} finally {
-		await stopApp(app);
-	}
-});
+		await forcedColours(page, false);
 
-/** A show the watch-order mockups' fixtures place mid-run: Gintama°. */
-const mockShow = { ...topRated[0], id: '10083', canonical_title: 'Gintama°' };
-
-test("the rings on the watch-order mockups' franchise page are drawn once and whole", async () => {
-	test.setTimeout(240_000);
-	const { app, page } = await launch();
-	try {
-		await page.emulateMedia({ reducedMotion: 'reduce' });
-		await sizeViewport(page, 1440, 900);
-		await page.route('**/api/**', async (r) => {
-			const p = new URL(r.request().url()).pathname;
-			const j = (body: unknown) =>
-				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-			if (p.startsWith('/api/kitsu/anime/')) return j(mockShow);
-			return r.fallback();
-		});
-		// Diagnostics turns the mockups on. No strip links to the page
-		// here, so it is opened by its address.
-		await page.evaluate(() =>
-			localStorage.setItem('ani-gui:watch-order-mockups', JSON.stringify({ enabled: true }))
-		);
-		await page.goto(new URL(`/anime/${mockShow.id}/franchise`, page.url()).href, {
-			waitUntil: 'domcontentloaded'
-		});
+		// The franchise page, from the strip's poster stack.
+		await page.locator('.trio .stack').click();
+		await expect.poll(() => page.url()).toContain(`/anime/${stripShow.id}/franchise`);
 		await expect(page.locator('.story-row').first()).toBeVisible({ timeout: 15_000 });
-		const needs = ['.story-row', '.btn-glass'];
+		const franchiseNeeds = ['.story-row', '.btn-glass'];
 		for (const forced of [false, true]) {
 			await forcedColours(page, forced);
 			for (const key of ['Tab', 'Shift+Tab'] as const) {
-				const at = `the mockups' franchise page${forced ? ', forced colours' : ''}, ${key}`;
+				const at = `the franchise page${forced ? ', forced colours' : ''}, ${key}`;
 				const hovered: Stop[] = [];
 				const underMouse = !forced && key === 'Tab';
 				const stops = await walk(page, key, {
-					selectors: needs,
+					selectors: franchiseNeeds,
 					hovered: underMouse ? hovered : undefined
 				});
-				if (forced) assertForced(stops, at, [], needs);
-				else assertStops(stops, at, [], needs);
+				if (forced) assertForced(stops, at, [], franchiseNeeds);
+				else assertStops(stops, at, [], franchiseNeeds);
 				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
 			}
 		}
@@ -1609,7 +1585,7 @@ const finaleEntry = (id: string, title: string, start: string, episodes: number)
 	cover: null
 });
 /** The show's franchise with `after` following it. */
-const finaleFranchise = (after: ReturnType<typeof finaleEntry>[]) => ({
+const finaleFranchise = (after: ReturnType<typeof finaleEntry>[]): Record<string, unknown> => ({
 	anchor: finaleShow.id,
 	name: finaleShow.canonical_title,
 	name_from: finaleShow.id,
@@ -1631,8 +1607,31 @@ const season2 = finaleEntry(
 	'2025-01-10',
 	12
 );
-/** The card's three forms: one entry after the show, a fork of two,
- *  and one that has not aired, whose row links nowhere. */
+/** The show alone on a chain outside a main story of two seasons. */
+function chainEndFranchise(): Record<string, unknown> {
+	const own = finaleEntry(finaleShow.id, finaleShow.canonical_title, finaleShow.start_date, 6);
+	const main = [
+		finaleEntry('main-1', 'Main Story', '2020-01-10', 12),
+		finaleEntry('main-2', 'Main Story Season 2', '2021-01-10', 12)
+	];
+	return {
+		anchor: finaleShow.id,
+		name: 'Main Story',
+		name_from: 'main-1',
+		entries: main,
+		links: [['main-1', 'main-2']],
+		versions: [],
+		films: [],
+		sides: [own],
+		recaps: [],
+		parents: {},
+		complete: true,
+		chain: { entries: [own], links: [], seams: [] }
+	};
+}
+/** The card's forms: one entry after the show, a fork of two, one
+ *  that has not aired, whose row links nowhere, and the end of a chain,
+ *  which links to the franchise page. */
 const upNextForms = [
 	{
 		label: 'one entry',
@@ -1659,6 +1658,16 @@ const upNextForms = [
 		after: [{ ...season2, start: '2999-01-01', status: 'upcoming', episodes: null }],
 		needs: ['.up-next .dismiss'],
 		rows: 0
+	},
+	{
+		// The show on a chain of its own outside the main story, with
+		// nothing after it: the card offers the franchise page.
+		label: 'the end of a chain',
+		after: [],
+		franchise: chainEndFranchise(),
+		needs: ['.up-next a.row.franchise', '.up-next .dismiss'],
+		rows: 1,
+		href: `/anime/${finaleShow.id}/franchise`
 	}
 ];
 
@@ -1687,7 +1696,7 @@ async function walkUpNext(origin: string, form: (typeof upNextForms)[number]) {
 			stream: { upstreamUrl: `${origin}/master.m3u8`, mediaKind: 'hls' },
 			show: { match: finaleShow, episode: continueKitsuEpisode6 }
 		});
-		const franchise = finaleFranchise(form.after);
+		const franchise = 'franchise' in form ? form.franchise : finaleFranchise(form.after);
 		await page.route('**/api/**', async (r) => {
 			const p = new URL(r.request().url()).pathname;
 			const j = (body: unknown) =>
@@ -1721,8 +1730,10 @@ async function walkUpNext(origin: string, form: (typeof upNextForms)[number]) {
 		// The card names what follows: each row links to its entry.
 		const rows = card.locator('a.row');
 		await expect(rows).toHaveCount(form.rows);
-		for (const [i, e] of form.after.slice(0, form.rows).entries()) {
-			await expect(rows.nth(i)).toHaveAttribute('href', new RegExp(`/anime/${e.id}$`));
+		const hrefs =
+			'href' in form ? [form.href] : form.after.slice(0, form.rows).map((e) => `/anime/${e.id}`);
+		for (const [i, href] of hrefs.entries()) {
+			await expect(rows.nth(i)).toHaveAttribute('href', new RegExp(`${href}$`));
 		}
 		for (const forced of [false, true]) {
 			await forcedColours(page, forced);

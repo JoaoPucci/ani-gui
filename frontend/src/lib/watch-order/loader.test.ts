@@ -17,6 +17,8 @@ const entry = (id: string): WatchEntry => ({
 
 const FRANCHISE: FranchiseData = {
 	anchor: '7',
+	name: 'T7',
+	name_from: '7',
 	entries: [entry('7'), entry('8')],
 	links: [['7', '8']],
 	versions: [entry('20')],

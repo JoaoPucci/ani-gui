@@ -28,6 +28,8 @@ import { watchPageFetches } from './page-fetches';
 import { recordMotion, setReducedMotion } from './motion';
 import { playerVideo, playerVideoInSlot } from './player-video';
 import { m } from '../../src/lib/paraglide/messages';
+import { accentFor } from '../../src/lib/design/accent';
+import { numeral } from '../../src/lib/watch-order/meta';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -702,6 +704,41 @@ describe('the Up next card at a finale', () => {
 		await until(() => card() !== null, 'the card');
 		expect(cardLinks().map((a) => a.getAttribute('href'))).toEqual(['/anime/60']);
 		expect(card()!.textContent).not.toContain('Saga: Final Arc');
+	});
+
+	it('offers the whole franchise at the end of a chain that leads nowhere', async () => {
+		const { video } = await openEpisode({
+			franchise: franchise({
+				entries: [SAGA, FINAL],
+				links: [['10', '50']],
+				chain: {
+					entries: [SAGA, SECOND],
+					links: [['10', KITSU_ID]],
+					seams: ['10']
+				}
+			})
+		});
+		await playToEnd(video);
+		await until(() => card() !== null, 'the card');
+		expect(card()!.textContent).toContain(m.watchorder_upnext_franchise_key());
+		expect(card()!.textContent).toContain('Saga');
+		const links = cardLinks();
+		expect(links.map((a) => a.getAttribute('href'))).toEqual([`/anime/${KITSU_ID}/franchise`]);
+		expect(links[0].getAttribute('aria-label')).toBe(
+			m.watchorder_upnext_franchise_label({ name: 'Saga' })
+		);
+		// The accent is the franchise's front entry's, as on its page.
+		expect(card()!.style.getPropertyValue('--accent')).toBe(accentFor('10'));
+		// No title has a poster: blank frames, the front one counting
+		// the titles the franchise page lists.
+		expect(card()!.querySelectorAll('img')).toHaveLength(0);
+		expect(card()!.querySelector('[data-testid="fan-count"]')?.textContent).toBe(numeral(2));
+		await until(
+			() =>
+				card()!.querySelector('[role="status"]')?.textContent ===
+				m.watchorder_upnext_franchise_announce({ name: 'Saga' }),
+			'the announcement'
+		);
 	});
 
 	it('goes on into the main story where the chain leads into it', async () => {

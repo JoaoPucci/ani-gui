@@ -5,6 +5,7 @@ import type { WatchOrderData } from './loader';
 import { runOf } from './strip-model';
 import { franchiseArb } from './testing/arbitraries';
 import type { FranchiseData } from './types';
+import { chainEndCard, playerUpNext } from './chain-end';
 import { finaleCard, isFinale, upNextFor, type FinaleSelf } from './up-next';
 
 const TODAY = '2026-11-02';
@@ -15,6 +16,8 @@ function payload(key: string, anchor: string): FranchiseData {
 	const r = run(key);
 	return {
 		anchor,
+		name: `The ${key} franchise`,
+		name_from: r.nameId,
 		entries: r.entries,
 		links: r.links,
 		versions: r.versions,
@@ -234,6 +237,54 @@ describe('finaleCard', () => {
 	});
 });
 
+describe('playerUpNext', () => {
+	it('is the finale card where there is one, else the chain-end card, else none', () => {
+		fc.assert(
+			fc.property(
+				franchiseArb(),
+				fc.constantFrom('linked' as const, 'released' as const),
+				fc.integer({ min: 1, max: 40 }),
+				(franchise: FranchiseData, order, episode) => {
+					const data: WatchOrderData = { franchise, rows: [] };
+					const id = franchise.anchor;
+					const finale = finaleCard(data, id, order, TODAY, episode, null);
+					const end = chainEndCard(data, id, order, TODAY, episode, null);
+					const shown = playerUpNext(data, id, order, TODAY, episode, null);
+					if (finale) expect(shown).toEqual({ kind: 'entry', card: finale });
+					else if (end) expect(shown).toEqual({ kind: 'franchise', card: end });
+					else expect(shown).toBeNull();
+				}
+			)
+		);
+	});
+
+	it("reads another show's reading as no reading at all", () => {
+		fc.assert(
+			fc.property(
+				franchiseArb(),
+				fc.constantFrom('linked' as const, 'released' as const),
+				fc.integer({ min: 1, max: 40 }),
+				fc.constantFrom('finished', 'current', null),
+				fc.option(fc.integer({ min: 1, max: 40 }), { nil: null }),
+				(franchise: FranchiseData, order, episode, status, episodes) => {
+					const data: WatchOrderData = { franchise, rows: [] };
+					const id = franchise.anchor;
+					const other = { id: `${id}-other`, status, episodes };
+					expect(finaleCard(data, id, order, TODAY, episode, other)).toEqual(
+						finaleCard(data, id, order, TODAY, episode, null)
+					);
+					expect(chainEndCard(data, id, order, TODAY, episode, other)).toEqual(
+						chainEndCard(data, id, order, TODAY, episode, null)
+					);
+					expect(playerUpNext(data, id, order, TODAY, episode, other)).toEqual(
+						playerUpNext(data, id, order, TODAY, episode, null)
+					);
+				}
+			)
+		);
+	});
+});
+
 describe('finaleCard on an entry outside the main story', () => {
 	const e = (id: string, start: string, subtype = 'movie') => ({
 		id,
@@ -251,6 +302,8 @@ describe('finaleCard on an entry outside the main story', () => {
 	const chainData = (anchor: string, into: boolean): WatchOrderData => ({
 		franchise: {
 			anchor,
+			name: 'The franchise',
+			name_from: '1',
 			entries: main,
 			links: [['1', '2']],
 			versions: [],
@@ -283,5 +336,68 @@ describe('finaleCard on an entry outside the main story', () => {
 
 	it('names nothing at the end of a chain that leads nowhere', () => {
 		expect(finaleCard(chainData('11', false), '11', 'linked', TODAY, 1, null)).toBeNull();
+	});
+
+	it('offers the franchise page at the end of a chain that leads nowhere', () => {
+		const end = chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, null)!;
+		expect(end.name).toBe('The franchise');
+		expect(end.id).toBe('11');
+		// The strip link's stack: the main story's two titles, the films.
+		expect(end.summary.main).toBe(2);
+		expect(end.summary.films).toBe(2);
+	});
+
+	it('offers no franchise card where the card names a next title, or short of the finale', () => {
+		expect(chainEndCard(chainData('10', false), '10', 'linked', TODAY, 1, null)).toBeNull();
+		expect(chainEndCard(chainData('11', true), '11', 'linked', TODAY, 1, null)).toBeNull();
+		const unfinished = { id: '11', status: 'current', episodes: 1 };
+		expect(chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, unfinished)).toBeNull();
+	});
+
+	it('offers no franchise card in a franchise read in part, or on a main-story page', () => {
+		const partial = chainData('11', false);
+		const cut = { ...partial, franchise: { ...partial.franchise!, complete: false } };
+		expect(chainEndCard(cut, '11', 'linked', TODAY, 1, null)).toBeNull();
+		const main = {
+			...partial,
+			franchise: { ...partial.franchise!, anchor: '2', chain: undefined }
+		};
+		expect(chainEndCard(main, '2', 'linked', TODAY, 1, null)).toBeNull();
+		expect(chainEndCard(partial, '11', null, TODAY, 1, null)).toBeNull();
+		expect(chainEndCard(null, '11', 'linked', TODAY, 1, null)).toBeNull();
+	});
+
+	it("ignores the player's reading of another show", () => {
+		// A page whose id moved to another show still holds the first
+		// one's detail: an airing reading of it does not hide this
+		// finale's card.
+		const other = { id: '10', status: 'current', episodes: 1 };
+		expect(chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, other)).not.toBeNull();
+		expect(playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, other)?.kind).toBe(
+			'franchise'
+		);
+	});
+
+	it('fronts the franchise card with the entry the name comes from', () => {
+		const end = chainEndCard(chainData('11', false), '11', 'linked', TODAY, 1, null)!;
+		expect(end.front).toBe('1');
+	});
+
+	it('fronts the franchise card as its page does when the name comes from no main-story title', () => {
+		const data = chainData('11', false);
+		const off = { ...data, franchise: { ...data.franchise!, name_from: '99' } };
+		const end = chainEndCard(off, '11', 'linked', TODAY, 1, null)!;
+		// The franchise page takes the main story's first title then.
+		expect(end.front).toBe('1');
+	});
+
+	it('shows one card: the next title where the finale names one, else the franchise', () => {
+		const next = playerUpNext(chainData('10', false), '10', 'linked', TODAY, 1, null);
+		expect(next?.kind).toBe('entry');
+		const end = playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, null);
+		expect(end?.kind).toBe('franchise');
+		expect(end?.kind === 'franchise' && end.card.name).toBe('The franchise');
+		const unfinished = { id: '11', status: 'current', episodes: 1 };
+		expect(playerUpNext(chainData('11', false), '11', 'linked', TODAY, 1, unfinished)).toBeNull();
 	});
 });
