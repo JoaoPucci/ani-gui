@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { MOCK_RUNS } from './fixtures';
 import { FAN_RADIUS_REM, fanPoses, stackCards, type FanPose } from './stack-fan';
-import { franchiseSummary } from './strip-view';
+import { franchiseSummary } from '../strip-view';
 import type { MockRun } from './types';
 
 const run = (key: string): MockRun => MOCK_RUNS.find((r) => r.key === key)!;

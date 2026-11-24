@@ -1,9 +1,9 @@
 /**
- * Continue Watching's hand-offs, and the entry the viewer is on.
+ * Continue Watching's hand-offs.
  * Part of the mockups' views; `./view` gathers them.
  */
 import { MOCK_RUNS } from './fixtures';
-import { sequence, type WatchOrder } from './order';
+import { sequence, type WatchOrder } from '../order';
 import type { MockEntry, MockRun } from './types';
 import { upNextFor } from './view';
 
@@ -33,14 +33,4 @@ export function handoffs(
 		}
 	}
 	return out;
-}
-
-/** The entry the viewer is on: the latest started, not finished, in order. */
-export function currentIn(
-	run: MockRun,
-	order: WatchOrder
-): { entry: MockEntry; episode: number } | null {
-	const partway = sequence(run, order).filter((e) => typeof run.progress[e.id] === 'number');
-	const last = partway.at(-1);
-	return last ? { entry: last, episode: run.progress[last.id] as number } : null;
 }

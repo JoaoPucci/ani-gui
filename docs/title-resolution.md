@@ -459,7 +459,7 @@ The translations AniList makes between its own ids and MAL's are cached the same
 
 ## Kitsu's relations, walked into a franchise
 
-`GET /api/kitsu/franchise/:kitsu_id` answers which entries form the run an anime belongs to — its seasons, parts and the films or OVAs that continue it — and what sits around that run: its other versions, films, side stories and recaps. Every Kitsu entry stays its own show, with its own page, history and tracker entries; the answer says how they connect and merges nothing. It reads Kitsu alone, through the cached listings below, and asks the streaming provider nothing. The answer puts the run in start order and carries its prequel/sequel links. It depends on no setting: the order the run is shown in, and every position, are the renderer's.
+`GET /api/kitsu/franchise/:kitsu_id` answers which entries form the run an anime belongs to — its seasons, parts and the films or OVAs that continue it — and what sits around that run: its other versions, films, side stories and recaps. Every Kitsu entry stays its own show, with its own page, history and tracker entries; the answer says how they connect and merges nothing. It reads Kitsu alone, through the cached listings below, and asks the streaming provider nothing. The answer puts the run in start order and carries its prequel/sequel links. It depends on no setting: the order the run is shown in, and every position, are worked out by the renderer under the order setting ([Watch order](./architecture.md#watch-order)).
 
 ### What the links say, and what they do not
 

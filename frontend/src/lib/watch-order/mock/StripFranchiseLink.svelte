@@ -1,6 +1,8 @@
 <!--
-  The strip's way to the franchise page (mockup), at the end of the
-  strip's footer, in two variants:
+  A way to the franchise page (mockup), designed for the end of the
+  strip's footer. No surface draws it: the show page's strip has no
+  franchise link, and its footer holds only the watching card. Two
+  variants:
 
   - `button`: the show page's outline button (.btn.btn-outline) at its
     full size, with the number of entries the franchise page lists and
@@ -20,9 +22,9 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import { reducedMotion } from '$lib/motion/reduced-motion.svelte';
 	import { m } from '$lib/paraglide/messages';
-	import { numeral } from './meta';
+	import { numeral } from '../meta';
 	import { FAN_RADIUS_REM, fanPoses, stackCards } from './stack-fan';
-	import { franchiseSummary } from './strip-view';
+	import { franchiseSummary } from '../strip-view';
 	import type { MockRun } from './types';
 
 	let {

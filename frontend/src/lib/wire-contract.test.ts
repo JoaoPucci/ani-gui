@@ -75,6 +75,7 @@ import {
 	type HistoryNumber,
 	type KitsuAnimeRef,
 	type KitsuByMalIdsBody,
+	type HistoryByKitsuBody,
 	type KitsuCoverImage,
 	type KitsuEpisode,
 	type KitsuEpisodeThumbnail,
@@ -693,6 +694,7 @@ const REQUESTS: Record<string, { spec: Record<string, string>; unsent?: string[]
 	},
 	SearchBody: { spec: { query: 'required' } satisfies BodySpec<KitsuSearchBody> },
 	KitsuByMalIdsBody: { spec: { mal_ids: 'required' } satisfies BodySpec<KitsuByMalIdsBody> },
+	HistoryByKitsuBody: { spec: { ids: 'required' } satisfies BodySpec<HistoryByKitsuBody> },
 	WaitBody: { spec: { tickets: 'required' } satisfies BodySpec<RefillsBody> },
 	AuthUrlRequest: {
 		spec: { state: 'required', pkce: 'required' } satisfies BodySpec<AuthUrlRequest>

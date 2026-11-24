@@ -2,26 +2,16 @@
  * Watch-order mockup preferences, kept per machine in local storage
  * like the hero framing switch's ($lib/hero/prefs). The diagnostics
  * page owns `enabled` and `switcher`; the on-page switch sets the
- * rest. `order` stands in for the app setting the feature will add.
+ * rest. `order` is the remaining mockups' own order switch: they read
+ * it, not the app's Watch order setting.
  */
 import type { StorageLike } from '$lib/hero/prefs';
-import { STRIP_WORDINGS } from './strip-wording';
 
 export const MOCK_OPTIONS = {
 	order: ['linked', 'released'],
-	strip: ['rail', 'trio'],
-	placement: ['top', 'bottom'],
-	titles: ['full', 'short'],
 	upNext: ['poster', 'still'],
 	franchise: ['list', 'shelf'],
-	setting: ['segmented', 'radio'],
-	handoff: ['next', 'episode'],
-	wording: STRIP_WORDINGS,
-	cta: ['button', 'stack'],
-	resume: ['chip', 'sentence'],
-	stackHover: ['surface', 'underline', 'border'],
-	footer: ['center', 'axis', 'ends'],
-	stackPosters: ['3', '2', '1', '0']
+	handoff: ['next', 'episode']
 } as const;
 
 type Options = typeof MOCK_OPTIONS;
@@ -37,19 +27,9 @@ export const MOCK_PREFS_DEFAULT: WatchOrderMockPrefs = {
 	enabled: false,
 	switcher: false,
 	order: 'linked',
-	strip: 'trio',
-	placement: 'top',
-	titles: 'full',
 	upNext: 'poster',
 	franchise: 'list',
-	setting: 'segmented',
-	handoff: 'next',
-	wording: 'role',
-	cta: 'stack',
-	resume: 'chip',
-	stackHover: 'surface',
-	footer: 'center',
-	stackPosters: '3'
+	handoff: 'next'
 };
 export const MOCK_PREFS_STORAGE_KEY = 'ani-gui:watch-order-mockups';
 
