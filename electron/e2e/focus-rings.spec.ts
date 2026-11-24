@@ -953,6 +953,38 @@ async function ringCovered(page: Page): Promise<string | null> {
 	return `could not be read: ${moved}`;
 }
 
+/** A picture of part of the window, straight from DevTools, at the size
+ *  the test laid the page out at. On CI's Xvfb runner, with Playwright's
+ *  own screenshot, the episode grid's tiles were found elsewhere after
+ *  the picture than before it, every time and only there, which reads
+ *  as the page laid out again for the picture at another width. */
+async function capture(
+	page: Page,
+	clip: { x: number; y: number; right: number; bottom: number }
+): Promise<Buffer> {
+	let cdp = sessions.get(page);
+	if (!cdp) {
+		cdp = await page.context().newCDPSession(page);
+		sessions.set(page, cdp);
+	}
+	// DevTools takes the region in the page's coordinates, not the window's.
+	const [left, top] = await page.evaluate(() => [
+		window.visualViewport?.pageLeft ?? window.scrollX,
+		window.visualViewport?.pageTop ?? window.scrollY
+	]);
+	const { data } = await cdp.send('Page.captureScreenshot', {
+		format: 'png',
+		clip: {
+			x: clip.x + left,
+			y: clip.y + top,
+			width: clip.right - clip.x,
+			height: clip.bottom - clip.y,
+			scale: 1
+		}
+	});
+	return Buffer.from(data, 'base64');
+}
+
 /** What ringCoveredOnce says when the control moved while it was being
  *  pictured. */
 const MOVED = 'the control moved while its ring was pictured';
@@ -1082,9 +1114,7 @@ async function ringCoveredOnce(page: Page): Promise<string | null> {
 			() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
 		);
 		if (clip.right - clip.x >= 1 && clip.bottom - clip.y >= 1) {
-			shot = await page.screenshot({
-				clip: { x: clip.x, y: clip.y, width: clip.right - clip.x, height: clip.bottom - clip.y }
-			});
+			shot = await capture(page, clip);
 		}
 	} catch (error) {
 		await putBack(page);
