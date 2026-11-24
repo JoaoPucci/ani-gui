@@ -98,6 +98,25 @@ function userArgs(argv) {
   return args.slice(i);
 }
 
+/** Whether process `p` runs the image file `image`. */
+function runsImage(p, image, { exeOf, realpath }) {
+  if (!p) return false;
+  try {
+    return resolvedPath(exeOf(p), realpath) === resolvedPath(image, realpath);
+  } catch {
+    return false;
+  }
+}
+
+/** `p` resolved through symlinks, or as it is when it cannot be. */
+function resolvedPath(p, realpath) {
+  try {
+    return realpath(p);
+  } catch {
+    return p;
+  }
+}
+
 /**
  * How to start the app again, from this process's environment `env`:
  * `{ kind: "relaunch" }` for Electron's own relaunch, or
@@ -105,18 +124,41 @@ function userArgs(argv) {
  * its `env` being `env` without the dying mount's $APPDIR. `restart`
  * gives the waiter the user's environment instead.
  */
-function relaunchPlan({ platform, env, execPath, argv, pid, realpath }) {
+function relaunchPlan({
+  platform,
+  env,
+  execPath,
+  argv,
+  pid,
+  ppid,
+  realpath = fs.realpathSync,
+  exeOf = (p) => fs.readlinkSync(`/proc/${p}/exe`),
+}) {
   const image = appImageOf({ platform, env, execPath, realpath });
   if (!image) return { kind: "relaunch" };
   const { APPDIR: mount, ...rest } = env;
-  // Run extracted rather than mounted, the launch had
-  // --appimage-extract-and-run, which the runtime took before argv and
-  // reads only as the image's first argument.
-  const extracted = path.posix.basename(mount).startsWith(EXTRACTED_PREFIX) ? [EXTRACT_AND_RUN] : [];
+  // Run extracted rather than mounted (--appimage-extract-and-run or
+  // $APPIMAGE_EXTRACT_AND_RUN), the new launch is asked to run so too:
+  // the runtime takes the option before the app sees its arguments, and
+  // acts on it as the first argument that starts with `--`. The runtime,
+  // this process's parent, removes the extraction once this process has
+  // exited, and the new launch extracts into the same directory (named
+  // by the image's hash), so the waiter waits for that parent, when it
+  // is the image itself.
+  const extracted = path.posix.basename(mount).startsWith(EXTRACTED_PREFIX);
+  const outlive = extracted && runsImage(ppid, image, { exeOf, realpath }) ? ppid : pid;
   return {
     kind: "spawn",
     command: "/bin/sh",
-    args: ["-c", WAIT_THEN_EXEC, "ani-gui-restart", String(pid), image, ...extracted, ...userArgs(argv)],
+    args: [
+      "-c",
+      WAIT_THEN_EXEC,
+      "ani-gui-restart",
+      String(outlive),
+      image,
+      ...(extracted ? [EXTRACT_AND_RUN] : []),
+      ...userArgs(argv),
+    ],
     env: rest,
   };
 }
@@ -150,10 +192,10 @@ function relaunch(
  * rebuilt from the launch's (`launch`) and `now` by lib/child-env.cjs,
  * then arranged by `relaunch` with `deps`.
  */
-function restart({ platform, launch, now, execPath, argv, pid }, deps) {
+function restart({ platform, launch, now, execPath, argv, pid, ppid }, deps) {
   // Whether this is the AppImage is read off this process's own
   // environment: the user's has no runtime variables in it.
-  const plan = relaunchPlan({ platform, env: now, execPath, argv, pid });
+  const plan = relaunchPlan({ platform, env: now, execPath, argv, pid, ppid });
   const env = childEnv({ platform, launch, now, execPath });
   relaunch(plan.kind === "spawn" ? { ...plan, env } : plan, deps);
 }

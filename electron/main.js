@@ -74,8 +74,9 @@ const {
 const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
 
 /** The environment a program the app starts gets (lib/child-env.cjs). */
-function userEnv() {
+function userEnv({ keepPortable = false } = {}) {
   return childEnvs.childEnv({
+    keepPortable,
     platform: process.platform,
     launch: LAUNCH_ENV,
     now: process.env,
@@ -450,8 +451,9 @@ async function spawnBackend() {
     bin: resolveBackendBinary(),
     platform: process.platform,
     // The user's environment, which the external player and Syncplay it
-    // spawns inherit (lib/child-env.cjs).
-    env: userEnv(),
+    // spawns inherit, but for a portable AppImage's home and config,
+    // where the app keeps its data (lib/child-env.cjs).
+    env: userEnv({ keepPortable: true }),
     track: (child) => {
       backendChild = child;
       reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
@@ -575,6 +577,7 @@ const splash = splashController({
         execPath: process.execPath,
         argv: process.argv,
         pid: process.pid,
+        ppid: process.ppid,
       },
       { app, spawn, logError: console.error, asUser },
     ),

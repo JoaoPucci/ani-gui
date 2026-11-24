@@ -55,7 +55,9 @@
 // passed on at all (AppRun cannot tell a list set empty from one
 // never set, and neither can this); the runtime's variables are
 // dropped. A portable HOME is the account's again, and a portable
-// XDG_CONFIG_HOME is dropped, since the one it replaced is not known.
+// XDG_CONFIG_HOME is dropped, since the one it replaced is not known;
+// the app's own backend keeps both (`keepPortable`), because that is
+// where the person chose to keep the app's data.
 // A process that does not run from the mount (another AppImage leaked
 // its variables into the terminal the app was started from) passes
 // them on as the user launched with them.
@@ -114,12 +116,28 @@ function ownMount({ env, execPath, realpath = fs.realpathSync }) {
   return dir;
 }
 
+/** The account's home directory, or null when it has none on record
+ *  (os.userInfo throws for a uid with no passwd entry). */
+function homeOf(accountHome) {
+  try {
+    return accountHome();
+  } catch {
+    return null;
+  }
+}
+
 /** Take out of `env` what the AppImage's runtime and AppRun added for
  *  `mount`, the image file `image` being where its portable directories
- *  sit; `accountHome` is the account's home directory. */
-function withoutImage(env, mount, image, accountHome) {
-  if (env.HOME === `${image}.home`) put(env, "HOME", accountHome());
-  if (env.XDG_CONFIG_HOME === `${image}.config`) delete env.XDG_CONFIG_HOME;
+ *  sit. A portable home and config are put back to the account's
+ *  (`accountHome`) unless `keepPortable`, or the account's home is not
+ *  known. */
+function withoutImage(env, { mount, image, accountHome, keepPortable }) {
+  const portable = env.HOME === `${image}.home` || env.XDG_CONFIG_HOME === `${image}.config`;
+  const home = portable && !keepPortable ? homeOf(accountHome) : null;
+  if (home !== null) {
+    if (env.HOME === `${image}.home`) put(env, "HOME", home);
+    if (env.XDG_CONFIG_HOME === `${image}.config`) delete env.XDG_CONFIG_HOME;
+  }
   const rooted = (p) => p === mount || p.startsWith(`${mount}/`);
   for (const name of APPRUN_LISTS) {
     if (!has(env, name)) continue;
@@ -160,6 +178,7 @@ function childEnv({
   execPath,
   realpath,
   accountHome = () => os.userInfo().homedir,
+  keepPortable = false,
 }) {
   if (platform !== "linux") return now;
   const env = {};
@@ -174,7 +193,7 @@ function childEnv({
   if (has(launch, KEPT_DESKTOP) && has(env, DESKTOP)) put(env, DESKTOP, launch[KEPT_DESKTOP]);
   for (const key of NEVER_PASSED_ON) delete env[key];
   const mount = ownMount({ env: launch, execPath, realpath });
-  if (mount) withoutImage(env, mount, launch.APPIMAGE, accountHome);
+  if (mount) withoutImage(env, { mount, image: launch.APPIMAGE, accountHome, keepPortable });
   return env;
 }
 
