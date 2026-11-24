@@ -362,8 +362,9 @@ file (see [Signing the flags file](#signing-the-flags-file)); `false`
 counts in any file. A release declares one flag, `hero_airing_first`
 (the home hero's airing preference, in
 [`architecture.md`](./architecture.md#the-hero-banner)); a test-run
-build also declares the probe the end-to-end suite drives. Turning the
-airing preference on looks like this:
+build also declares the probe the end-to-end suite drives. Once a
+release trusts a key ([Signing the flags file](#signing-the-flags-file),
+step 2), a signed file like this turns the airing preference on:
 
 ```json
 {
