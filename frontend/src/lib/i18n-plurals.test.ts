@@ -701,13 +701,32 @@ describe("every plural message follows its locale's rule", () => {
 	// for a count that is not a number, and reads best in `many`. Most
 	// messages let the catch-all be the many form; one that also spells
 	// `many` out has to give the catch-all the same words.
+	/** A variant's plural selector and the input it counts. */
+	function plural(v: Variant): { selector: string; input: string } {
+		const d = v.declarations!.find((x) => x.endsWith(': plural'))!;
+		const [, selector, input] = /^local\s+(\S+)\s*=\s*(\S+)\s*:\s*plural$/.exec(d.trim())!;
+		return { selector, input };
+	}
+	/** A match key ("count=0, countPlural=*") as selector → value. */
+	const arm = (key: string) =>
+		new Map(key.split(',').map((part) => part.trim().split('=') as [string, string]));
+	/** The same key with one selector's value replaced. */
+	const withValue = (key: string, selector: string, value: string) =>
+		[...arm(key)].map(([s, x]) => `${s}=${s === selector ? value : x}`).join(', ');
+
 	it('a Russian catch-all carries the many form', () => {
 		const found = variants('ru')
-			.filter(([, v]) => v.selectors?.length === 1)
 			.filter(([, v]) => {
-				const sel = v.selectors![0];
-				const many = v.match![`${sel}=many`];
-				return many !== undefined && v.match![`${sel}=*`] !== many;
+				const { selector } = plural(v);
+				const keys = Object.keys(v.match ?? {});
+				return keys
+					.filter((k) => arm(k).get(selector) === 'many')
+					.some((k) => {
+						const star = keys.find(
+							(other) => other.replace(/\s/g, '') === withValue(k, selector, '*').replace(/\s/g, '')
+						);
+						return star !== undefined && v.match![star] !== v.match![k];
+					});
 			})
 			.map(([name]) => name);
 		expect(found).toEqual([]);
@@ -718,14 +737,21 @@ describe("every plural message follows its locale's rule", () => {
 	it('a Portuguese plural matches 0 on its input', () => {
 		const found = variants('pt-BR')
 			.filter(([, v]) => {
-				const input = v
-					.declarations!.find((d) => d.endsWith(': plural'))!
-					.split('=')[1]
-					.trim()
-					.split(':')[0];
-				return !Object.keys(v.match ?? {}).some((k) => k.startsWith(`${input}=0`));
+				const { input } = plural(v);
+				return !Object.keys(v.match ?? {}).some((k) => arm(k).get(input) === '0');
 			})
 			.map(([name]) => name);
 		expect(found).toEqual([]);
+	});
+
+	it('the checks read a match key whatever its spacing and selector order', () => {
+		expect(arm('countPlural=*,count=0').get('count')).toBe('0');
+		expect(withValue('count=*, countPlural=many', 'countPlural', '*')).toBe(
+			'count=*, countPlural=*'
+		);
+		expect(plural({ declarations: ['input n', 'local nPlural = n : plural'] })).toEqual({
+			selector: 'nPlural',
+			input: 'n'
+		});
 	});
 });
