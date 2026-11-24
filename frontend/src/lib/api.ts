@@ -1662,6 +1662,20 @@ export interface HeroPickBody {
 	shows: HeroShow[];
 }
 
+/** The home hero's pick (backend/src/hero): the hero's shows and the
+ *  row's, by id, from the trending shows Home kept after its
+ *  availability filter, under the launch's airing preference. The
+ *  backend keeps the walk for the Debug page. */
+export function heroPick(body: HeroPickBody, opts: ReadOptions = {}): Promise<HeroPick> {
+	return postJson<HeroPick>('/api/home/hero', body, opts);
+}
+
+/** The Debug page's view of the last hero pick: its walk, and the
+ *  airing preference it ran under. */
+export function heroWalk(opts: ReadOptions = {}): Promise<HeroWalkView> {
+	return getJson<HeroWalkView>('/api/home/hero/walk', opts);
+}
+
 /** Body of `/api/kitsu/by-mal-ids`. */
 export interface KitsuByMalIdsBody {
 	mal_ids: number[];

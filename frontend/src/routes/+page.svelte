@@ -1,8 +1,9 @@
 <!--
   Home — the front door. Editorial repertory cinema, programmed by a
   librarian. Composition:
-    1. Hero: the first trending shows with art of their own
-       ($lib/hero/rotation), full-bleed cover with parallax + scrim,
+    1. Hero: the first trending shows with art of their own, as the
+       backend picks them ($lib/hero/rotation), full-bleed cover with
+       parallax + scrim,
        "View" call. NO autoplay, NO carousel.
     2. Continue Watching: hidden when historyList() is empty; otherwise a
        horizontal strip whose cards lean on an oversized mono episode number.
@@ -151,7 +152,7 @@
 		type HeroOrigin
 	} from '$lib/hero/framing';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
-	import { splitTrending } from '$lib/hero/rotation';
+	import { NO_SPLIT, pickTrending, type TrendingSplit } from '$lib/hero/rotation';
 	import { HISTORY_WAIT_MS, homeRows, keepShown, type HomeRows } from '$lib/home/rows';
 	import { loadDiscoveryRows, LOADING, type RowLoad } from '$lib/rows/discovery';
 	import { heroState } from '$lib/hero/state';
@@ -210,8 +211,8 @@
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the first N trending titles with art of their
-	// own ($lib/hero/rotation, which also says what the trending row
-	// lists). Rotation is slow (~9s) and pauses while the cursor is over
+	// own, as the backend picks them ($lib/hero/rotation, which also says
+	// what the trending row lists). Rotation is slow (~9s) and pauses while the cursor is over
 	// the hero, so it never snatches a title out from under a user
 	// mid-read. Honors prefers-reduced-motion (cycle disabled, first item
 	// shown statically). Not a carousel — there's no scroll, no
@@ -636,7 +637,10 @@
 		return cardOf(document, row);
 	}
 
-	const trendingSplit = $derived(splitTrending(trending ?? []));
+	// The backend's pick over the trending list ($lib/hero/rotation), set
+	// by the trending row's request before the row lands, so a row that
+	// has landed always has its pick.
+	let trendingSplit = $state<TrendingSplit<KitsuAnimeRef>>(NO_SPLIT);
 	const heroRotation = $derived<KitsuAnimeRef[]>(trendingSplit.hero);
 	const heroView = $derived(
 		heroState({
@@ -706,7 +710,13 @@
 			rows: [
 				(mode) =>
 					pageReads.keep(
-						kitsuTrendingAnilist({ signal }).then((t) => filterAvailable(t, mode, { signal }))
+						kitsuTrendingAnilist({ signal })
+							.then((t) => filterAvailable(t, mode, { signal }))
+							.then(async (t) => {
+								// A pick that fails fails the row, as a failed fetch does.
+								trendingSplit = await pickTrending(t, { signal });
+								return t;
+							})
 					),
 				(mode) =>
 					pageReads.keep(
