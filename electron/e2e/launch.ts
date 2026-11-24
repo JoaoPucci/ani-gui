@@ -149,12 +149,15 @@ export async function launchPackagedApp(
 		binary = packagedBinary,
 		profile,
 		flagsFile,
-		switches = []
+		switches = [],
+		cwd
 	}: {
 		binary?: string;
 		profile?: string;
 		flagsFile?: string;
 		switches?: readonly string[];
+		/** The directory the app is started in; the runner's own when unset. */
+		cwd?: string;
 	} = {}
 ): Promise<ElectronApplication> {
 	const refusal = launchRefusal(env ?? {});
@@ -175,7 +178,8 @@ export async function launchPackagedApp(
 		app = await _electron.launch({
 			executablePath: binary,
 			args: [...testLaunchSwitches, ...switches],
-			env: appEnv(env, { proxyOrigin: proxy.origin, flagsFile })
+			env: appEnv(env, { proxyOrigin: proxy.origin, flagsFile }),
+			cwd
 		});
 	} catch (err) {
 		proxy.close();
