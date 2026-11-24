@@ -129,7 +129,7 @@ test("an AppImage that runs extracted, not mounted, restarts extracted too", () 
   assert.ok(!mounted.args.includes("--appimage-extract-and-run"));
 });
 
-test("an extracted restart runs once the old extraction is gone, or once it has waited long enough", async (t) => {
+test("an extracted restart runs once the old extraction is gone, or once it has waited long enough", { timeout: 30_000 }, async (t) => {
   // Run extracted, the runtime removes the extraction after the app has
   // exited, and the next launch extracts into the same directory (named
   // by the image's hash): started before the removal ends, it would lose
