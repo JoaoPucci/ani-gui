@@ -156,7 +156,14 @@ describe('a message about the show says "anime"', () => {
 		'play.error_no_show_id',
 		'play.error_load_failed',
 		'settings.field_custom_controls_hint',
-		'settings.field_audio_default_hint'
+		'settings.field_audio_default_hint',
+		// The watch order counts and describes shows.
+		'watchorder.franchise_count',
+		'watchorder.franchise_loop_group',
+		'watchorder.franchise_loop_group_partial',
+		'watchorder.franchise_none',
+		'watchorder.franchise_partial',
+		'watchorder.strip_unnumbered_cycle'
 	];
 	// A whole word: "subtítulos" is not the word.
 	for (const locale of ['pt-BR', 'es-419']) {
@@ -233,7 +240,14 @@ describe('Russian headings end without a full stop', () => {
 		'settings.section_playback_title',
 		'settings.section_library_title',
 		'settings.section_about_title',
-		'update.dialog_title'
+		'update.dialog_title',
+		// The franchise page's sections and the watch order strip.
+		'watchorder.franchise_main',
+		'watchorder.franchise_versions',
+		'watchorder.franchise_films',
+		'watchorder.franchise_sides',
+		'watchorder.franchise_recaps',
+		'watchorder.strip_eyebrow'
 	];
 	it('no ru heading ends with "."', () => {
 		expect(offenders('ru', (s) => s.endsWith('.'), HEADING_KEYS)).toEqual([]);
