@@ -547,7 +547,8 @@ starting it, and delete it when you find it done.
   catalogue, and choosing a source the list can trust.
 - **Localised content fetch** — synopsis and episode titles.
 - **Franchise and season grouping** across surfaces. The franchise
-  read, the show page's strip and the order setting ship
+  read, the show page's strip, the order setting, the player's Up next
+  card and Continue Watching's hand-off ship
   ([`architecture.md`, "Watch order"](./architecture.md#watch-order));
   the rest of the design is proposed in
   [`proposals/franchise-watch-order.md`](./proposals/franchise-watch-order.md).
@@ -740,8 +741,12 @@ starting it, and delete it when you find it done.
   scroll it.
   (An entry the matcher could not place renders as a link to search
   instead, and has no show to route to; one whose match came back
-  without a title renders as a card whose click does nothing. This
-  entry is about the matched, titled cards.) The
+  without a title renders as a card whose click does nothing. One
+  whose show was played through to its finale, with one aired show
+  after it in the series that has not been started, becomes a card
+  for that next show and opens the next show's page, not its own.
+  This entry is about the matched, titled cards that still offer an
+  episode.) The
   route that exists runs through playback: the play page's poster,
   title and breadcrumb link to the show's page, so a user who wants
   the show itself — its episode list, its synopsis, its list entry —
