@@ -364,7 +364,10 @@ test("property: from the AppImage, whatever path lists the user set, a child get
     .filter((v) => v !== "");
   const list = fc.option(joined, { nil: undefined });
   fc.assert(
-    fc.property(list, list, list, list, (p, d, l, g) => {
+    // PATH is always given: bash, which runs AppRun, gives a shell with
+    // no PATH a default of its own, and AppRun exports that as the
+    // user's. No desktop starts a program without one.
+    fc.property(joined, list, list, list, (p, d, l, g) => {
       const user = { HOME: "/home/me" };
       for (const [name, value] of [
         ["PATH", p],
