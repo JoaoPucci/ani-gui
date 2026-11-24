@@ -189,6 +189,7 @@ test('hero_airing_first off: a file turns it on, but nobody signed it', async ()
 		flags: { [FLAG]: false },
 		hero: 'First Finished',
 		walkFlag: 'false',
+		walkOrigin: 'test',
 		steps: OFF_STEPS
 	});
 });
