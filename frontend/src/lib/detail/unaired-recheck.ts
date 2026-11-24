@@ -3,7 +3,8 @@
  * unaired.
  *
  * The schedule row and the episode page are both cached — hours for
- * the one, a day for the other — and the schedule can describe a
+ * the one, a day for the other (a week once the show finished a week
+ * ago or more) — and the schedule can describe a
  * different entry than the page shows, so a tile can read unaired
  * well after its episode came out. The click is the user asking
  * whether that is still true, so it refreshes both past their caches

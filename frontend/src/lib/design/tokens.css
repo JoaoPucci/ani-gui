@@ -182,6 +182,11 @@
 
 	/* — Focus ring: 2px outer in current accent, 2px inner offset in ink. */
 	--ring: 0 0 0 2px var(--ink-000), 0 0 0 4px var(--accent);
+	/* — The same ring drawn inside the box, for a control whose outside is
+	   cut: one flush with the window's edge (the rail's links), or inside
+	   a box that clips what overflows it (a segmented control's track).
+	   Accent at the edge, ink inside it. */
+	--ring-inset: inset 0 0 0 2px var(--accent), inset 0 0 0 4px var(--ink-000);
 }
 
 /* The surface a home row sits on (Strip.svelte). Registered as a colour
@@ -243,6 +248,12 @@ body {
 	-webkit-font-smoothing: antialiased;
 	text-rendering: optimizeLegibility;
 }
+/* Where the keyboard scrolls a control it moves to: clear of the sticky
+   topbar above (+layout.svelte, about 5.25rem tall) and off the window's
+   bottom edge, with room for the focus ring on both sides. */
+html {
+	scroll-padding-block: 6.5rem var(--space-3);
+}
 
 a {
 	color: inherit;
@@ -258,6 +269,18 @@ a {
 	outline: none;
 	box-shadow: var(--ring);
 	border-radius: 2px;
+}
+/* A forced-colours theme (a Windows contrast theme) drops every box
+   shadow, the ring with them, so there the ring is an outline, over
+   whatever a control sets. A control whose ring is drawn inside its box
+   draws this one inside too (`--ring-forced-offset`); one whose chip
+   carries the ring turns its own off (`--ring-forced: none`). */
+@media (forced-colors: active) {
+	:focus-visible {
+		outline: var(--ring-forced, 2px solid CanvasText) !important;
+		outline-offset: var(--ring-forced-offset, 2px) !important;
+		box-shadow: none;
+	}
 }
 
 button {
@@ -336,6 +359,14 @@ img {
 .btn-glass:hover::before {
 	opacity: 1;
 	transform: scale(1.2);
+}
+/* Its own shadow outranks the app's ring (above), so the ring is put
+   back in front of it on keyboard focus. */
+.btn-glass:focus-visible {
+	box-shadow:
+		var(--ring),
+		inset 0 1px 0 color-mix(in oklab, var(--bone-100) 32%, transparent),
+		0 2px 8px -2px rgb(0 0 0 / 0.4);
 }
 @media (prefers-reduced-motion: reduce) {
 	.btn-glass::before {
