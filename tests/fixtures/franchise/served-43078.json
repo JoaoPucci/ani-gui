@@ -1,0 +1,194 @@
+{
+  "anchor": "43078",
+  "name": "BLEACH",
+  "name_from": "244",
+  "entries": [
+    {
+      "id": "244",
+      "title": "BLEACH",
+      "subtype": "TV",
+      "start": "2004-10-05",
+      "episodes": 366,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43078",
+      "title": "BLEACH: Sennen Kessen-hen",
+      "subtype": "TV",
+      "start": "2022-10-10",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46903",
+      "title": "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan",
+      "subtype": "TV",
+      "start": "2023-07-08",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48015",
+      "title": "BLEACH: Sennen Kessen-hen - Soukoku-tan",
+      "subtype": "TV",
+      "start": "2024-10-05",
+      "episodes": 14,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49444",
+      "title": "BLEACH: Sennen Kessen-hen - Kashin-tan",
+      "subtype": "TV",
+      "start": "2026-07-25",
+      "episodes": 10,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "244",
+      "43078"
+    ],
+    [
+      "43078",
+      "46903"
+    ],
+    [
+      "46903",
+      "48015"
+    ],
+    [
+      "48015",
+      "49444"
+    ]
+  ],
+  "versions": [],
+  "films": [
+    {
+      "id": "1515",
+      "title": "Bleach Movie 1: Memories of Nobody",
+      "subtype": "movie",
+      "start": "2006-12-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2623",
+      "title": "Bleach Movie 2: The DiamondDust Rebellion - Mou Hitotsu no Hyourinmaru",
+      "subtype": "movie",
+      "start": "2007-12-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3817",
+      "title": "Bleach Movie 3: Fade to Black - Kimi no Na wo Yobu",
+      "subtype": "movie",
+      "start": "2008-12-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5267",
+      "title": "Bleach Movie 4: Jigoku-hen",
+      "subtype": "movie",
+      "start": "2010-12-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "684",
+      "title": "Bleach: Memories in the Rain",
+      "subtype": "special",
+      "start": "2005-06-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "739",
+      "title": "Bleach: The Sealed Sword Frenzy",
+      "subtype": "special",
+      "start": "2006-03-23",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13264",
+      "title": "Bleach Colorful!: Gotei Juusan Yatai Daisakusen!",
+      "subtype": "OVA",
+      "start": "2008-09-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "43146",
+      "title": "BURN THE WITCH",
+      "subtype": "ONA",
+      "start": "2020-10-02",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49262",
+      "title": "BLEACH 20th PV",
+      "subtype": "special",
+      "start": "2024-10-05",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [
+    {
+      "id": "48913",
+      "title": "Bleach: Shuku! Rukia Dakkan! Kagayaku! Shinigami Juuban Shoubu! Mitai Shinigami Doon to Misemasu Special",
+      "subtype": "special",
+      "start": "2006-01-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "48914",
+      "title": "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan Recap",
+      "subtype": "special",
+      "start": "2023-09-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "parents": {},
+  "complete": true
+}

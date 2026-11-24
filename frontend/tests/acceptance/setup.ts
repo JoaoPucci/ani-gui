@@ -17,6 +17,7 @@ import { setupServer } from 'msw/node';
 
 import { installElementAnimateStub } from './stubs/element-animate';
 import { isSession } from './session-contract';
+import { forgetAnswers } from '../../src/lib/watch-order/session-memo';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
 import { candidates, cardLines, verdict } from '../../src/test/link-rules-fake';
@@ -53,6 +54,10 @@ export const API_BASE = 'http://127.0.0.1:31337';
  * - the download folder the detail and play pages show beside the
  *   download action;
  * - a show's watch history, which the detail page reads for resume;
+ * - the watch-order answers the show page's strip, the player's Up
+ *   next card and a Continue card at a finale read (and its rail,
+ *   which Home reads whenever it has rows), and the first hop of a
+ *   show's franchise walk;
  * - the whole history, which a guessed Continue session's player reads
  *   to ask whether the card's row is still a guess (and, failing,
  *   offers nothing);
@@ -82,6 +87,12 @@ const incidental = [
 	http.get(`${API_BASE}/api/download/default-dir`, absentBackend),
 	http.get(`${API_BASE}/api/history/by-kitsu/:id`, absentBackend),
 	http.get(`${API_BASE}/api/history`, absentBackend),
+	http.post(`${API_BASE}/api/history/by-kitsu`, absentBackend),
+	http.post(`${API_BASE}/api/watch-order/:id/show`, absentBackend),
+	http.post(`${API_BASE}/api/watch-order/:id/up-next`, absentBackend),
+	http.post(`${API_BASE}/api/watch-order/:id/handoff`, absentBackend),
+	http.post(`${API_BASE}/api/watch-order/rail`, absentBackend),
+	http.get(`${API_BASE}/api/kitsu/franchise/:id/first-hop`, absentBackend),
 	http.post(`${API_BASE}/api/kitsu/search`, absentBackend),
 	http.post(`${API_BASE}/api/history/guess/ruled-out`, absentBackend),
 	http.post(`${API_BASE}/api/availability/batch`, absentBackend),
@@ -561,6 +572,9 @@ afterEach(async () => {
 	// takes to read.
 	await settleAnswerChecks(scenario);
 	server.resetHandlers();
+	// Each scenario is a session of its own: the show page's memo of
+	// watch-order answers does not carry into the next one.
+	forgetAnswers();
 	// Everything is collected before anything throws, so nothing of
 	// this scenario's is left to fail another.
 	if (scenario) failOn(closeAccount(scenario), 'requests this scenario did not account for');

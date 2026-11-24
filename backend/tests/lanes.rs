@@ -23,7 +23,14 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 /// The lanes beside the API that the handshake must announce.
-const LANES: [&str; 5] = ["stream", "image", "probe", "resolve", "download"];
+const LANES: [&str; 6] = [
+    "stream",
+    "image",
+    "probe",
+    "resolve",
+    "download",
+    "franchise",
+];
 
 fn start() -> (common::Backend, tempfile::TempDir) {
     let home = tempfile::tempdir().expect("tempdir");

@@ -1,0 +1,376 @@
+{
+  "today": "2026-11-02",
+  "franchises": {},
+  "cases": [],
+  "rails": [
+    {
+      "name": "a row of an entry still airing asks for nothing",
+      "request": {
+        "rows": [
+          {
+            "row_id": "a",
+            "matched": {
+              "id": "7",
+              "status": "current",
+              "episode_count": 12
+            },
+            "ep_no": "12",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "a"
+          }
+        ],
+        "matches": {
+          "a": "7"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "a": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "a row of an entry of unknown length asks for nothing",
+      "request": {
+        "rows": [
+          {
+            "row_id": "a",
+            "matched": {
+              "id": "7",
+              "status": "finished",
+              "episode_count": null
+            },
+            "ep_no": "12",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "a"
+          }
+        ],
+        "matches": {
+          "a": "7"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "a": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "a finale left part-way asks for nothing",
+      "request": {
+        "rows": [
+          {
+            "row_id": "a",
+            "matched": {
+              "id": "7",
+              "status": "finished",
+              "episode_count": 12
+            },
+            "ep_no": "12",
+            "playable_count": null,
+            "left_part_way": true
+          }
+        ],
+        "history": [
+          {
+            "id": "a"
+          }
+        ],
+        "matches": {
+          "a": "7"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "a": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "a source listing past Kitsu's count waits for its last episode",
+      "request": {
+        "rows": [
+          {
+            "row_id": "a",
+            "matched": {
+              "id": "7",
+              "status": "finished",
+              "episode_count": 12
+            },
+            "ep_no": "12",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "a"
+          }
+        ],
+        "matches": {
+          "a": "7"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "a": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "two rows moving on to one entry show it once, the first in the rail",
+      "request": {
+        "rows": [
+          {
+            "row_id": "b",
+            "matched": {
+              "id": "8",
+              "status": "finished",
+              "episode_count": 12
+            },
+            "ep_no": "12",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "a",
+            "matched": {
+              "id": "7",
+              "status": "finished",
+              "episode_count": 12
+            },
+            "ep_no": "12",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "a"
+          },
+          {
+            "id": "b"
+          }
+        ],
+        "matches": {
+          "a": "7",
+          "b": "8"
+        },
+        "series": {
+          "7": {
+            "finished": {
+              "id": "7",
+              "title": "T7",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "9",
+              "title": "T9",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          },
+          "8": {
+            "finished": {
+              "id": "8",
+              "title": "T8",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "9",
+              "title": "T9",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "a": "7",
+          "b": "8"
+        },
+        "handoffs": {
+          "b": {
+            "finished": {
+              "id": "8",
+              "title": "T8",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "9",
+              "title": "T9",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "a next entry with a history row of its own keeps the ordinary card",
+      "request": {
+        "rows": [
+          {
+            "row_id": "a",
+            "matched": {
+              "id": "7",
+              "status": "finished",
+              "episode_count": 12
+            },
+            "ep_no": "12",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "a"
+          },
+          {
+            "id": "c",
+            "kitsu_id": "9"
+          }
+        ],
+        "matches": {
+          "a": "7",
+          "c": null
+        },
+        "series": {
+          "7": {
+            "finished": {
+              "id": "7",
+              "title": "T7",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "9",
+              "title": "T9",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "a": "7"
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "no card moves on while a row is still being matched",
+      "request": {
+        "rows": [
+          {
+            "row_id": "a",
+            "matched": {
+              "id": "7",
+              "status": "finished",
+              "episode_count": 12
+            },
+            "ep_no": "12",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "a"
+          },
+          {
+            "id": "c"
+          }
+        ],
+        "matches": {
+          "a": "7"
+        },
+        "series": {
+          "7": {
+            "finished": {
+              "id": "7",
+              "title": "T7",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            },
+            "next": {
+              "id": "9",
+              "title": "T9",
+              "subtype": "TV",
+              "start": "2020-01-01",
+              "episodes": 12,
+              "status": "finished",
+              "poster": null,
+              "cover": null
+            }
+          }
+        }
+      },
+      "answer": {
+        "asks": {
+          "a": "7"
+        },
+        "handoffs": {}
+      }
+    }
+  ]
+}

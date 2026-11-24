@@ -36,8 +36,21 @@
 	import { DOWNLOAD_QUALITIES, downloadQuality } from '$lib/download/download-quality';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
+	import type { WatchOrder } from '$lib/api';
+	import { watchOrderSaved } from '$lib/watch-order/session-memo';
+	const WATCH_ORDERS: Array<{ key: WatchOrder; label: () => string }> = [
+		{ key: 'linked', label: m.watchorder_setting_linked },
+		{ key: 'released', label: m.watchorder_setting_released }
+	];
 
 	let cfg = $state<Config | null>(null);
+	// The order setting as last read or saved: what the remembered
+	// watch-order answers were read in.
+	let savedOrder: string | null = null;
+	// The order the choice shows: the backend reads any stored value but
+	// `released` as linked and answers it so; a value it never sends
+	// shows as linked too rather than as no choice at all.
+	const shownOrder = $derived<WatchOrder>(cfg?.watch_order === 'released' ? 'released' : 'linked');
 	let info = $state<AppInfo | null>(null);
 	let loadError = $state<string | null>(null);
 	// The error block: the last failure of a save or a clear, until its
@@ -81,7 +94,10 @@
 	onMount(() => {
 		void reads
 			.keep(settingsGet({ signal: reads.signal }))
-			.then((c) => (cfg = c))
+			.then((c) => {
+				cfg = c;
+				savedOrder = c.watch_order;
+			})
 			.catch((e) => (loadError = describeSettingsFailure(e)));
 		void reads
 			.keep(appInfo({ signal: reads.signal }))
@@ -106,6 +122,9 @@
 		cfg = next;
 		try {
 			await settingsPut(next);
+			// The shows remembered this session were read in the order
+			// saved before ($lib/watch-order/session-memo).
+			savedOrder = watchOrderSaved(savedOrder, next.watch_order);
 			savedAt = Date.now();
 			errorBlock = landed(errorBlock, 'save');
 		} catch (e) {
@@ -243,6 +262,10 @@
 	function setAutoPlayNext(value: boolean) {
 		if (!cfg) return;
 		void persist({ ...cfg, auto_play_next: value });
+	}
+	function setWatchOrder(order: WatchOrder) {
+		if (!cfg) return;
+		void persist({ ...cfg, watch_order: order });
 	}
 	function setCacheResolutions(value: boolean) {
 		if (!cfg) return;
@@ -529,6 +552,26 @@
 							: m.settings_switch_state_off()}</span
 					>
 				</label>
+			</div>
+
+			<div class="field">
+				<div class="field-label">
+					<span class="field-key">{m.watchorder_setting_key()}</span>
+					<span class="field-hint">{m.watchorder_setting_hint()}</span>
+				</div>
+				<div class="seg" role="group" aria-label={m.watchorder_setting_aria()}>
+					{#each WATCH_ORDERS as o (o.key)}
+						<button
+							type="button"
+							class="seg-btn"
+							class:active={shownOrder === o.key}
+							aria-pressed={shownOrder === o.key}
+							onclick={() => setWatchOrder(o.key)}
+						>
+							{o.label()}
+						</button>
+					{/each}
+				</div>
 			</div>
 
 			<div class="field">

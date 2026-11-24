@@ -7,6 +7,7 @@ import {
 	externalPlayerCommandAfterKindChange,
 	externalPlayerStandard,
 	__resetApiBaseForTests,
+	windowLaneIsOwn,
 	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
 	allmangaKitsuMapPlayed,
@@ -37,6 +38,7 @@ import {
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuEpisodes,
+	kitsuFranchiseFirstHop,
 	kitsuGuessRuledOut,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
@@ -69,6 +71,7 @@ import {
 	type KitsuEpisode,
 	type KitsuSearchPage,
 	type SkipInterval,
+	type FirstHopAnswer,
 	type Config,
 	type CreateSessionResponse,
 	type DownloadProgress,
@@ -1124,6 +1127,18 @@ describe('apiBase configuration', () => {
 		await appInfo();
 		expect(lastCall(fetchMock).url).toBe('http://127.0.0.1:9999/api/app-info');
 	});
+	it('tells whether a lane has an origin of its own, off the preload bridge', () => {
+		type LaneWin = { window?: { aniGui?: { apiBase?: string; lanes?: Record<string, string> } } };
+		const w = globalThis as unknown as LaneWin;
+		// Browser-only dev: no bridge, so every lane shares the API's origin.
+		expect(windowLaneIsOwn('franchise')).toBe(false);
+		w.window = { aniGui: { apiBase: 'http://127.0.0.1:9999' } };
+		expect(windowLaneIsOwn('franchise')).toBe(false);
+		w.window = {
+			aniGui: { apiBase: 'http://127.0.0.1:9999', lanes: { franchise: 'http://127.0.0.1:9998' } }
+		};
+		expect(windowLaneIsOwn('franchise')).toBe(true);
+	});
 });
 
 describe('expect2xx error fallback', () => {
@@ -1625,7 +1640,8 @@ describe('settingsGet', () => {
 			auto_skip_ed: false,
 			use_custom_player_controls: false,
 			update_include_prereleases: true,
-			primary_account: ''
+			primary_account: '',
+			watch_order: 'linked'
 		};
 		const fetchMock = mockFetchOnce<Config>(cfg);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -1653,7 +1669,8 @@ describe('settingsPut', () => {
 			auto_skip_ed: true,
 			use_custom_player_controls: true,
 			update_include_prereleases: false,
-			primary_account: 'mal'
+			primary_account: 'mal',
+			watch_order: 'linked'
 		};
 		const fetchMock = mockFetchEmpty(204);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -2042,6 +2059,24 @@ describe('airingGet', () => {
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/kitsu/airing/kid%2050551`);
 		expect(got).toEqual(status);
+	});
+});
+
+describe('kitsuFranchiseFirstHop', () => {
+	it('GETs /api/kitsu/franchise/<kitsuId>/first-hop and returns its signal', async () => {
+		const fetchMock = mockFetchOnce<FirstHopAnswer>({ signal: 'link' });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await kitsuFranchiseFirstHop('kid 7730');
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/kitsu/franchise/kid%207730/first-hop`);
+		expect(got).toBe('link');
+	});
+
+	it('hands its signal to the request: the first hop can take several Kitsu reads', async () => {
+		const fetchMock = mockFetchOnce<FirstHopAnswer>({ signal: 'strip' });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const visit = new AbortController();
+		await kitsuFranchiseFirstHop('7730', { signal: visit.signal });
+		expect(lastCall(fetchMock).init?.signal).toBe(visit.signal);
 	});
 });
 
