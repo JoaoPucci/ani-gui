@@ -584,38 +584,63 @@ async fn the_history_route_marks_the_rows_the_user_named_a_show_for() {
     assert!(named(router).await.is_empty());
 }
 
+/// A Kitsu stand-in that answers every entry with the fixture, each
+/// held id only once the test lets its read go
+/// ([`crate::held::Gate::release`]).
+///
+/// Two corrections race on which saves first, and the order is the
+/// point: a delay on one answer is a guess about how fast the machine
+/// is, and on a loaded runner the other correction can arrive after it.
+/// A held wiremock answer keeps the whole server, so the other read
+/// would wait behind it; this stand-in holds the reads it names and
+/// answers the rest.
+async fn kitsu_holding(held: Vec<(&'static str, crate::held::Hold)>) -> String {
+    use axum::extract::Path;
+    let held = std::sync::Arc::new(held);
+    let app = axum::Router::new().route(
+        "/anime/:id",
+        axum::routing::get(move |Path(id): Path<String>| {
+            let held = std::sync::Arc::clone(&held);
+            async move {
+                if let Some((_, hold)) = held.iter().find(|(held_id, _)| *held_id == id) {
+                    hold.wait().await;
+                }
+                (
+                    [(axum::http::header::CONTENT_TYPE, "application/vnd.api+json")],
+                    DETAIL_FIXTURE,
+                )
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    format!("http://{addr}")
+}
+
 #[tokio::test]
 async fn a_link_that_waited_on_kitsu_leaves_a_newer_link_standing() {
     // The first correction waits for its Kitsu read; the viewer corrects
     // the same card again on another surface, which saves first. The
     // older request lands last and must not overwrite the newer one.
-    let mock = MockServer::start().await;
-    let detail = || {
-        ResponseTemplate::new(200)
-            .insert_header("content-type", "application/vnd.api+json")
-            .set_body_bytes(DETAIL_FIXTURE.to_vec())
-    };
-    Mock::given(method("GET"))
-        .and(path("/anime/12"))
-        .respond_with(detail().set_delay(std::time::Duration::from_millis(400)))
-        .mount(&mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/anime/21"))
-        .respond_with(detail())
-        .mount(&mock)
-        .await;
+    let (hold, gate) = crate::held::gate();
+    let kitsu = kitsu_holding(vec![("12", hold)]).await;
     let tmp = tempfile::tempdir().unwrap();
     let history = tmp.path().join("history");
     write_atomic(&history, &rows()).unwrap();
-    let state = state_at(history, &mock.uri());
+    let state = state_at(history, &kitsu);
     let card = ["hianime:black-clover-949"];
 
     let first = args(&card, "12");
     let second = args(&card, "21");
     let (older, newer) = tokio::join!(link(&state, &first), async {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        link(&state, &second).await
+        // The older correction is asked, and out on Kitsu.
+        gate.asked().await;
+        let newer = link(&state, &second).await;
+        gate.release();
+        newer
     });
 
     assert_eq!(newer.expect("newer").linked.len(), 1);
@@ -637,36 +662,37 @@ async fn a_link_that_waited_on_kitsu_leaves_a_newer_link_standing() {
 #[tokio::test]
 async fn the_link_asked_last_stands_whichever_saves_first() {
     // The first correction's read answers first; the second, asked
-    // later, waits longer. The second is the viewer's latest answer.
-    let mock = MockServer::start().await;
-    let detail = |ms: u64| {
-        ResponseTemplate::new(200)
-            .insert_header("content-type", "application/vnd.api+json")
-            .set_body_bytes(DETAIL_FIXTURE.to_vec())
-            .set_delay(std::time::Duration::from_millis(ms))
-    };
-    Mock::given(method("GET"))
-        .and(path("/anime/12"))
-        .respond_with(detail(100))
-        .mount(&mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/anime/21"))
-        .respond_with(detail(500))
-        .mount(&mock)
-        .await;
+    // while the first was out, is still out when the first saves. The
+    // second is the viewer's latest answer.
+    let (first_hold, first_gate) = crate::held::gate();
+    let (second_hold, second_gate) = crate::held::gate();
+    let kitsu = kitsu_holding(vec![("12", first_hold), ("21", second_hold)]).await;
     let tmp = tempfile::tempdir().unwrap();
     let history = tmp.path().join("history");
     write_atomic(&history, &rows()).unwrap();
-    let state = state_at(history, &mock.uri());
+    let state = state_at(history, &kitsu);
     let card = ["hianime:black-clover-949"];
     let first = args(&card, "12");
     let second = args(&card, "21");
 
-    let (older, newer) = tokio::join!(link(&state, &first), async {
-        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-        link(&state, &second).await
-    });
+    let older = link(&state, &first);
+    let newer = link(&state, &second);
+    tokio::pin!(older, newer);
+    // Asked in order: the first is out on Kitsu before the second is
+    // asked, and both are out before either saves.
+    tokio::select! {
+        _ = &mut older => panic!("the first link ended before its read was held"),
+        () = first_gate.asked() => {}
+    }
+    tokio::select! {
+        _ = &mut older => panic!("the first link ended before its read was let go"),
+        _ = &mut newer => panic!("the second link ended before its read was held"),
+        () = second_gate.asked() => {}
+    }
+    first_gate.release();
+    let older = older.await;
+    second_gate.release();
+    let newer = newer.await;
 
     assert!(!older.expect("older").overtaken);
     let newer = newer.expect("newer");
@@ -685,27 +711,12 @@ async fn an_overtaken_link_writes_none_of_its_rows() {
     // The older correction carries the card and its bare row; the newer
     // one, which saves first, carries the card alone. The older one must
     // not split the card's rows across two shows.
-    let mock = MockServer::start().await;
-    let detail = |ms: u64| {
-        ResponseTemplate::new(200)
-            .insert_header("content-type", "application/vnd.api+json")
-            .set_body_bytes(DETAIL_FIXTURE.to_vec())
-            .set_delay(std::time::Duration::from_millis(ms))
-    };
-    Mock::given(method("GET"))
-        .and(path("/anime/12"))
-        .respond_with(detail(400))
-        .mount(&mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/anime/21"))
-        .respond_with(detail(0))
-        .mount(&mock)
-        .await;
+    let (hold, gate) = crate::held::gate();
+    let kitsu = kitsu_holding(vec![("12", hold)]).await;
     let tmp = tempfile::tempdir().unwrap();
     let history = tmp.path().join("history");
     write_atomic(&history, &rows()).unwrap();
-    let state = state_at(history, &mock.uri());
+    let state = state_at(history, &kitsu);
     // The bare row's stored mapping names another show; a link to 12
     // would drop it.
     crate::commands::kitsu::allmanga_kitsu_put(&state, "black-clover-77", "99").expect("seed");
@@ -713,8 +724,11 @@ async fn an_overtaken_link_writes_none_of_its_rows() {
     let second = args(&["hianime:black-clover-949"], "21");
 
     let (older, newer) = tokio::join!(link(&state, &first), async {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        link(&state, &second).await
+        // The older correction is asked, and out on Kitsu.
+        gate.asked().await;
+        let newer = link(&state, &second).await;
+        gate.release();
+        newer
     });
 
     newer.expect("newer");
