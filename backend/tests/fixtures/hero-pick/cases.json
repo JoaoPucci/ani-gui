@@ -1836,5 +1836,504 @@
         "title": "Show 5"
       }
     ]
+  },
+  {
+    "airing_first": false,
+    "expected": {
+      "hero": [
+        "2",
+        "3",
+        "4"
+      ],
+      "row": [
+        "1"
+      ],
+      "walk": {
+        "airing_first": false,
+        "count": 3,
+        "entries": 5,
+        "steps": [
+          {
+            "airing": false,
+            "art": "none",
+            "id": "1",
+            "preference_applied": false,
+            "rank": 1,
+            "status": "finished",
+            "title": "Show 1",
+            "verdict": {
+              "because": "no_art",
+              "kind": "skipped"
+            }
+          },
+          {
+            "airing": false,
+            "art": "cover",
+            "id": "2",
+            "preference_applied": false,
+            "rank": 2,
+            "status": "finished",
+            "title": "Show 2",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 0
+            }
+          },
+          {
+            "airing": true,
+            "art": "cover",
+            "id": "1",
+            "preference_applied": false,
+            "rank": 3,
+            "status": "current",
+            "title": "Show 1",
+            "verdict": {
+              "because": "repeat",
+              "kind": "skipped"
+            }
+          },
+          {
+            "airing": false,
+            "art": "cover",
+            "id": "3",
+            "preference_applied": false,
+            "rank": 4,
+            "status": "finished",
+            "title": "Show 3",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 1
+            }
+          },
+          {
+            "airing": false,
+            "art": "cover",
+            "id": "4",
+            "preference_applied": false,
+            "rank": 5,
+            "status": "finished",
+            "title": "Show 4",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 2
+            }
+          }
+        ]
+      }
+    },
+    "name": "a repeat's later art and airing do not count, only its first entry",
+    "shows": [
+      {
+        "id": "1",
+        "status": "finished",
+        "title": "Show 1"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "2",
+        "status": "finished",
+        "title": "Show 2"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "1",
+        "status": "current",
+        "title": "Show 1"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "3",
+        "status": "finished",
+        "title": "Show 3"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "4",
+        "status": "finished",
+        "title": "Show 4"
+      }
+    ]
+  },
+  {
+    "airing_first": true,
+    "expected": {
+      "hero": [
+        "2",
+        "3",
+        "4"
+      ],
+      "row": [
+        "1"
+      ],
+      "walk": {
+        "airing_first": true,
+        "count": 3,
+        "entries": 5,
+        "steps": [
+          {
+            "airing": false,
+            "art": "none",
+            "id": "1",
+            "preference_applied": false,
+            "rank": 1,
+            "status": "finished",
+            "title": "Show 1",
+            "verdict": {
+              "because": "no_art",
+              "kind": "skipped"
+            }
+          },
+          {
+            "airing": false,
+            "art": "cover",
+            "id": "2",
+            "preference_applied": false,
+            "rank": 2,
+            "status": "finished",
+            "title": "Show 2",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 0
+            }
+          },
+          {
+            "airing": true,
+            "art": "cover",
+            "id": "1",
+            "preference_applied": false,
+            "rank": 3,
+            "status": "current",
+            "title": "Show 1",
+            "verdict": {
+              "because": "repeat",
+              "kind": "skipped"
+            }
+          },
+          {
+            "airing": false,
+            "art": "cover",
+            "id": "3",
+            "preference_applied": false,
+            "rank": 4,
+            "status": "finished",
+            "title": "Show 3",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 1
+            }
+          },
+          {
+            "airing": false,
+            "art": "cover",
+            "id": "4",
+            "preference_applied": false,
+            "rank": 5,
+            "status": "finished",
+            "title": "Show 4",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 2
+            }
+          }
+        ]
+      }
+    },
+    "name": "a repeat's later art and airing do not count, only its first entry",
+    "shows": [
+      {
+        "id": "1",
+        "status": "finished",
+        "title": "Show 1"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "2",
+        "status": "finished",
+        "title": "Show 2"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "1",
+        "status": "current",
+        "title": "Show 1"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "3",
+        "status": "finished",
+        "title": "Show 3"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "4",
+        "status": "finished",
+        "title": "Show 4"
+      }
+    ]
+  },
+  {
+    "airing_first": false,
+    "expected": {
+      "hero": [
+        "1",
+        "2",
+        "3"
+      ],
+      "row": [
+        "4",
+        "5",
+        "6"
+      ],
+      "walk": {
+        "airing_first": false,
+        "count": 3,
+        "entries": 6,
+        "steps": [
+          {
+            "airing": true,
+            "art": "cover",
+            "id": "1",
+            "preference_applied": false,
+            "rank": 1,
+            "status": "current",
+            "title": "Show 1",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 0
+            }
+          },
+          {
+            "airing": false,
+            "art": "cover",
+            "id": "2",
+            "preference_applied": false,
+            "rank": 2,
+            "status": "finished",
+            "title": "Show 2",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 1
+            }
+          },
+          {
+            "airing": true,
+            "art": "cover",
+            "id": "3",
+            "preference_applied": false,
+            "rank": 3,
+            "status": "current",
+            "title": "Show 3",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 2
+            }
+          }
+        ]
+      }
+    },
+    "name": "more airing shows with art than slots leave the last ones to the row",
+    "shows": [
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "1",
+        "status": "current",
+        "title": "Show 1"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "2",
+        "status": "finished",
+        "title": "Show 2"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "3",
+        "status": "current",
+        "title": "Show 3"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "4",
+        "status": "current",
+        "title": "Show 4"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "5",
+        "status": "current",
+        "title": "Show 5"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "6",
+        "status": "finished",
+        "title": "Show 6"
+      }
+    ]
+  },
+  {
+    "airing_first": true,
+    "expected": {
+      "hero": [
+        "1",
+        "3",
+        "4"
+      ],
+      "row": [
+        "2",
+        "5",
+        "6"
+      ],
+      "walk": {
+        "airing_first": true,
+        "count": 3,
+        "entries": 6,
+        "steps": [
+          {
+            "airing": true,
+            "art": "cover",
+            "id": "1",
+            "preference_applied": false,
+            "rank": 1,
+            "status": "current",
+            "title": "Show 1",
+            "verdict": {
+              "because": "art",
+              "kind": "taken",
+              "slot": 0
+            }
+          },
+          {
+            "airing": false,
+            "art": "cover",
+            "id": "2",
+            "preference_applied": true,
+            "rank": 2,
+            "status": "finished",
+            "title": "Show 2",
+            "verdict": {
+              "because": "not_airing",
+              "kind": "skipped"
+            }
+          },
+          {
+            "airing": true,
+            "art": "cover",
+            "id": "3",
+            "preference_applied": true,
+            "rank": 3,
+            "status": "current",
+            "title": "Show 3",
+            "verdict": {
+              "because": "airing_art",
+              "kind": "taken",
+              "slot": 1
+            }
+          },
+          {
+            "airing": true,
+            "art": "cover",
+            "id": "4",
+            "preference_applied": true,
+            "rank": 4,
+            "status": "current",
+            "title": "Show 4",
+            "verdict": {
+              "because": "airing_art",
+              "kind": "taken",
+              "slot": 2
+            }
+          }
+        ]
+      }
+    },
+    "name": "more airing shows with art than slots leave the last ones to the row",
+    "shows": [
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "1",
+        "status": "current",
+        "title": "Show 1"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "2",
+        "status": "finished",
+        "title": "Show 2"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "3",
+        "status": "current",
+        "title": "Show 3"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "4",
+        "status": "current",
+        "title": "Show 4"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "5",
+        "status": "current",
+        "title": "Show 5"
+      },
+      {
+        "cover_image": {
+          "large": "https://media.kitsu.app/anime/1/cover_image/large.jpg"
+        },
+        "id": "6",
+        "status": "finished",
+        "title": "Show 6"
+      }
+    ]
   }
 ]
