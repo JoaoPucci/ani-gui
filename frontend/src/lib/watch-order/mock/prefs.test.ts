@@ -33,8 +33,15 @@ describe('watch-order mockup prefs', () => {
 	});
 
 	it('keeps known choices and replaces unknown ones field by field', () => {
-		const p = parseMockPrefs(JSON.stringify({ enabled: true, upNext: 'still', order: 'sideways' }));
-		expect(p).toMatchObject({ enabled: true, switcher: false, upNext: 'still', order: 'linked' });
+		const p = parseMockPrefs(
+			JSON.stringify({ enabled: true, franchise: 'shelf', order: 'sideways' })
+		);
+		expect(p).toMatchObject({
+			enabled: true,
+			switcher: false,
+			franchise: 'shelf',
+			order: 'linked'
+		});
 	});
 
 	it('offers no switch for a choice the maintainer has made', () => {
@@ -42,8 +49,11 @@ describe('watch-order mockup prefs', () => {
 		// masthead and short titles were decided in the first two
 		// review rounds; the strip's arrangement, its footer and the
 		// franchise link's form in the third. The strip and the setting
-		// are the real ones now, so none of these is a mockup option.
+		// are the real ones now, so none of these is a mockup option,
+		// and nor is the Up next card's look: the player shows the real
+		// card, as a poster.
 		for (const decided of [
+			'upNext',
 			'wording',
 			'resume',
 			'placement',
@@ -62,7 +72,7 @@ describe('watch-order mockup prefs', () => {
 
 	it('round-trips through storage', () => {
 		const s = memory();
-		const next = { ...MOCK_PREFS_DEFAULT, enabled: true, upNext: 'still' as const };
+		const next = { ...MOCK_PREFS_DEFAULT, enabled: true, franchise: 'shelf' as const };
 		saveMockPrefs(s, next);
 		expect(loadMockPrefs(s)).toEqual(next);
 	});
