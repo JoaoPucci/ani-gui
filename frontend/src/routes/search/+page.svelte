@@ -849,8 +849,11 @@
 	.card-link:hover {
 		transform: translateY(-4px);
 	}
+	/* The poster carries the ring: the app's ring around the whole card
+	   (tokens.css) drew a second one around the poster and its title. */
 	.card-link:focus-visible {
 		outline: none;
+		box-shadow: none;
 	}
 	.card-link:focus-visible .poster {
 		box-shadow:
@@ -870,6 +873,12 @@
 	}
 	.card-link:hover .poster {
 		box-shadow: var(--shadow-card-hover);
+	}
+	/* Under the mouse, a focused card's poster keeps its ring. */
+	.card-link:focus-visible:hover .poster {
+		box-shadow:
+			var(--shadow-card-hover),
+			0 0 0 2px var(--bone-100);
 	}
 	.poster img {
 		position: absolute;
