@@ -10,6 +10,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { watchStripOverflow } from '$lib/components/strip-overflow';
 	import { watchHeaderLines } from '$lib/components/strip-header-wrap';
+	import { revealFocused } from '$lib/components/strip-focus';
 
 	interface Props {
 		eyebrow: string;
@@ -247,6 +248,7 @@
 			onpointerup={onPointerUp}
 			onpointercancel={onPointerUp}
 			onclickcapture={onClickCapture}
+			onfocusin={(e) => revealFocused(e.target as HTMLElement, scrollerEl, scrollBehavior())}
 			ondragstart={(e) => e.preventDefault()}
 			role="region"
 			aria-label={eyebrow}
@@ -413,6 +415,8 @@
 
 	.strip-frame {
 		position: relative;
+		/* How far the edge fades reach in (.strip-fade). */
+		--strip-fade-size: 9rem;
 	}
 
 	.strip-scroll {
@@ -427,6 +431,10 @@
 		   below do the indicating. The bar took up a vertical band of
 		   space and felt utilitarian; this row should feel curated. */
 		scrollbar-width: none;
+		/* A card the keyboard scrolls into view (strip-focus.ts) stops
+		   clear of the edge fades: flush with the row's edge, the edge
+		   cut its focus ring, and under a fade the ring faded with it. */
+		scroll-padding-inline: var(--strip-fade-size);
 		cursor: grab;
 		-webkit-user-select: none;
 		user-select: none;
@@ -442,6 +450,12 @@
 		/* Padding lives on the rail, not the scroll container — keeps
 		   first-card alignment matching the eyebrow on initial render. */
 		padding-inline: var(--strip-pad);
+		/* As wide as its cards and padding, so the padding after the last
+		   card is part of what scrolls: on a rail only as wide as the row,
+		   the last card ended flush with the row's edge, which cut its
+		   focus ring. At least the row's width, as before. */
+		inline-size: max-content;
+		min-inline-size: 100%;
 		/* Block padding gives cards room for their hover treatments
 		   (lift, popped-out chips, etc.) without the parent's auto
 		   overflow shaving them. Override via the `padBlock` prop on
@@ -473,7 +487,7 @@
 	.strip-fade {
 		position: absolute;
 		inset-block: 0;
-		inline-size: 9rem;
+		inline-size: var(--strip-fade-size);
 		opacity: 0;
 		pointer-events: none;
 		transition: opacity var(--dur-med) var(--ease-out-soft);

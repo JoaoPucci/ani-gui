@@ -42,7 +42,8 @@ fn visible(dir: &std::path::Path) -> Vec<String> {
 
 /// A yt-dlp stub that writes what the real one does beside its `-o`
 /// path — the `.part`, a fragment in flight and its own partial, the
-/// `.ytdl` resume state — records the `-o` path, and then either waits
+/// `.ytdl` resume state — records the `-o` path, published whole so a
+/// test polling for it never reads it half-written, and then either waits
 /// for `release` to appear or not at all, finishing with `exit`.
 fn ytdlp_writing_its_temporaries(
     seen: &std::path::Path,
@@ -57,12 +58,12 @@ fn ytdlp_writing_its_temporaries(
     });
     format!(
         "out=\"\"\nprev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then out=\"$a\"; fi; prev=\"$a\"; done\n\
-         printf '%s' \"$out\" > {seen}\n\
+         {record}\n\
          printf x > \"$out.part\"\nprintf x > \"$out.part-Frag12\"\nprintf x > \"$out.part-Frag16.part\"\nprintf x > \"$out.ytdl\"\n\
          {wait}\
          if [ {exit} -eq 0 ]; then mv \"$out.part\" \"$out\"; rm -f \"$out.part-Frag12\" \"$out.part-Frag16.part\" \"$out.ytdl\"; fi\n\
          exit {exit}",
-        seen = crate::stub_file::sh_quote(seen),
+        record = crate::stub_file::publish(seen, "printf '%s' \"$out\""),
     )
 }
 
