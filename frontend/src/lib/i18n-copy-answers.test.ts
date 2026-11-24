@@ -290,3 +290,38 @@ describe('one phrase per term', () => {
 		expect(offenders('ru', (s) => /источник\S* видео/i.test(s))).toEqual([]);
 	});
 });
+
+describe('a retry button has one label per locale', () => {
+	const RETRY_KEYS = [
+		'account_signin_unknown_action',
+		'search_discovery_retry',
+		'search_paging_retry',
+		'watchorder_franchise_retry'
+	];
+	const labels = {
+		en: 'Try again',
+		'pt-BR': 'Tentar de novo',
+		'es-419': 'Volver a intentar',
+		ru: 'Повторить'
+	};
+	for (const [locale, label] of Object.entries(labels)) {
+		it(`${locale} labels it "${label}"`, () => {
+			const found = RETRY_KEYS.filter((k) => message(k)?.({}, { locale }) !== label);
+			expect(found).toEqual([]);
+		});
+	}
+});
+
+describe('the watch order names a parent story apart from the main story', () => {
+	// The franchise page's "Main story" section and the strip's word
+	// for the show a side story comes from are different things: the
+	// parent can itself be a side story. One word for both reads as if
+	// the strip pointed at the main line.
+	for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
+		it(`${locale} uses different words`, () => {
+			const main = message('watchorder_franchise_main')?.({}, { locale });
+			expect(main).toBeDefined();
+			expect(message('watchorder_strip_word_parent')?.({}, { locale })).not.toBe(main);
+		});
+	}
+});
