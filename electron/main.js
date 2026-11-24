@@ -36,6 +36,13 @@ if (
   return;
 }
 
+// What the user launched the app with, for what the app starts on Linux
+// (lib/child-env.cjs): taken before Chromium's GTK start-up adds to it,
+// which happens after this file's top level has run. Electron's earlier
+// rewrite of the desktop is undone from the copy it keeps.
+const childEnvs = require("./lib/child-env.cjs");
+const LAUNCH_ENV = childEnvs.launchSnapshot(process.env);
+
 const {
   app,
   BrowserWindow,
@@ -65,11 +72,16 @@ const {
   awaitHandshake,
 } = require("./lib/backend-handshake.cjs");
 const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
+
+/** The environments a program the app starts gets (lib/child-env.cjs userEnvs). */
+const envs = childEnvs.userEnvs(process, LAUNCH_ENV);
+const { asUser } = envs;
+const openExternal = (url) => asUser(() => shell.openExternal(url));
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { messagesFor, resolveLocale } = require("./lib/main-messages.cjs");
 const { splashWords, stallTexts } = require("./lib/splash-progress.cjs");
-const { relaunch, relaunchPlan } = require("./lib/relaunch.cjs");
+const { restart } = require("./lib/relaunch.cjs");
 const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const { backendRelay, redactSecrets } = require("./lib/log-redact.cjs");
 const { windowArguments } = require("./lib/window-args.cjs");
@@ -95,7 +107,7 @@ const {
   writeGeometry,
 } = require("./lib/window-geometry.cjs");
 const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
-const { applyReducedMotion, execText, readerEnv } = require("./lib/reduced-motion.cjs");
+const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
 const { watchSessionEnd } = require("./lib/session-end.cjs");
 const {
   blockFor,
@@ -252,7 +264,7 @@ const ipc = mainProcessIpc({ app: APP_DOCUMENT, logError: loggedRedacted });
 const makeWindow = guardedWindowMaker({
   BrowserWindow,
   app: APP_DOCUMENT,
-  openExternal: (url) => shell.openExternal(url),
+  openExternal,
   logError: loggedRedacted,
 });
 
@@ -416,7 +428,10 @@ async function spawnBackend() {
     spawn,
     bin: resolveBackendBinary(),
     platform: process.platform,
-    env: process.env,
+    // The user's environment, which the external player and Syncplay it
+    // spawns inherit, but for a portable AppImage's home and config,
+    // where the app keeps its data (lib/child-env.cjs).
+    envs,
     track: (child) => {
       backendChild = child;
       reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
@@ -530,16 +545,9 @@ const splash = splashController({
   // process has exited (lib/relaunch.cjs). The quit that follows is the
   // one closing the splash starts (onDismissed above).
   onRestart: () =>
-    relaunch(
-      relaunchPlan({
-        platform: process.platform,
-        env: process.env,
-        execPath: process.execPath,
-        argv: process.argv,
-        pid: process.pid,
-      }),
-      { app, spawn, logError: console.error },
-    ),
+    // The new instance starts from the user's environment, not
+    // Electron's (lib/child-env.cjs, lib/relaunch.cjs).
+    restart({ proc: process, envs }, { app, spawn, logError: console.error }),
   // Above the splash's title. A dev run is the one that loads the Vite
   // dev server (IS_DEV), whose frontend labels the rail's version
   // `-dev` (import.meta.env.DEV); the splash marks it the same.
@@ -943,7 +951,7 @@ ipc.handle("ani-gui:reveal-in-folder", async (_event, dirPath) => {
   if (!isRevealableDirectory(dirPath, { pathModule: path, statSync: fs.statSync })) return false;
   // Use openPath for directories (showItemInFolder targets a file
   // and selects it). Returns '' on success per Electron docs.
-  const err = await shell.openPath(dirPath);
+  const err = await asUser(() => shell.openPath(dirPath));
   return err === "";
 });
 
@@ -1065,7 +1073,7 @@ ipc.handle("ani-gui:account:open-oauth", async (_event, { authUrl }) => {
   // the rejection so we shut down the listener and surface a launch
   // error immediately.
   try {
-    await shell.openExternal(authUrl);
+    await openExternal(authUrl);
   } catch (err) {
     // server.stop() rejects server.promise with
     // "cancelled". We're about to bail without awaiting it, so attach
@@ -1181,7 +1189,7 @@ ipc.handle("ani-gui:account:clear-token", async (_event, provider) => {
 ipc.handle("ani-gui:open-external", async (_event, url) => {
   if (typeof url !== "string") return false;
   if (!/^https?:\/\//.test(url)) return false;
-  await shell.openExternal(url);
+  await openExternal(url);
   return true;
 });
 
@@ -1262,7 +1270,7 @@ app.whenReady().then(() => {
     platform: process.platform,
     powerMonitor,
     spawn,
-    env: readerEnv(process.env),
+    envs,
     onEnding: (reason) => {
       stopSignals.sessionEnding();
       console.log(`[main] the session is ending (${reason}); quitting`);
@@ -1282,6 +1290,8 @@ app.whenReady().then(() => {
     platform: process.platform,
     exec: execText,
     appendSwitch: (name) => app.commandLine.appendSwitch(name),
+    // GSettings applies per-desktop overrides: read as the user's desktop.
+    env: envs.forProgram(),
   });
   return bootApp({
     spawnBackend: async () => {

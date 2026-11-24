@@ -75,9 +75,9 @@ function packagedWithPage(name: string, page: 'never' | 'late'): string {
  *  in their own teardown, once the app and anything it restarted have
  *  gone; a launch that never starts has no teardown to reach, so its
  *  profile is removed here. */
-async function launchOn(env: Parameters<typeof launchPackagedApp>[0], binary: string, tmp: string) {
+async function launchOn(env: Parameters<typeof launchPackagedApp>[0], binary: string, tmp: string, cwd?: string) {
 	try {
-		return await launchPackagedApp(env, { binary });
+		return await launchPackagedApp(env, { binary, cwd });
 	} catch (err) {
 		fs.rmSync(tmp, { recursive: true, force: true });
 		throw err;
@@ -294,6 +294,104 @@ test('Restart, in the app’s language, starts the app again: this process exits
 		} finally {
 			// A relaunch that took the lock after the poll gave up is still
 			// this test's: the lock in its own profile names it.
+			await stopOurs(lockHolder(config), binary);
+			fs.rmSync(tmp, { recursive: true, force: true });
+		}
+	}
+});
+
+/** The environment `pid` was started with, from /proc/<pid>/environ. Only
+ *  for a process that does not set its own title: the app does
+ *  (process.title in main.js), over the same memory, so an app process
+ *  reads as empty. */
+function startedEnv(pid: number): NodeJS.Dict<string> {
+	const env: NodeJS.Dict<string> = {};
+	for (const e of fs.readFileSync(`/proc/${pid}/environ`, 'utf-8').split('\0')) {
+		const at = e.indexOf('=');
+		if (at > 0) env[e.slice(0, at)] = e.slice(at + 1);
+	}
+	return env;
+}
+
+/** The backend `pid` started: its child running the backend binary, once
+ *  there is one. */
+function backendOf(pid: number): number | null {
+	const kids = fs
+		.readdirSync(`/proc/${pid}/task`)
+		.flatMap((tid) => {
+			try {
+				return fs.readFileSync(`/proc/${pid}/task/${tid}/children`, 'utf-8').split(' ');
+			} catch {
+				return []; // a thread that ended in between
+			}
+		})
+		.filter(Boolean)
+		.map(Number);
+	return (
+		kids.find((kid) => {
+			try {
+				return path.basename(fs.readlinkSync(`/proc/${kid}/exe`)) === 'ani-gui-backend';
+			} catch {
+				return false;
+			}
+		}) ?? null
+	);
+}
+
+test('Restart starts the new instance with the user’s desktop environment, in the same directory', async () => {
+	// Electron rewrites this process's desktop to Unity (lib/child-env.cjs).
+	// Started from that environment, the new instance's Electron would
+	// keep Unity as the session's desktop (ORIGINAL_XDG_CURRENT_DESKTOP)
+	// and hand it to everything it starts. Its own environment cannot be
+	// read from outside (startedEnv), so it is read off what it starts,
+	// its backend: rebuilt by the new instance from what it was started
+	// with, it holds the session's desktop and nothing Electron added only
+	// when the new instance was started with the user's environment.
+	test.setTimeout(90_000);
+	const binary = packagedWithPage('never-desktop', 'never');
+	const { tmp, config, env } = profileEnv();
+	const userEnv: NodeJS.ProcessEnv = { ...env, XDG_CURRENT_DESKTOP: 'ubuntu:GNOME' };
+	const injected = ['ORIGINAL_XDG_CURRENT_DESKTOP', 'CHROME_DESKTOP', 'GDK_BACKEND', 'NO_AT_BRIDGE'];
+	for (const name of injected) delete userEnv[name];
+	// Started in a directory of its own, not the runner's, so the new
+	// instance being in it says the restart kept it.
+	const cwd = fs.realpathSync(tmp);
+	const app = await launchOn(userEnv, binary, tmp, cwd);
+	const pid = app.process().pid!;
+	const exited = new Promise<number | null>((resolve) => app.process().once('exit', (code) => resolve(code)));
+	let relaunched: number | null = null;
+	try {
+		const splash = await splashWindow(app);
+		await expect(splash.locator('.actions')).toBeVisible({ timeout: 30_000 });
+		// The condition: this process's own environment is Electron's.
+		const own = await app.evaluate(() => ({ ...process.env }));
+		expect(own.XDG_CURRENT_DESKTOP).toBe('Unity');
+		expect(own.GDK_BACKEND).toBeTruthy();
+		expect(fs.readlinkSync(`/proc/${pid}/cwd`)).toBe(cwd);
+		await splash.getByRole('button', { name: 'Restart' }).click();
+		expect(await exited).toBe(0);
+		await expect
+			.poll(
+				() => {
+					const holder = lockHolder(config);
+					relaunched = holder !== pid && ours(holder, binary) ? holder : null;
+					return relaunched !== null;
+				},
+				{ timeout: 15_000 }
+			)
+			.toBe(true);
+		expect(fs.readlinkSync(`/proc/${relaunched}/cwd`)).toBe(cwd);
+		let backend: number | null = null;
+		await expect.poll(() => (backend = backendOf(relaunched!)), { timeout: 30_000 }).not.toBeNull();
+		const started = startedEnv(backend!);
+		expect(started.XDG_CURRENT_DESKTOP).toBe('ubuntu:GNOME');
+		for (const name of injected) expect(started[name], name).toBeUndefined();
+		expect(started.XDG_CONFIG_HOME).toBe(config);
+	} finally {
+		await stopOurs(relaunched, binary);
+		try {
+			await stopApp(app);
+		} finally {
 			await stopOurs(lockHolder(config), binary);
 			fs.rmSync(tmp, { recursive: true, force: true });
 		}
