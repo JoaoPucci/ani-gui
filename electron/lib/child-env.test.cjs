@@ -337,6 +337,40 @@ test("from the AppImage, the runtime's own variables never reach a child", () =>
   for (const name of ["APPIMAGE", "APPDIR", "OWD", "ARGV0"]) assert.ok(!(name in env), name);
 });
 
+test("from a portable AppImage, a child gets the user's home, not the image's", () => {
+  // With a `<image>.home` or `<image>.config` directory beside it (or
+  // --appimage-portable-home / -config), the runtime points HOME and
+  // XDG_CONFIG_HOME at them. A browser started with that would start
+  // in the portable home with a fresh profile. The user's HOME is the
+  // account's (getpwuid); the XDG_CONFIG_HOME the runtime replaced is
+  // not known, so the child gets none, and its default ($HOME/.config).
+  const launch = launchedFromImage({ HOME: "/home/me", PATH: "/usr/bin" });
+  launch.HOME = `${launch.APPIMAGE}.home`;
+  launch.XDG_CONFIG_HOME = `${launch.APPIMAGE}.config`;
+  const env = childEnv({
+    platform: "linux",
+    launch,
+    now: launch,
+    execPath: IMAGE_EXEC,
+    realpath: (p) => p,
+    accountHome: () => "/home/me",
+  });
+  assert.deepStrictEqual(env, { HOME: "/home/me", PATH: "/usr/bin" });
+});
+
+test("a HOME or XDG_CONFIG_HOME the user set elsewhere is theirs, from the AppImage too", () => {
+  const launch = launchedFromImage({ HOME: "/srv/me", XDG_CONFIG_HOME: "/srv/me/cfg", PATH: "/usr/bin" });
+  const env = childEnv({
+    platform: "linux",
+    launch,
+    now: launch,
+    execPath: IMAGE_EXEC,
+    realpath: (p) => p,
+    accountHome: () => "/home/me",
+  });
+  assert.deepStrictEqual(env, { HOME: "/srv/me", XDG_CONFIG_HOME: "/srv/me/cfg", PATH: "/usr/bin" });
+});
+
 test("an AppImage's variables another program leaked in are passed on as the user launched with them", () => {
   // Another AppImage (an editor's terminal) leaks its own mount; this
   // process does not run from it, so nothing there is the app's to take out.
