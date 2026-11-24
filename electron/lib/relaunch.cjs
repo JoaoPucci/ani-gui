@@ -43,7 +43,8 @@
 //   (lib/appimage-tree.cjs). An image the runtime ran extracted
 //   (--appimage-extract-and-run, for a system without FUSE, which the
 //   runtime takes before the app sees its arguments) is restarted with
-//   the option again. The waiter gets the user's environment,
+//   the option again, once its runtime has removed the old extraction.
+//   The waiter gets the user's environment,
 //   which has none of what this image's runtime and AppRun added
 //   ($APPIMAGE, $APPDIR, the mount's entries in PATH, LD_LIBRARY_PATH,
 //   XDG_DATA_DIRS and GSETTINGS_SCHEMA_DIR; lib/child-env.cjs): the new
