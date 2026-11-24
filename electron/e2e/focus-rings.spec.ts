@@ -63,12 +63,15 @@
  * control does not count. A ring beside or around the control must show
  * against what it is drawn on.
  *
- * Two more tests walk what shows only in some states, at the desktop
+ * More tests walk what shows only in some states, at the desktop
  * size: Home with a guessed Continue Watching card, a pinned sign-in
  * toast and the update badge; the card's link dialog; a show's page
- * with a download in flight, which shows the download bar; and the
+ * with a download in flight, which shows the download bar; the
  * player's page with the skip button up and the note on a guessed
- * session. Each requires the walk to reach those controls.
+ * session; and, with the watch-order mockups on, a show's page with
+ * their strip (its tiles, the line for the entry being watched and the
+ * franchise link) and the franchise page it links to. Each requires
+ * the walk to reach those controls.
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
@@ -109,7 +112,8 @@
  *
  * Under the mouse: at the desktop size, the forward walks of the four
  * pages (and of the show's page with an episode typed), of the hero's
- * empty and failed states and of the player rest the mouse on every
+ * empty and failed states, of the player and of the watch-order
+ * mockups' strip and franchise page rest the mouse on every
  * stop that shows, and a hover style must neither replace its ring nor
  * add a second; the read must find the control under the mouse.
  * Whether a lifted, hovered control's ring stays whole is not checked,
@@ -1336,6 +1340,75 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 				// One download in flight: its one action is the whole list.
 				if (forced) assertForced(stops, at, [], ['.dl-row-act'], 1);
 				else assertStops(stops, at, [], ['.dl-row-act'], 1);
+			}
+		}
+	} finally {
+		await stopApp(app);
+	}
+});
+
+/** A show the watch-order mockups' fixtures place mid-run: Gintama°,
+ *  with entries before and after it and another entry part-watched, so
+ *  the strip shows its tiles, the line for the entry being watched and
+ *  the franchise link. */
+const mockShow = { ...topRated[0], id: '10083', canonical_title: 'Gintama°' };
+
+test("the rings on the watch-order mockups' strip and franchise page are drawn once and whole", async () => {
+	test.setTimeout(240_000);
+	const { app, page } = await launch();
+	try {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await sizeViewport(page, 1440, 900);
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p === '/api/kitsu/top-rated') return j([mockShow]);
+			if (p.startsWith('/api/kitsu/anime/')) return j(mockShow);
+			return r.fallback();
+		});
+		// Diagnostics' switch, as it stores it: the mockups on.
+		await page.evaluate(() =>
+			localStorage.setItem('ani-gui:watch-order-mockups', JSON.stringify({ enabled: true }))
+		);
+		await remount(page);
+
+		await page.locator(`a[href$="/anime/${mockShow.id}"]`).first().click();
+		await expect.poll(() => page.url()).toContain(`/anime/${mockShow.id}`);
+		await expect(page.locator('.trio .tile').first()).toBeVisible({ timeout: 15_000 });
+		const stripNeeds = ['.trio .tile', '.trio .chip', '.trio .stack'];
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `the mockups' strip${forced ? ', forced colours' : ''}, ${key}`;
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, {
+					selectors: stripNeeds,
+					hovered: underMouse ? hovered : undefined
+				});
+				if (forced) assertForced(stops, at, [], stripNeeds);
+				else assertStops(stops, at, [], stripNeeds);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
+			}
+		}
+		await forcedColours(page, false);
+
+		await page.locator('.trio .stack').click();
+		await expect.poll(() => page.url()).toContain(`/anime/${mockShow.id}/franchise`);
+		await expect(page.locator('main a[href*="/anime/"]').first()).toBeVisible({
+			timeout: 15_000
+		});
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `the mockups' franchise page${forced ? ', forced colours' : ''}, ${key}`;
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, { hovered: underMouse ? hovered : undefined });
+				if (forced) assertForced(stops, at, []);
+				else assertStops(stops, at, []);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
 			}
 		}
 	} finally {
