@@ -24,8 +24,9 @@
 	import { refillEpisodes, refilledImages } from '$lib/refill/apply';
 	import { fadeOnLoad } from '$lib/images/fade-on-load';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
-	import StripFranchiseLink from '$lib/watch-order/StripFranchiseLink.svelte';
-	import StripTrio from '$lib/watch-order/StripTrio.svelte';
+	import WatchOrderArrival from '$lib/watch-order/WatchOrderArrival.svelte';
+	import { withFirstHop, type FirstHop } from '$lib/watch-order/arrival';
+	import { rememberedAnswer, settledAnswer, visitAnswer } from '$lib/watch-order/session-memo';
 	import { loadWatchOrder, rereadRows, type WatchOrderData } from '$lib/watch-order/loader';
 	import { stripReads } from '$lib/watch-order/strip-reads';
 	import { watchOrderSources } from '$lib/watch-order/sources';
@@ -44,6 +45,7 @@
 		historyNumber,
 		imageProxyUrl,
 		kitsuAnimeDetail,
+		kitsuFranchiseFirstHop,
 		kitsuEpisodes,
 		kitsuSearch,
 		markWatched,
@@ -511,12 +513,20 @@
 	// we don't propose an episode that doesn't exist yet.
 	let resumeEntry = $state<HistoryEntry | null>(null);
 	let watchOrderData = $state<WatchOrderData | null>(null);
+	// The franchise walk's first hop, when it came with the details:
+	// what the page holds room for while the walk runs
+	// ($lib/watch-order/arrival).
+	let watchOrderHop = $state<FirstHop | null>(null);
 	// The strip's walk and its rows read again after a history link
 	// ($lib/watch-order/strip-reads), on the shown visit's reads.
 	const strip = stripReads<WatchOrderData>({
 		current: () => watchOrderData,
 		reread: (shown) => showReads.keep(rereadRows(shown, watchOrderSources, showReads.signal)),
-		show: (d) => (watchOrderData = d)
+		// Whatever the strip draws is what the session remembers for the
+		// show of the visit it belongs to (`key`), a link's re-read
+		// included, so a later visit's first frame draws the rows the link
+		// wrote ($lib/watch-order/session-memo).
+		show: (d, key) => (watchOrderData = settledAnswer(key ?? id, d))
 	});
 	// Only the latest resume lookup started answers ($lib/detail/resume-lookup).
 	const resumeLookups = latestLookup();
@@ -1210,7 +1220,11 @@
 		showVersions = [];
 		versionChoice = storedChoice(currentId);
 		resumeEntry = null;
-		watchOrderData = null;
+		// A show seen earlier this session draws its last answer with
+		// its first frame, and is read again behind it.
+		const remembered = rememberedAnswer(currentId);
+		watchOrderData = remembered;
+		watchOrderHop = null;
 		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
 		const reads = beginVisit();
@@ -1226,23 +1240,42 @@
 		});
 		readShowResume(currentId, reads, detailServed);
 		// The watch-order strip: neither read rejects, and a franchise
-		// that cannot be read shows no strip ($lib/watch-order/loader).
-		// The visit's end cancels both, so a walk Kitsu is slow to
-		// answer does not hold an API connection for nobody, and an
-		// ended visit's answer is never drawn.
-		strip.walk(
-			reads
-				.keep(loadWatchOrder(currentId, watchOrderSources, reads.signal))
-				.then((w) => (id === currentId ? w : null)),
-			currentId
-		);
+		// that cannot be read shows no strip ($lib/watch-order/loader),
+		// unless an earlier read this session could
+		// ($lib/watch-order/session-memo). The visit's end cancels both,
+		// and the first hop below, so a walk Kitsu is slow to answer does
+		// not hold an API connection for nobody, and an ended visit's
+		// answer is never drawn (visitAnswer); a history link answered
+		// meanwhile reads the rows again once it lands ($lib/watch-order/strip-reads).
+		const walked = loadWatchOrder(currentId, watchOrderSources, reads.signal).then((w) => {
+			const shown = visitAnswer(currentId, w, reads.signal);
+			return shown && id === currentId ? shown : null;
+		});
+		strip.walk(walked, currentId);
+		// The details wait a moment for the walk's first hop, so the
+		// room the strip will take is held from the page's first frame.
+		// A show whose answer is remembered needs no hop, only the order
+		// setting, so its strip draws with the page; the same cap holds.
+		// Nothing is held once the walk and the order setting have both
+		// answered, so the wait ends then too.
+		const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+		const detailShown =
+			remembered !== null
+				? withFirstHop(detailServed, new Promise<FirstHop>(() => {}), wait, settingsSettled)
+				: withFirstHop(
+						detailServed,
+						kitsuFranchiseFirstHop(currentId, { signal: reads.signal }),
+						wait,
+						Promise.all([walked, settingsSettled])
+					);
 		void reads
-			.keep(detailServed)
-			.then((d) => {
+			.keep(detailShown)
+			.then(({ details: d, hop }) => {
 				// Navigation raced ahead: another show, or another page
 				// altogether (the player keeps the same id), whose trail
 				// this show must not name.
 				if (id !== currentId) return;
+				watchOrderHop = hop;
 				detail = d;
 				if (isMusicSubtype(d.subtype)) {
 					// Music videos (a YOASOBI MV, say): the provider serves
@@ -1304,11 +1337,16 @@
 		};
 	});
 
+	// Settled once the settings read has answered or failed: the
+	// watch-order strip waits for the order setting.
+	let settingsRead!: () => void;
+	const settingsSettled = new Promise<void>((r) => (settingsRead = r));
 	onMount(() => {
 		void pageReads
 			.keep(settingsGet({ signal: pageReads.signal }))
 			.then((c) => (config = c))
-			.catch((e) => (configError = describeSettingsFailure(e)));
+			.catch((e) => (configError = describeSettingsFailure(e)))
+			.finally(() => settingsRead());
 	});
 
 	// Background prefetch: as soon as we have the show title + the
@@ -2140,20 +2178,16 @@
 				</div>
 			{/if}
 
-			{#if watchModel}
-				<div class="watch-order">
-					<StripTrio model={watchModel} {id} today={watchToday} />
-				</div>
-			{:else if watchLink}
-				<div class="watch-order watch-order-link">
-					<StripFranchiseLink
-						run={watchLink.run}
-						front={watchLink.front}
-						{id}
-						complete={watchLink.complete}
-					/>
-				</div>
-			{/if}
+			{#key id}
+				<WatchOrderArrival
+					model={watchModel}
+					link={watchLink}
+					hop={watchOrderHop}
+					answered={watchOrderData !== null && watchOrder !== null}
+					{id}
+					today={watchToday}
+				/>
+			{/key}
 
 			<!-- Body: synopsis + episodes stacked vertically. The previous
 		     side-by-side layout looked unbalanced when one was much taller
@@ -3890,17 +3924,6 @@
 
 	/* — Similar titles strip below the body. Inherits Strip's gutter
 	     (--strip-pad = --space-8) so the row aligns with the page rhythm. */
-	.watch-order {
-		margin-block-start: var(--space-7);
-	}
-	/* The franchise link without a strip: on the page's text column,
-	   its hover plate reaching a little past it as the strip's band does. */
-	.watch-order-link {
-		padding-inline: var(--space-8);
-	}
-	.watch-order-link > :global(.stack) {
-		margin-inline-start: calc(-1 * var(--space-3));
-	}
 	.similar {
 		margin-block-start: var(--space-8);
 	}

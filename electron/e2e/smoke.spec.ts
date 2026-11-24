@@ -185,6 +185,11 @@ async function launchAppWithStubsOnce(
       }),
     );
   });
+  // The walk's first hop, which the page holds the strip's room by:
+  // nothing, for a show alone.
+  await stub("**/api/kitsu/franchise/*/first-hop", (r) =>
+    answer(r, json({ signal: "none" })),
+  );
   await stub("**/api/download/default-dir", (r) => answer(r, json(null)));
   await stub("**/api/availability", (r) =>
     answer(r, json({ available: true, episode_count: 12, extra_episodes: [] })),

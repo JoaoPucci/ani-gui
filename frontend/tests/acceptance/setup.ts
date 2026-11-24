@@ -17,6 +17,7 @@ import { setupServer } from 'msw/node';
 
 import { installElementAnimateStub } from './stubs/element-animate';
 import { isSession } from './session-contract';
+import { forgetAnswers } from '../../src/lib/watch-order/session-memo';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
 import { candidates, cardLines, verdict } from '../../src/test/link-rules-fake';
@@ -84,6 +85,7 @@ const incidental = [
 	http.get(`${API_BASE}/api/history`, absentBackend),
 	http.post(`${API_BASE}/api/history/by-kitsu`, absentBackend),
 	http.get(`${API_BASE}/api/kitsu/franchise/:id`, absentBackend),
+	http.get(`${API_BASE}/api/kitsu/franchise/:id/first-hop`, absentBackend),
 	http.post(`${API_BASE}/api/kitsu/search`, absentBackend),
 	http.post(`${API_BASE}/api/history/guess/ruled-out`, absentBackend),
 	http.post(`${API_BASE}/api/availability/batch`, absentBackend),
@@ -562,6 +564,9 @@ afterEach(async () => {
 	// takes to read.
 	await settleAnswerChecks(scenario);
 	server.resetHandlers();
+	// Each scenario is a session of its own: the show page's memo of
+	// watch-order answers does not carry into the next one.
+	forgetAnswers();
 	// Everything is collected before anything throws, so nothing of
 	// this scenario's is left to fail another.
 	if (scenario) failOn(closeAccount(scenario), 'requests this scenario did not account for');
