@@ -66,7 +66,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { childEnv, ownMount } = require("./child-env.cjs");
+const { ownMount } = require("./child-env.cjs");
 
 /** What the packaged Linux launchers put before the person's
  *  arguments on every launch: the wrapper script both packages run
@@ -184,17 +184,24 @@ function relaunch(
 }
 
 /**
- * Restart, as the splash's stuck state asks for it: planned from this
- * process's environment (`now`), the AppImage's waiter given the user's,
- * rebuilt from the launch's (`launch`) and `now` by lib/child-env.cjs,
- * then arranged by `relaunch` with `deps`.
+ * Restart, as the splash's stuck state asks for it: planned from the
+ * process `proc` (`process`), the AppImage's waiter given a program's
+ * environment and Electron's relaunch asked for inside `asUser`, both
+ * from `envs` (lib/child-env.cjs userEnvs), then arranged by `relaunch`
+ * with `deps`.
  */
-function restart({ platform, launch, now, execPath, argv, pid }, deps) {
+function restart({ proc, envs }, deps) {
   // Whether this is the AppImage is read off this process's own
-  // environment: the user's has no runtime variables in it.
-  const plan = relaunchPlan({ platform, env: now, execPath, argv, pid });
-  const env = childEnv({ platform, launch, now, execPath });
-  relaunch(plan.kind === "spawn" ? { ...plan, env } : plan, deps);
+  // environment: a program's has no runtime variables in it.
+  const plan = relaunchPlan({
+    platform: proc.platform,
+    env: proc.env,
+    execPath: proc.execPath,
+    argv: proc.argv,
+    pid: proc.pid,
+  });
+  const arranged = plan.kind === "spawn" ? { ...plan, env: envs.forProgram() } : plan;
+  relaunch(arranged, { ...deps, asUser: envs.asUser });
 }
 
 module.exports = {

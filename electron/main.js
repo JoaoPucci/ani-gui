@@ -73,31 +73,9 @@ const {
 } = require("./lib/backend-handshake.cjs");
 const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
 
-/** The environment a program the app starts gets (lib/child-env.cjs). */
-function userEnv({ keepPortable = false } = {}) {
-  return childEnvs.childEnv({
-    keepPortable,
-    platform: process.platform,
-    launch: LAUNCH_ENV,
-    now: process.env,
-    execPath: process.execPath,
-  });
-}
-
-/**
- * Run `open`, a shell call that starts a program from this process's own
- * environment (openExternal, openPath), with the user's in place for
- * the call alone (lib/child-env.cjs).
- */
-function asUser(open) {
-  return childEnvs.withUserEnv({
-    platform: process.platform,
-    target: process.env,
-    launch: LAUNCH_ENV,
-    execPath: process.execPath,
-    open,
-  });
-}
+/** The environments what the app starts gets (lib/child-env.cjs userEnvs). */
+const envs = childEnvs.userEnvs(process, LAUNCH_ENV);
+const { asUser } = envs;
 const openExternal = (url) => asUser(() => shell.openExternal(url));
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
@@ -453,7 +431,7 @@ async function spawnBackend() {
     // The user's environment, which the external player and Syncplay it
     // spawns inherit, but for a portable AppImage's home and config,
     // where the app keeps its data (lib/child-env.cjs).
-    env: userEnv({ keepPortable: true }),
+    envs,
     track: (child) => {
       backendChild = child;
       reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
@@ -569,17 +547,7 @@ const splash = splashController({
   onRestart: () =>
     // The new instance starts from the user's environment, not
     // Electron's (lib/child-env.cjs, lib/relaunch.cjs).
-    restart(
-      {
-        platform: process.platform,
-        launch: LAUNCH_ENV,
-        now: process.env,
-        execPath: process.execPath,
-        argv: process.argv,
-        pid: process.pid,
-      },
-      { app, spawn, logError: console.error, asUser },
-    ),
+    restart({ proc: process, envs }, { app, spawn, logError: console.error }),
   // Above the splash's title. A dev run is the one that loads the Vite
   // dev server (IS_DEV), whose frontend labels the rail's version
   // `-dev` (import.meta.env.DEV); the splash marks it the same.
@@ -1323,7 +1291,7 @@ app.whenReady().then(() => {
     exec: execText,
     appendSwitch: (name) => app.commandLine.appendSwitch(name),
     // GSettings applies per-desktop overrides: read as the user's desktop.
-    env: userEnv(),
+    env: envs.forProgram(),
   });
   return bootApp({
     spawnBackend: async () => {

@@ -230,15 +230,40 @@ function replaceAll(target, next) {
  *
  * Off Linux `open` runs and `target` is never touched.
  */
-function withUserEnv({ platform, target, launch, execPath, open }) {
+function withUserEnv({ platform, target, launch, execPath, open, realpath, accountHome }) {
   if (platform !== "linux") return open();
   const saved = { ...target };
   try {
-    replaceAll(target, childEnv({ platform, launch, now: saved, execPath }));
+    replaceAll(target, childEnv({ platform, launch, now: saved, execPath, realpath, accountHome }));
     return open();
   } finally {
     replaceAll(target, saved);
   }
 }
 
-module.exports = { childEnv, launchSnapshot, ownMount, withUserEnv };
+/**
+ * The environments main.js hands out, built from the process `proc`
+ * (`process`: its platform, environment and binary path) and the launch
+ * snapshot `launch`, so that no call can be given another binary path
+ * or environment:
+ *
+ * - `forProgram()`, for a program that is not the app (the reduced-motion
+ *   read, the AppImage's restart waiter);
+ * - `forBackend()`, for the app's own backend: the same, but a portable
+ *   AppImage's home and config stay, where the app keeps its data;
+ * - `asUser(open)`, for a shell call that starts a program from the
+ *   process's own environment (openExternal, openPath, Electron's
+ *   relaunch), with a program's in place for the call alone.
+ *
+ * `realpath` and `accountHome` are for tests.
+ */
+function userEnvs(proc, launch, { realpath, accountHome } = {}) {
+  const base = { platform: proc.platform, launch, execPath: proc.execPath, realpath, accountHome };
+  return {
+    forProgram: () => childEnv({ ...base, now: proc.env }),
+    forBackend: () => childEnv({ ...base, now: proc.env, keepPortable: true }),
+    asUser: (open) => withUserEnv({ ...base, target: proc.env, open }),
+  };
+}
+
+module.exports = { childEnv, launchSnapshot, ownMount, userEnvs, withUserEnv };
