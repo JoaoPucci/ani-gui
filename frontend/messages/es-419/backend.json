@@ -1,5 +1,6 @@
 {
 	"error_account_refresh_rejected": "El servicio de listas se negó a renovar esta sesión. Vuelve a conectar la cuenta para seguir sincronizando.",
+	"error_account_tracker_rejected": "El servicio de listas rechazó esta solicitud (HTTP {status}).",
 	"error_account_unsupported_pkce": "No se pudo iniciar sesión porque el servicio no acepta el método que usa la app. Actualiza la app e inténtalo de nuevo.",
 	"error_cache_generic": "La base de datos local de la app falló. Reinicia la app e inténtalo de nuevo.",
 	"error_config_parse": "El archivo de ajustes no se pudo leer o guardar. Reinicia la app o, si lo editaste, corrige el archivo a mano.",

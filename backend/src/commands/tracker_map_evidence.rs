@@ -65,10 +65,10 @@ pub(super) async fn gather_under(
     root: KitsuShow,
     native: ProviderMediaId,
 ) -> Result<Option<Evidence>> {
-    let entry = match ask.provider.media_evidence(ask.tokens, native).await {
-        Ok(entry) => entry,
-        Err(err) if err.is_not_found_shaped() => return Ok(None),
-        Err(err) => return Err(err),
+    let Some(entry) =
+        AniError::unless_absent(ask.provider.media_evidence(ask.tokens, native).await)?
+    else {
+        return Ok(None);
     };
     gather_longer(ask, ours, root, native, entry)
         .await

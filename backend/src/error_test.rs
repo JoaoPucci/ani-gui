@@ -33,6 +33,84 @@ proptest::proptest! {
     }
 }
 
+proptest::proptest! {
+    /// `unless_absent` reads exactly absence as no answer: an answer
+    /// comes through as one, an absent status as `Ok(None)`, and every
+    /// other upstream status — and every other error — unchanged.
+    #[test]
+    fn unless_absent_reads_exactly_absence_as_none(
+        status in proptest::num::u16::ANY,
+        value in proptest::num::u32::ANY,
+        other in 0usize..4,
+    ) {
+        proptest::prop_assert_eq!(AniError::unless_absent(Ok(value)).ok(), Some(Some(value)));
+        let upstream = AniError::unless_absent::<u32>(Err(AniError::Upstream { status }));
+        if status == 404 || status == 410 {
+            proptest::prop_assert!(matches!(upstream, Ok(None)), "{upstream:?}");
+        } else {
+            proptest::prop_assert!(
+                matches!(upstream, Err(AniError::Upstream { status: s }) if s == status),
+                "{upstream:?}"
+            );
+        }
+        let err = [
+            AniError::Network,
+            AniError::InvalidToken,
+            AniError::Timeout,
+            AniError::RateLimited { retry_after_secs: Some(u64::from(status)), refused_by: None },
+        ][other].clone();
+        let key = err.key();
+        let passed = AniError::unless_absent::<u32>(Err(err));
+        proptest::prop_assert!(
+            matches!(&passed, Err(e) if e.key() == key),
+            "{passed:?}"
+        );
+    }
+}
+
+proptest::proptest! {
+    /// A tracker's non-success status reads as its rejection exactly for
+    /// a 4xx that is not transient (408 timeout, 425 too early, 429 rate
+    /// limit), answered 422 and never retried; any other status, the
+    /// transient 4xx among them, is the upstream failing — 502, or 429
+    /// passed through — and the renderer asks again. A rejected 404/410
+    /// is still absence.
+    #[test]
+    fn a_tracker_status_is_a_rejection_exactly_for_a_permanent_4xx(status in 100u16..600) {
+        let err = AniError::from_tracker_status(status);
+        let transient = matches!(status, 408 | 425 | 429);
+        if (400..500).contains(&status) && !transient {
+            proptest::prop_assert!(
+                matches!(err, AniError::TrackerRejected { status: s } if s == status),
+                "{err:?}"
+            );
+            proptest::prop_assert_eq!(err.http_status_code(), 422);
+        } else {
+            proptest::prop_assert!(
+                matches!(err, AniError::Upstream { status: s } if s == status),
+                "{err:?}"
+            );
+            proptest::prop_assert_ne!(err.http_status_code(), 422);
+        }
+        proptest::prop_assert_eq!(err.is_not_found_shaped(), status == 404 || status == 410);
+    }
+}
+
+#[test]
+fn a_tracker_that_could_not_answer_in_time_is_asked_again() {
+    // 408 and 425 say the tracker did not take the request this time,
+    // 429 that it is busy: none is an answer about the request, so none
+    // may reach the renderer as the 422 it never retries.
+    for (status, http) in [(408, 502), (425, 502), (429, 429)] {
+        let err = AniError::from_tracker_status(status);
+        assert!(
+            matches!(err, AniError::Upstream { status: s } if s == status),
+            "{err:?}"
+        );
+        assert_eq!(err.http_status_code(), http, "{status}");
+    }
+}
+
 #[test]
 fn rate_limits_block_and_verdicts_do_not() {
     assert!(AniError::RateLimited {
