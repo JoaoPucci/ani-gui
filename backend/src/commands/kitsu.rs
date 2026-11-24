@@ -11,11 +11,11 @@
 //! - Anime detail: `ANIME_DETAIL_TTL` (7d) for a finished show, a day
 //!   otherwise (`anime_detail_ttl`) — synopsis / titles / posters
 //!   change rarely.
+//! - Episode pages: a week once the held detail row says the show
+//!   finished and has settled (`show_settled`), a day otherwise.
 
 use crate::app::AppState;
-use crate::cache::ttl::{
-    ANIME_DETAIL_TTL, DISCOVERY_TTL, EPISODES_TTL, TITLE_MATCH_TTL, TRENDING_TTL,
-};
+use crate::cache::ttl::{ANIME_DETAIL_TTL, DISCOVERY_TTL, TITLE_MATCH_TTL, TRENDING_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::anilist_eps_thumbs;
 use crate::commands::kitsu_warm::warm_signed_image_urls;
@@ -107,12 +107,6 @@ where
     Ok(hits)
 }
 
-/// First N episodes for a Kitsu anime. Cache key: `kitsu:episodes:<id>`,
-/// TTL [`ANIME_DETAIL_TTL`] (7 days). Note that for currently-airing
-/// shows new episodes appear weekly; the 7-day TTL means a busy fan can
-/// see a stale list for up to a week, which is the right tradeoff for a
-/// catalog browse — better than hammering Kitsu on every detail-page open.
-///
 /// Kitsu's episodes endpoint caps `page[limit]` at 20 (`code: 118 —
 /// "Limit exceeds maximum page size of 20"` if you push higher), unlike
 /// the anime search endpoint which allows 24. Hard-coded ceiling here.
@@ -120,7 +114,13 @@ pub(crate) const EPISODES_PAGE_LIMIT: u8 = 20;
 
 /// Fetch a page of episodes for an anime. `page` is 1-based and
 /// translates to a Kitsu `page[offset]` of `(page-1)*limit`. Each page
-/// caches independently under `kitsu:episodes:<id>:p<n>`.
+/// caches independently under `kitsu:episodes:<id>:p<n>`, for the
+/// lifetime the show's detail row held when the page is written earns
+/// it ([`super::show_settled::held_settled`]): a week for a finished
+/// show that has settled, a day otherwise, an airing show gaining an
+/// episode a week. Neither the Continue card's title-search match nor
+/// the detail page orders the detail read ahead of the episodes, so a
+/// page written with no detail held is kept the day.
 ///
 /// # Errors
 /// Inherits from [`crate::meta::kitsu::KitsuClient::episodes`] on miss.
@@ -280,7 +280,9 @@ async fn kitsu_episodes_fresh(
         .episodes(anime_id, page, EPISODES_PAGE_LIMIT)
         .await?;
     if let Ok(body) = serde_json::to_string(&eps) {
-        let _ = meta_cache_put(&state.cache_pool, key, &body, EPISODES_TTL.as_secs());
+        let settled = super::show_settled::held_settled(&state.cache_pool, anime_id);
+        let ttl = crate::cache::ttl::show_row_ttl(settled).as_secs();
+        let _ = meta_cache_put(&state.cache_pool, key, &body, ttl);
         warm_signed_image_urls(state, &body);
     }
     Ok(eps)
@@ -1023,10 +1025,7 @@ pub(crate) fn anime_detail_key(id: &str) -> String {
 /// finishes, its count gets corrected — so only a finished show keeps
 /// the week; anything else, an unknown status included, a day.
 pub(crate) fn anime_detail_ttl(status: Option<&str>) -> u64 {
-    match status {
-        Some("finished") => ANIME_DETAIL_TTL.as_secs(),
-        _ => EPISODES_TTL.as_secs(),
-    }
+    crate::cache::ttl::show_row_ttl(status == Some("finished")).as_secs()
 }
 
 /// Seed [`kitsu_anime_detail`]'s cache with a ref some other lookup
