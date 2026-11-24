@@ -77,6 +77,7 @@ use crate::commands::card_line::{CardLine, CardRow};
 use crate::commands::continue_guess::RuledOutRequest;
 use crate::commands::download::{DownloadArgs, DownloadProgress, DownloadResponse};
 use crate::commands::external_player::ExternalPlayerKind;
+use crate::commands::external_player::StandardProgram;
 use crate::commands::franchise_walk::{Chain, Franchise};
 use crate::commands::history::ByKitsuEachArgs;
 use crate::commands::history_link::{LinkArgs, LinkGroupArgs, LinkOutcome, LinkedRow};
@@ -230,6 +231,10 @@ fn responses() -> Value {
     put("SkipInterval", response(&skip(), &skip()));
     put("AiringStatus", response(&airing(true), &airing(false)));
     put("UpcomingEpisode", response(&upcoming(), &upcoming()));
+    put(
+        "StandardProgram",
+        response(&standard_program(true), &standard_program(false)),
+    );
     put("Franchise", response(&franchise(true), &franchise(false)));
     put("FranchiseChain", response(&chain(true), &chain(false)));
     put(
@@ -482,6 +487,14 @@ fn airing(full: bool) -> AiringStatus {
         next_episode: some(full, 7),
         next_airing_at: some(full, 1_700_000_000),
         upcoming: if full { vec![upcoming()] } else { Vec::new() },
+    }
+}
+
+fn standard_program(full: bool) -> StandardProgram {
+    StandardProgram {
+        name: some(full, "vlc"),
+        path: some(full, "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe".to_owned()),
+        supported: full,
     }
 }
 

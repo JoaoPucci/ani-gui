@@ -78,7 +78,7 @@ declare global {
 			}) => Promise<string | null>;
 			/** Open a native file picker dialog. Used by the settings
 			 *  page to let the user point at an external-player
-			 *  executable that isn't on PATH. Returns the chosen
+			 *  executable the lookup can't find. Returns the chosen
 			 *  absolute path or null on cancel. `filters` follows the
 			 *  Electron OpenDialog shape:
 			 *    [{ name: 'Executables', extensions: ['exe'] }] */
@@ -489,6 +489,39 @@ export interface VersionInfo {
 /** Player flag-syntax flavor — controls the argv shape `build_argv`
  *  emits on the backend. Snake_case to match the Rust serde tag. */
 export type ExternalPlayerKind = 'mpv' | 'vlc' | 'iina' | 'custom';
+
+/** What a blank External player command runs for a type on this
+ *  computer: the standard program's name (none for Custom), and where
+ *  it is installed (none when it wasn't found). */
+export interface StandardProgram {
+	name: string | null;
+	path: string | null;
+	/** False where the program does not exist (IINA off macOS). */
+	supported: boolean;
+}
+
+/** How long Settings waits to hear what a type change leaves the
+ *  command, before it gives the change up. The answer is local and
+ *  pure, so anything near this long is a backend that is not there. */
+const KIND_CHANGE_TIMEOUT_MS = 5000;
+
+/** Ask the backend what the External player command becomes when the
+ *  player's type changes from `from` to `to`. */
+export function externalPlayerCommandAfterKindChange(
+	command: string,
+	from: ExternalPlayerKind,
+	to: ExternalPlayerKind
+): Promise<string> {
+	const q = new URLSearchParams({ command, from, to });
+	return getJson<string>(`/api/external-player/after-kind-change?${q}`, {
+		signal: AbortSignal.timeout(KIND_CHANGE_TIMEOUT_MS)
+	});
+}
+
+/** Ask the backend where a type's standard program is installed. */
+export function externalPlayerStandard(kind: ExternalPlayerKind): Promise<StandardProgram> {
+	return getJson<StandardProgram>(`/api/external-player/standard?kind=${encodeURIComponent(kind)}`);
+}
 
 /**
  * The backend's error envelope, as every error the app raises carries

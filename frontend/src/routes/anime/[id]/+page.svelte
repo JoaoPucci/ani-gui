@@ -1195,6 +1195,14 @@
 			: m.detail_ep_unaired();
 	}
 
+	// The audio toggle's labels, called at render like the quality
+	// labels below. Portuguese and Spanish spell the audio out, and
+	// English and Russian show SUB and DUB.
+	const AUDIO_LABELS: Record<string, () => string> = {
+		sub: m.app_audio_sub,
+		dub: m.app_audio_dub
+	};
+
 	// Cancel the plays of every show this page showed on unmount —
 	// warms and clicks alike. Prevents abandoned resolves from holding
 	// provider slots after the user navigates away — clearForShow
@@ -2095,7 +2103,7 @@
 										disabled={!id}
 										onclick={() => setMode(mode as 'sub' | 'dub')}
 									>
-										{mode.toUpperCase()}
+										{AUDIO_LABELS[mode]()}
 									</button>
 								{/each}
 							</div>

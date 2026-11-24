@@ -24,6 +24,7 @@ import { linkBackend, linkBackendHandlers, type LinkBackend } from './link-backe
 import { appLinkDeps } from '../../src/lib/history/link-deps';
 import { watchPageFetches } from './page-fetches';
 import { m } from '../../src/lib/paraglide/messages';
+import { externalOpenLabel } from '../../src/lib/play/external-label';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -1276,7 +1277,7 @@ describe('a handoff of a guessed session', () => {
 
 	it("names the card's row and its guess to the external player, as the player's plays do", async () => {
 		await openPlayer();
-		await handOff(m.play_external_label());
+		await handOff(externalOpenLabel('mpv'));
 		await until(() => handed.external.length === 1, 'the external-player request');
 		expect(handed.external[0]).toMatchObject({ guess_row: CARD, guess_id: GUESS });
 		expect(handed.external[0].kitsu_id).toBeUndefined();
@@ -1305,7 +1306,7 @@ describe('a handoff of a guessed session', () => {
 		await pickAndLink(RIGHT_TITLE);
 		// The pick's link has answered: the handoff names it.
 		await pageSettled();
-		await handOff(m.play_external_label());
+		await handOff(externalOpenLabel('mpv'));
 		await until(() => handed.external.length === 1, 'the external-player request');
 		expect(handed.external[0]).toMatchObject({ guess_row: CARD, guess_id: RIGHT });
 		expect(handed.external[0].kitsu_id).toBeUndefined();
@@ -1319,7 +1320,7 @@ describe('a handoff of a guessed session', () => {
 			() => slipText().includes(m.play_link_linked_note({ title: RIGHT_TITLE })),
 			'the note'
 		);
-		await handOff(m.play_external_label());
+		await handOff(externalOpenLabel('mpv'));
 		await until(() => handed.external.length === 1, 'the external-player request');
 		expect(handed.external[0]).toMatchObject({ guess_row: CARD, guess_id: RIGHT });
 		expect(handed.external[0].kitsu_id).toBeUndefined();

@@ -12,6 +12,8 @@
 // Messages are looked up by name so the table can name a message the
 // catalogue does not have yet and still type-check; a missing one
 // fails its row rather than the compile.
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { m } from '$lib/paraglide/messages';
 
@@ -247,28 +249,28 @@ const ROWS: Row[] = [
 		// announced; the count under test is the released one.
 		inputs: (n) => ({ announced: 30, available: n }),
 		en: {
-			0: ' — 30 are announced but only 0 have been released so far.',
-			1: ' — 30 are announced but only 1 has been released so far.',
-			2: ' — 30 are announced but only 2 have been released so far.'
+			0: '. 30 are announced, but only 0 have been released so far.',
+			1: '. 30 are announced, but only 1 has been released so far.',
+			2: '. 30 are announced, but only 2 have been released so far.'
 		},
 		'pt-BR': {
-			0: ' — 30 foram anunciados, mas só 0 foram lançados até agora.',
-			1: ' — 30 foram anunciados, mas só 1 foi lançado até agora.',
-			2: ' — 30 foram anunciados, mas só 2 foram lançados até agora.'
+			0: '. 30 foram anunciados, mas só 0 foram exibidos até agora.',
+			1: '. 30 foram anunciados, mas só 1 foi exibido até agora.',
+			2: '. 30 foram anunciados, mas só 2 foram exibidos até agora.'
 		},
 		'es-419': {
-			0: ' — 30 están anunciados pero solo 0 se han estrenado hasta ahora.',
-			1: ' — 30 están anunciados pero solo 1 se ha estrenado hasta ahora.',
-			2: ' — 30 están anunciados pero solo 2 se han estrenado hasta ahora.'
+			0: '. Hay 30 anunciados, pero solo 0 se estrenaron hasta ahora.',
+			1: '. Hay 30 anunciados, pero solo 1 se estrenó hasta ahora.',
+			2: '. Hay 30 anunciados, pero solo 2 se estrenaron hasta ahora.'
 		},
 		ru: {
-			1: ' — анонсировано 30, но вышел пока только 1.',
-			2: ' — анонсировано 30, но вышло пока только 2.',
-			5: ' — анонсировано 30, но вышло пока только 5.',
-			21: ' — анонсировано 30, но вышел пока только 21.',
-			22: ' — анонсировано 30, но вышло пока только 22.',
-			25: ' — анонсировано 30, но вышло пока только 25.',
-			11: ' — анонсировано 30, но вышло пока только 11.'
+			1: '. Анонсировано 30, но вышел пока только 1.',
+			2: '. Анонсировано 30, но вышло пока только 2.',
+			5: '. Анонсировано 30, но вышло пока только 5.',
+			21: '. Анонсировано 30, но вышел пока только 21.',
+			22: '. Анонсировано 30, но вышло пока только 22.',
+			25: '. Анонсировано 30, но вышло пока только 25.',
+			11: '. Анонсировано 30, но вышло пока только 11.'
 		}
 	},
 	{
@@ -307,15 +309,15 @@ const ROWS: Row[] = [
 			1: 'Descargando 1 episodio',
 			2: 'Descargando 2 episodios'
 		},
-		// After "Загрузка" the count is genitive: 1 серии, 2 / 5 серий.
+		// After "Загрузка" the count is genitive: 1 эпизода, 2 / 5 эпизодов.
 		ru: {
-			1: 'Загрузка 1 серии',
-			2: 'Загрузка 2 серий',
-			5: 'Загрузка 5 серий',
-			21: 'Загрузка 21 серии',
-			22: 'Загрузка 22 серий',
-			25: 'Загрузка 25 серий',
-			11: 'Загрузка 11 серий'
+			1: 'Загрузка 1 эпизода',
+			2: 'Загрузка 2 эпизодов',
+			5: 'Загрузка 5 эпизодов',
+			21: 'Загрузка 21 эпизода',
+			22: 'Загрузка 22 эпизодов',
+			25: 'Загрузка 25 эпизодов',
+			11: 'Загрузка 11 эпизодов'
 		}
 	},
 	{
@@ -340,13 +342,13 @@ const ROWS: Row[] = [
 			2: 'Descargando 2 episodios · 2 en cola'
 		},
 		ru: {
-			1: 'Загрузка 1 серии · 2 в очереди',
-			2: 'Загрузка 2 серий · 2 в очереди',
-			5: 'Загрузка 5 серий · 2 в очереди',
-			21: 'Загрузка 21 серии · 2 в очереди',
-			22: 'Загрузка 22 серий · 2 в очереди',
-			25: 'Загрузка 25 серий · 2 в очереди',
-			11: 'Загрузка 11 серий · 2 в очереди'
+			1: 'Загрузка 1 эпизода · 2 в очереди',
+			2: 'Загрузка 2 эпизодов · 2 в очереди',
+			5: 'Загрузка 5 эпизодов · 2 в очереди',
+			21: 'Загрузка 21 эпизода · 2 в очереди',
+			22: 'Загрузка 22 эпизодов · 2 в очереди',
+			25: 'Загрузка 25 эпизодов · 2 в очереди',
+			11: 'Загрузка 11 эпизодов · 2 в очереди'
 		}
 	},
 	{
@@ -397,13 +399,13 @@ const ROWS: Row[] = [
 			2: '2 descargas en curso, 2 en cola, ' + SPEED
 		},
 		ru: {
-			1: '1 загрузка в процессе, 2 в очереди, ' + SPEED,
-			2: '2 загрузки в процессе, 2 в очереди, ' + SPEED,
-			5: '5 загрузок в процессе, 2 в очереди, ' + SPEED,
-			21: '21 загрузка в процессе, 2 в очереди, ' + SPEED,
-			22: '22 загрузки в процессе, 2 в очереди, ' + SPEED,
-			25: '25 загрузок в процессе, 2 в очереди, ' + SPEED,
-			11: '11 загрузок в процессе, 2 в очереди, ' + SPEED
+			1: '1 активная загрузка, 2 в очереди, ' + SPEED,
+			2: '2 активные загрузки, 2 в очереди, ' + SPEED,
+			5: '5 активных загрузок, 2 в очереди, ' + SPEED,
+			21: '21 активная загрузка, 2 в очереди, ' + SPEED,
+			22: '22 активные загрузки, 2 в очереди, ' + SPEED,
+			25: '25 активных загрузок, 2 в очереди, ' + SPEED,
+			11: '11 активных загрузок, 2 в очереди, ' + SPEED
 		}
 	},
 	{
@@ -425,13 +427,13 @@ const ROWS: Row[] = [
 			2: '2 descargas en curso, ' + SPEED
 		},
 		ru: {
-			1: '1 загрузка в процессе, ' + SPEED,
-			2: '2 загрузки в процессе, ' + SPEED,
-			5: '5 загрузок в процессе, ' + SPEED,
-			21: '21 загрузка в процессе, ' + SPEED,
-			22: '22 загрузки в процессе, ' + SPEED,
-			25: '25 загрузок в процессе, ' + SPEED,
-			11: '11 загрузок в процессе, ' + SPEED
+			1: '1 активная загрузка, ' + SPEED,
+			2: '2 активные загрузки, ' + SPEED,
+			5: '5 активных загрузок, ' + SPEED,
+			21: '21 активная загрузка, ' + SPEED,
+			22: '22 активные загрузки, ' + SPEED,
+			25: '25 активных загрузок, ' + SPEED,
+			11: '11 активных загрузок, ' + SPEED
 		}
 	},
 	{
@@ -466,24 +468,163 @@ const ROWS: Row[] = [
 			2: "You can't download more than 2 episodes for this show."
 		},
 		'pt-BR': {
-			0: 'Não é possível baixar mais de 0 episódios deste título.',
-			1: 'Não é possível baixar mais de 1 episódio deste título.',
-			2: 'Não é possível baixar mais de 2 episódios deste título.'
+			0: 'Não é possível baixar mais de 0 episódios deste anime.',
+			1: 'Não é possível baixar mais de 1 episódio deste anime.',
+			2: 'Não é possível baixar mais de 2 episódios deste anime.'
 		},
 		'es-419': {
-			0: 'No puedes descargar más de 0 episodios de este título.',
-			1: 'No puedes descargar más de 1 episodio de este título.',
-			2: 'No puedes descargar más de 2 episodios de este título.'
+			0: 'No puedes descargar más de 0 episodios de este anime.',
+			1: 'No puedes descargar más de 1 episodio de este anime.',
+			2: 'No puedes descargar más de 2 episodios de este anime.'
 		},
 		// After "больше" the count is genitive: 1 эпизода, 2 / 5 эпизодов.
 		ru: {
-			1: 'Нельзя загрузить больше 1 эпизода этого тайтла.',
-			2: 'Нельзя загрузить больше 2 эпизодов этого тайтла.',
-			5: 'Нельзя загрузить больше 5 эпизодов этого тайтла.',
-			21: 'Нельзя загрузить больше 21 эпизода этого тайтла.',
-			22: 'Нельзя загрузить больше 22 эпизодов этого тайтла.',
-			25: 'Нельзя загрузить больше 25 эпизодов этого тайтла.',
-			11: 'Нельзя загрузить больше 11 эпизодов этого тайтла.'
+			1: 'Нельзя скачать больше 1 эпизода этого тайтла.',
+			2: 'Нельзя скачать больше 2 эпизодов этого тайтла.',
+			5: 'Нельзя скачать больше 5 эпизодов этого тайтла.',
+			21: 'Нельзя скачать больше 21 эпизода этого тайтла.',
+			22: 'Нельзя скачать больше 22 эпизодов этого тайтла.',
+			25: 'Нельзя скачать больше 25 эпизодов этого тайтла.',
+			11: 'Нельзя скачать больше 11 эпизодов этого тайтла.'
+		}
+	},
+	// The watch order counts shows, groups and ways to continue.
+	{
+		message: 'watchorder_franchise_count',
+		en: { 0: '0 titles', 1: '1 title', 2: '2 titles' },
+		'pt-BR': { 0: '0 animes', 1: '1 anime', 2: '2 animes' },
+		'es-419': { 0: '0 animes', 1: '1 anime', 2: '2 animes' },
+		ru: {
+			1: '1 тайтл',
+			2: '2 тайтла',
+			5: '5 тайтлов',
+			21: '21 тайтл',
+			22: '22 тайтла',
+			25: '25 тайтлов',
+			11: '11 тайтлов'
+		}
+	},
+	{
+		message: 'watchorder_franchise_loop_group',
+		en: {
+			0: '0 linked titles, order unclear',
+			1: '1 linked title, order unclear',
+			2: '2 linked titles, order unclear'
+		},
+		'pt-BR': {
+			0: '0 animes vinculados, ordem incerta',
+			1: '1 anime vinculado, ordem incerta',
+			2: '2 animes vinculados, ordem incerta'
+		},
+		'es-419': {
+			0: '0 animes enlazados, sin orden claro',
+			1: '1 anime enlazado, sin orden claro',
+			2: '2 animes enlazados, sin orden claro'
+		},
+		ru: {
+			1: '1 связанный тайтл, порядок неясен',
+			2: '2 связанных тайтла, порядок неясен',
+			5: '5 связанных тайтлов, порядок неясен',
+			21: '21 связанный тайтл, порядок неясен',
+			22: '22 связанных тайтла, порядок неясен',
+			25: '25 связанных тайтлов, порядок неясен',
+			11: '11 связанных тайтлов, порядок неясен'
+		}
+	},
+	{
+		message: 'watchorder_strip_franchise_stack_films',
+		en: { 0: '0 films and versions', 1: '1 film or version', 2: '2 films and versions' },
+		'pt-BR': { 0: '0 filmes e versões', 1: '1 filme ou versão', 2: '2 filmes e versões' },
+		'es-419': {
+			0: '0 películas y versiones',
+			1: '1 película o versión',
+			2: '2 películas y versiones'
+		},
+		ru: {
+			1: 'Фильмы и версии: 1',
+			2: 'Фильмы и версии: 2',
+			5: 'Фильмы и версии: 5',
+			21: 'Фильмы и версии: 21',
+			22: 'Фильмы и версии: 22',
+			25: 'Фильмы и версии: 25',
+			11: 'Фильмы и версии: 11'
+		}
+	},
+	{
+		message: 'watchorder_strip_franchise_stack_sides',
+		en: { 0: '0 side stories', 1: '1 side story', 2: '2 side stories' },
+		'pt-BR': { 0: '0 histórias paralelas', 1: '1 história paralela', 2: '2 histórias paralelas' },
+		'es-419': { 0: '0 historias paralelas', 1: '1 historia paralela', 2: '2 historias paralelas' },
+		ru: {
+			1: 'Побочные истории: 1',
+			2: 'Побочные истории: 2',
+			5: 'Побочные истории: 5',
+			21: 'Побочные истории: 21',
+			22: 'Побочные истории: 22',
+			25: 'Побочные истории: 25',
+			11: 'Побочные истории: 11'
+		}
+	},
+	{
+		message: 'watchorder_strip_franchise_stack_recaps',
+		en: { 0: '0 recaps', 1: '1 recap', 2: '2 recaps' },
+		'pt-BR': { 0: '0 recapitulações', 1: '1 recapitulação', 2: '2 recapitulações' },
+		'es-419': { 0: '0 resúmenes', 1: '1 resumen', 2: '2 resúmenes' },
+		ru: {
+			1: 'Пересказы: 1',
+			2: 'Пересказы: 2',
+			5: 'Пересказы: 5',
+			21: 'Пересказы: 21',
+			22: 'Пересказы: 22',
+			25: 'Пересказы: 25',
+			11: 'Пересказы: 11'
+		}
+	},
+	{
+		message: 'watchorder_strip_ways',
+		en: { 0: '0 ways to continue', 1: '1 way to continue', 2: '2 ways to continue' },
+		'pt-BR': {
+			0: '0 caminhos para continuar',
+			1: '1 caminho para continuar',
+			2: '2 caminhos para continuar'
+		},
+		'es-419': { 0: '0 formas de continuar', 1: '1 forma de continuar', 2: '2 formas de continuar' },
+		ru: {
+			1: '1 вариант продолжения',
+			2: '2 варианта продолжения',
+			5: '5 вариантов продолжения',
+			21: '21 вариант продолжения',
+			22: '22 варианта продолжения',
+			25: '25 вариантов продолжения',
+			11: '11 вариантов продолжения'
+		}
+	},
+	{
+		message: 'watchorder_strip_unnumbered_cycle',
+		inputs: (n) => ({ others: n }),
+		en: {
+			0: 'Linked with 0 others, order unclear',
+			1: 'Linked with 1 other, order unclear',
+			2: 'Linked with 2 others, order unclear'
+		},
+		'pt-BR': {
+			0: 'Vinculado a 0 outros, ordem incerta',
+			1: 'Vinculado a 1 outro, ordem incerta',
+			2: 'Vinculado a 2 outros, ordem incerta'
+		},
+		'es-419': {
+			0: 'Enlazado con otros 0 animes, sin orden claro',
+			1: 'Enlazado con 1 anime más, sin orden claro',
+			2: 'Enlazado con otros 2 animes, sin orden claro'
+		},
+		ru: {
+			1: 'Связан ещё с 1 тайтлом, порядок неясен',
+			2: 'Связан ещё с 2 тайтлами, порядок неясен',
+			5: 'Связан ещё с 5 тайтлами, порядок неясен',
+			21: 'Связан ещё с 21 тайтлом, порядок неясен',
+			22: 'Связан ещё с 22 тайтлами, порядок неясен',
+			25: 'Связан ещё с 25 тайтлами, порядок неясен',
+			11: 'Связан ещё с 11 тайтлами, порядок неясен'
 		}
 	}
 ];
@@ -535,5 +676,82 @@ describe('counted words agree with their count', () => {
 				expect(text, `${locale} ${name}`).not.toMatch(/\(s\)/);
 			}
 		}
+	});
+});
+
+describe("every plural message follows its locale's rule", () => {
+	const root = join(__dirname, '..', '..', 'messages');
+	type Variant = { declarations?: string[]; selectors?: string[]; match?: Record<string, string> };
+	/** `file.key` → each plural variant of the locale's messages. */
+	function variants(locale: string): [string, Variant][] {
+		const out: [string, Variant][] = [];
+		for (const file of readdirSync(join(root, locale)).filter((f) => f.endsWith('.json'))) {
+			const parsed = JSON.parse(readFileSync(join(root, locale, file), 'utf8'));
+			for (const [key, value] of Object.entries(parsed)) {
+				if (!Array.isArray(value)) continue;
+				for (const v of value as Variant[]) {
+					if (v.declarations?.some((d) => d.endsWith(': plural'))) out.push([`${file}.${key}`, v]);
+				}
+			}
+		}
+		return out;
+	}
+
+	// No integer reaches Russian's `other`, so the catch-all shows only
+	// for a count that is not a number, and reads best in `many`. Most
+	// messages let the catch-all be the many form; one that also spells
+	// `many` out has to give the catch-all the same words.
+	/** A variant's plural selector and the input it counts. */
+	function plural(v: Variant): { selector: string; input: string } {
+		const d = v.declarations!.find((x) => x.endsWith(': plural'))!;
+		const [, selector, input] = /^local\s+(\S+)\s*=\s*(\S+)\s*:\s*plural$/.exec(d.trim())!;
+		return { selector, input };
+	}
+	/** A match key ("count=0, countPlural=*") as selector → value. */
+	const arm = (key: string) =>
+		new Map(key.split(',').map((part) => part.trim().split('=') as [string, string]));
+	/** The same key with one selector's value replaced. */
+	const withValue = (key: string, selector: string, value: string) =>
+		[...arm(key)].map(([s, x]) => `${s}=${s === selector ? value : x}`).join(', ');
+
+	it('a Russian catch-all carries the many form', () => {
+		const found = variants('ru')
+			.filter(([, v]) => {
+				const { selector } = plural(v);
+				const keys = Object.keys(v.match ?? {});
+				return keys
+					.filter((k) => arm(k).get(selector) === 'many')
+					.some((k) => {
+						const star = keys.find(
+							(other) => other.replace(/\s/g, '') === withValue(k, selector, '*').replace(/\s/g, '')
+						);
+						return star !== undefined && v.match![star] !== v.match![k];
+					});
+			})
+			.map(([name]) => name);
+		expect(found).toEqual([]);
+	});
+
+	// CLDR files Portuguese 0 under `one`, so every plural message
+	// matches 0 on its number input ahead of the rule.
+	it('a Portuguese plural matches 0 on its input', () => {
+		const found = variants('pt-BR')
+			.filter(([, v]) => {
+				const { input } = plural(v);
+				return !Object.keys(v.match ?? {}).some((k) => arm(k).get(input) === '0');
+			})
+			.map(([name]) => name);
+		expect(found).toEqual([]);
+	});
+
+	it('the checks read a match key whatever its spacing and selector order', () => {
+		expect(arm('countPlural=*,count=0').get('count')).toBe('0');
+		expect(withValue('count=*, countPlural=many', 'countPlural', '*')).toBe(
+			'count=*, countPlural=*'
+		);
+		expect(plural({ declarations: ['input n', 'local nPlural = n : plural'] })).toEqual({
+			selector: 'nPlural',
+			input: 'n'
+		});
 	});
 });

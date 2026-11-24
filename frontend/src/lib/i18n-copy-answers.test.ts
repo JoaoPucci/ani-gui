@@ -1,0 +1,378 @@
+// Word choices the maintainer settled for the non-English locales.
+// Each rule names the messages it governs, or is a plain character
+// check over every message of a locale. None of them reads a sentence
+// to decide what it means.
+//
+// - Portuguese and Spanish speak of the user's lists ("suas listas",
+//   "tus listas"), never of a "rastreador", for AniList and
+//   MyAnimeList.
+// - Portuguese and Spanish spell the audio out (legendado / dublado,
+//   subtitulado / doblado) instead of the English SUB and DUB, the
+//   toggle included.
+// - The plan-to-watch status is "Quero assistir" and "Por ver"
+//   wherever a message names it.
+// - A message that means the show says "anime", not "título" or
+//   "serie"/"série" (those keep only a franchise's run of shows). Where
+//   "título" means a name (an episode title, a title typed into
+//   search), it stays, so the rule lists the show-meaning keys.
+// - Russian headings end without a full stop.
+// - "Again" is one phrase per locale: "de novo" in Portuguese (never
+//   "novamente"), «Попробуйте снова» in Russian (never «Попробуйте ещё
+//   раз»).
+// - Russian calls the streaming source «Источник стриминга», never
+//   «Источник видео».
+// - Spanish says "stream", never "transmisión". Russian writes «в
+//   настройках» in lower case, as its other messages do.
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { m } from '$lib/paraglide/messages';
+
+type Message = (inputs: Record<string, never>, options: { locale: string }) => string;
+const message = (name: string): Message | undefined =>
+	(m as unknown as Record<string, Message | undefined>)[name];
+
+const root = join(__dirname, '..', '..', 'messages');
+
+/** Every string in a message tree: plain messages and plural arms. */
+function strings(value: unknown): string[] {
+	if (typeof value === 'string') return [value];
+	if (Array.isArray(value)) return value.flatMap(strings);
+	if (value && typeof value === 'object') {
+		const v = value as Record<string, unknown>;
+		// A plural message's declarations and selectors are syntax, not
+		// text: only its match arms are shown.
+		if ('match' in v) return strings(v.match);
+		return Object.values(v).flatMap(strings);
+	}
+	return [];
+}
+
+/** `namespace.key` → every shown string of that message, for a locale. */
+function bundle(locale: string): Map<string, string[]> {
+	const out = new Map<string, string[]>();
+	for (const file of readdirSync(join(root, locale)).filter((f) => f.endsWith('.json'))) {
+		const ns = file.slice(0, -'.json'.length);
+		const parsed = JSON.parse(readFileSync(join(root, locale, file), 'utf8'));
+		for (const [key, value] of Object.entries(parsed)) {
+			if (key === '$schema') continue;
+			out.set(`${ns}.${key}`, strings(value));
+		}
+	}
+	return out;
+}
+
+const BUNDLES = new Map(['pt-BR', 'es-419', 'ru'].map((l) => [l, bundle(l)]));
+
+function offenders(locale: string, test: (s: string) => boolean, keys?: string[]): string[] {
+	const b = BUNDLES.get(locale)!;
+	const found: string[] = [];
+	for (const key of keys ?? [...b.keys()]) {
+		const values = b.get(key);
+		expect(values, `${locale} lacks ${key}`).toBeDefined();
+		if (values!.some(test)) found.push(key);
+	}
+	return found;
+}
+
+describe('Portuguese and Spanish name the list services as lists', () => {
+	for (const locale of ['pt-BR', 'es-419']) {
+		it(`no ${locale} message says "rastreador"`, () => {
+			expect(offenders(locale, (s) => /rastread/i.test(s))).toEqual([]);
+		});
+	}
+});
+
+describe('Portuguese and Spanish spell the audio out', () => {
+	for (const locale of ['pt-BR', 'es-419']) {
+		it(`no ${locale} message uses the SUB or DUB acronym`, () => {
+			expect(offenders(locale, (s) => /\b(sub|dub)\b/i.test(s))).toEqual([]);
+		});
+	}
+
+	it('the audio toggle is labelled in each locale', () => {
+		// English and Russian keep the short labels the toggle always
+		// had, and their prose names the audio the same way.
+		const labels = {
+			en: ['SUB', 'DUB'],
+			'pt-BR': ['Legendado', 'Dublado'],
+			'es-419': ['Subtitulado', 'Doblado'],
+			ru: ['SUB', 'DUB']
+		};
+		for (const [locale, [sub, dub]] of Object.entries(labels) as [
+			'en' | 'pt-BR' | 'es-419' | 'ru',
+			string[]
+		][]) {
+			expect(message('app_audio_sub')?.({}, { locale }), locale).toBe(sub);
+			expect(message('app_audio_dub')?.({}, { locale }), locale).toBe(dub);
+		}
+	});
+});
+
+describe('the plan-to-watch status has one name', () => {
+	const PLANNING_KEYS = [
+		'detail.list_status_planning',
+		'account.watch_later_caption',
+		'account.watch_later_empty',
+		'account.watch_later_failed_hint'
+	];
+	const names = { 'pt-BR': 'Quero assistir', 'es-419': 'Por ver' };
+	for (const [locale, name] of Object.entries(names)) {
+		it(`${locale} calls it "${name}"`, () => {
+			expect(offenders(locale, (s) => !s.includes(name), PLANNING_KEYS)).toEqual([]);
+		});
+	}
+});
+
+describe('a message about the show says "anime"', () => {
+	/** Keys whose "title" means the show, not a name. */
+	const SHOW_KEYS = [
+		'account.watch_later_empty_hint',
+		'account.primary_hint',
+		'backend.error_play_episode_unavailable',
+		'backend.error_play_stream_server_failed',
+		'backend.error_search_no_results',
+		'detail.actions_aria_label',
+		'detail.audio_note_show',
+		'detail.error_load_headline',
+		'detail.error_play_no_results',
+		'detail.meta_row_aria_label',
+		'detail.similar_strip_eyebrow',
+		'detail.synopsis_empty',
+		'detail.unavailable_message',
+		'detail.unavailable_in_dub_message',
+		'detail.unavailable_in_sub_message',
+		'detail.error_no_id_detail',
+		'download.disabled_all_tooltip',
+		'download.range_error_over_cap',
+		'play.error_no_session',
+		'play.error_stream_back_to_show',
+		'play.error_stream_unavailable_in_dub',
+		'play.error_stream_unavailable_in_sub',
+		'play.similar_strip_eyebrow',
+		'play.play_failure_no_results',
+		'play.play_failure_episode_unavailable',
+		'play.play_failure_episode_unavailable_try_other_audio',
+		'play.error_no_show_id',
+		'play.error_load_failed',
+		'settings.field_custom_controls_hint',
+		'settings.field_audio_default_hint',
+		// The watch order counts and describes shows.
+		'watchorder.franchise_count',
+		'watchorder.franchise_loop_group',
+		'watchorder.franchise_loop_group_partial',
+		'watchorder.franchise_none',
+		'watchorder.franchise_partial',
+		'watchorder.strip_unnumbered_cycle'
+	];
+	// A whole word: "subtítulos" is not the word.
+	for (const locale of ['pt-BR', 'es-419']) {
+		it(`${locale} show messages do not call it "título"`, () => {
+			expect(offenders(locale, (s) => /(^|[^\p{L}])t[íi]tulo/iu.test(s), SHOW_KEYS)).toEqual([]);
+		});
+	}
+});
+
+describe('the show is "anime", not "serie"', () => {
+	/** Messages where the word means a run of shows, not the show. */
+	const SERIES_ALLOWED: Record<string, string[]> = {
+		// Watch order: how the seasons, films and specials of a
+		// franchise are ordered, which is a series of anime.
+		'es-419': ['watchorder.setting_hint'],
+		'pt-BR': ['watchorder.setting_hint']
+	};
+	const word = {
+		'es-419': /(^|[^\p{L}])series?([^\p{L}]|$)/iu,
+		'pt-BR': /(^|[^\p{L}])s[ée]ries?([^\p{L}]|$)/iu
+	};
+	for (const [locale, pattern] of Object.entries(word)) {
+		it(`${locale} calls the show "anime"`, () => {
+			const allowed = new Set(SERIES_ALLOWED[locale]);
+			const found = offenders(locale, (s) => pattern.test(s)).filter((k) => !allowed.has(k));
+			expect(found).toEqual([]);
+		});
+	}
+});
+
+describe('Russian headings end without a full stop', () => {
+	/** Page titles, section and dialog titles, error and empty-state headlines. */
+	const HEADING_KEYS = [
+		'about.section_donate_title',
+		'about.section_assets_title',
+		'about.section_bundled_tools_title',
+		'about.section_license_title',
+		'account.title',
+		'account.disconnect_confirm_title',
+		'account.watch_later_title',
+		'account.watch_later_empty',
+		'account.watch_later_failed',
+		'detail.episodes_heading',
+		'diagnostics.section_row_style',
+		'diagnostics.section_start_look',
+		'detail.synopsis_heading',
+		'detail.error_load_headline',
+		'detail.error_no_id_headline',
+		'detail.error_play_headline',
+		'detail.error_play_headline_single',
+		'download.dock_title',
+		'download.error_ffmpeg_missing_headline',
+		'home.hero_error_title',
+		'home.hero_empty_title',
+		'home.error_resume_headline',
+		'home.delete_confirm_title',
+		'home.clear_confirm_title',
+		'play.error_stream_headline',
+		'play.error_play_headline',
+		'play.error_play_headline_single',
+		'play.error_external_headline',
+		'play.error_external_headline_single',
+		'play.error_syncplay_headline',
+		'play.error_syncplay_headline_single',
+		'rows.style_group_label',
+		// The empty-search headline is "prefix «query» suffix".
+		'search.empty_headline_suffix',
+		'search.discovery_nothing_headline',
+		'search.filtered_empty_headline',
+		'search.error_headline',
+		'settings.title',
+		'settings.error_headline',
+		'settings.error_save_headline',
+		'settings.section_playback_title',
+		'settings.section_library_title',
+		'settings.section_about_title',
+		'update.dialog_title',
+		// The franchise page's eyebrow, sections and group headings, and
+		// the watch order strip's and Up next's eyebrows.
+		'watchorder.franchise_eyebrow',
+		'watchorder.franchise_main',
+		'watchorder.franchise_versions',
+		'watchorder.franchise_films',
+		'watchorder.franchise_sides',
+		'watchorder.franchise_recaps',
+		'watchorder.franchise_unplaced',
+		'watchorder.franchise_loop_group',
+		'watchorder.franchise_loop_group_partial',
+		'watchorder.strip_ways',
+		'watchorder.strip_eyebrow',
+		'watchorder.upnext_choices',
+		'watchorder.upnext_eyebrow'
+	];
+	it('no ru heading ends with "."', () => {
+		expect(offenders('ru', (s) => s.endsWith('.'), HEADING_KEYS)).toEqual([]);
+	});
+});
+
+describe('one phrase per term', () => {
+	it('Portuguese says "de novo", never "novamente"', () => {
+		expect(offenders('pt-BR', (s) => /novamente/i.test(s))).toEqual([]);
+	});
+
+	it('Russian calls an episode «эпизод», never «серия»', () => {
+		expect(
+			offenders('ru', (s) => /(^|[^а-яё])серий?(я|и|ю|ей|ям|ями|ях)?([^а-яё]|$)/i.test(s))
+		).toEqual([]);
+	});
+
+	it('Russian says «Попробуйте снова», never «Попробуйте ещё раз»', () => {
+		expect(offenders('ru', (s) => /Попробуйте ещ[её] раз/i.test(s))).toEqual([]);
+	});
+
+	it('the Russian check reads «ещё» and «еще» as the word they are', () => {
+		// The pattern once read "е", one letter, " раз": three letters
+		// short of «ещё», so it matched nothing and passed every message.
+		const again = /Попробуйте ещ[её] раз/i;
+		expect(again.test('Не удалось. Попробуйте ещё раз.')).toBe(true);
+		expect(again.test('Не удалось. Попробуйте еще раз.')).toBe(true);
+		expect(again.test('Не удалось. Попробуйте снова.')).toBe(false);
+	});
+
+	it('Spanish says "stream", never "transmisión"', () => {
+		expect(offenders('es-419', (s) => /transmisi[oó]n/i.test(s))).toEqual([]);
+	});
+
+	it('Russian names the settings page «настройки» in lower case mid-sentence', () => {
+		expect(offenders('ru', (s) => /\sв Настройк/.test(s))).toEqual([]);
+	});
+
+	it('Russian never calls the streaming source «Источник видео»', () => {
+		expect(offenders('ru', (s) => /источник\S* видео/i.test(s))).toEqual([]);
+	});
+});
+
+describe('a retry button has one label per locale', () => {
+	const RETRY_KEYS = [
+		'account_signin_unknown_action',
+		'search_discovery_retry',
+		'search_paging_retry',
+		'watchorder_franchise_retry'
+	];
+	const labels = {
+		en: 'Try again',
+		'pt-BR': 'Tentar de novo',
+		'es-419': 'Volver a intentar',
+		ru: 'Повторить'
+	};
+	for (const [locale, label] of Object.entries(labels)) {
+		it(`${locale} labels it "${label}"`, () => {
+			const found = RETRY_KEYS.filter((k) => message(k)?.({}, { locale }) !== label);
+			expect(found).toEqual([]);
+		});
+	}
+});
+
+describe('the watch order names a parent story apart from the main story', () => {
+	// The franchise page's "Main story" section and the strip's word
+	// for the show a side story comes from are different things: the
+	// parent can itself be a side story. English, Spanish and Russian
+	// name them apart. Brazilian Portuguese keeps "História principal"
+	// for both by choice: "História de origem" reads as the show's
+	// origin, which a parent story is not, and that misleads more than
+	// the shared words do.
+	/** The main story's name made plural, which the plural key must not be. */
+	const MAIN_STORIES: Record<string, string> = {
+		en: 'Main stories',
+		'es-419': 'Historias principales',
+		ru: 'Основные истории'
+	};
+	for (const locale of ['en', 'es-419', 'ru']) {
+		it(`${locale} uses different words`, () => {
+			const main = message('watchorder_franchise_main')?.({}, { locale });
+			expect(main).toBeDefined();
+			expect(message('watchorder_strip_word_parent')?.({}, { locale })).not.toBe(main);
+			expect(message('watchorder_strip_word_parents')?.({}, { locale })).not.toBe(
+				MAIN_STORIES[locale]
+			);
+		});
+	}
+	it('pt-BR names a parent story "História principal"', () => {
+		expect(message('watchorder_strip_word_parent')?.({}, { locale: 'pt-BR' })).toBe(
+			'História principal'
+		);
+		expect(message('watchorder_strip_word_parents')?.({}, { locale: 'pt-BR' })).toBe(
+			'Histórias principais'
+		);
+	});
+});
+
+describe("Russian sets a show's name in guillemets", () => {
+	// A show's or a franchise's name inside a sentence or a label is
+	// «quoted», as in the Russian dialogs, notes and toasts that name one.
+	// A window title, a developer's log line and a file name template
+	// stay bare, so the rule lists the keys.
+	const TITLE_KEYS = [
+		'home.hero_pager_dot_label',
+		'home.error_resume_headline',
+		'home.delete_card_aria_label',
+		'play.progress_matched',
+		'watchorder.handoff_after',
+		'watchorder.handoff_aria',
+		'watchorder.strip_leads_into',
+		'watchorder.upnext_announce',
+		'watchorder.upnext_franchise_announce',
+		'watchorder.upnext_franchise_label'
+	];
+	it('every listed name is quoted', () => {
+		const bare = /(^|[^«])\{(title|finished|name)\}|\{(title|finished|name)\}([^»]|$)/;
+		expect(offenders('ru', (s) => bare.test(s), TITLE_KEYS)).toEqual([]);
+	});
+});
