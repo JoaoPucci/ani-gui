@@ -221,6 +221,23 @@ proptest! {
     }
 
     #[test]
+    fn a_show_taken_for_airing_is_one_the_pick_off_took_elsewhere_or_not_at_all(t in trending(), n in 0usize..7) {
+        let p = pick(&t, n, true);
+        let off = pick(&t, n, false);
+        for step in &p.walk.steps {
+            match step.verdict {
+                Verdict::Taken { slot, because: TakenBecause::AiringArt } => {
+                    prop_assert_ne!(off.hero.get(slot), Some(&step.id));
+                }
+                Verdict::Taken { slot, because: TakenBecause::Art } => {
+                    prop_assert!(!step.airing || off.hero.get(slot) == Some(&step.id));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
     fn a_show_passed_over_for_not_airing_is_one_the_pick_off_took(t in trending(), n in 0usize..7) {
         let p = pick(&t, n, true);
         let off = pick(&t, n, false);

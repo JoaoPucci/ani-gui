@@ -52,8 +52,10 @@ export function heroPick(
 	const offArt = artOrder(false).slice(0, count);
 	const artFull = hero.filter(hasArt).length === count;
 
-	const taken = (i: number): HeroTakenBecause =>
-		!hasArt(i) ? 'fill' : lifted(i, airingFirst) ? 'airing_art' : 'art';
+	const taken = (i: number, slot: number): HeroTakenBecause => {
+		if (!hasArt(i)) return 'fill';
+		return lifted(i, airingFirst) && offArt.indexOf(i) !== slot ? 'airing_art' : 'art';
+	};
 	const skipped = (i: number): HeroSkippedBecause => {
 		if (!hasArt(i)) return artFull ? 'no_art' : 'hero_full';
 		return airingFirst && !lifted(i, true) && offArt.includes(i) ? 'not_airing' : 'hero_full';
@@ -61,7 +63,7 @@ export function heroPick(
 	const verdict = (i: number): HeroVerdict => {
 		if (!first[i]) return { kind: 'skipped', because: 'repeat' };
 		const slot = hero.indexOf(i);
-		if (slot >= 0) return { kind: 'taken', slot, because: taken(i) };
+		if (slot >= 0) return { kind: 'taken', slot, because: taken(i, slot) };
 		return { kind: 'skipped', because: skipped(i) };
 	};
 	const settling = firsts.filter((i) => hasArt(i) && (!airingFirst || lifted(i, true)));

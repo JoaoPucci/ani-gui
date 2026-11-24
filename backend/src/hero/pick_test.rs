@@ -367,3 +367,27 @@ fn the_walk_names_repeats_and_a_full_hero() {
         }
     );
 }
+
+#[test]
+fn an_airing_show_the_plain_order_takes_in_the_same_slot_was_not_decided_by_the_preference() {
+    let p = on(&[airing(cover("1")), finished(cover("2")), airing(cover("3"))]);
+    assert_eq!(p.hero, ["1", "3", "2"]);
+    let steps = &p.walk.steps;
+    assert_eq!(
+        steps[0].verdict,
+        Verdict::Taken {
+            slot: 0,
+            because: TakenBecause::Art
+        }
+    );
+    assert!(!steps[0].preference_applied);
+    // The third show moved up a slot because it airs.
+    assert_eq!(
+        steps[2].verdict,
+        Verdict::Taken {
+            slot: 1,
+            because: TakenBecause::AiringArt
+        }
+    );
+    assert!(steps[2].preference_applied);
+}
