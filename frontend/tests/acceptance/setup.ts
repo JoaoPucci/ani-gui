@@ -21,6 +21,7 @@ import { forgetAnswers } from '../../src/lib/watch-order/session-memo';
 import { accountStore } from '../../src/lib/account/store.svelte';
 import { __resetGuessPlaysForTests } from '../../src/lib/history/guess-plays';
 import { candidates, cardLines, verdict } from '../../src/test/link-rules-fake';
+import { heroPick } from '../../src/test/hero-pick-fake';
 import type {
 	CandidatesRequest,
 	CardLineRow,
@@ -30,6 +31,7 @@ import type {
 
 import type { SessionSubtitle } from '../../src/lib/api';
 import type { CardLine, LinkCandidate, LinkVerdict } from '../../src/lib/api';
+import type { HeroPick, HeroPickBody, HeroWalkView } from '../../src/lib/api';
 import { errorAnswer } from '../answers';
 // Before any component mounts. See the stub for why happy-dom needs
 // it and why only post-mount DOM changes trip over its absence.
@@ -150,6 +152,25 @@ const linkRules = [
 ];
 
 /**
+ * The home hero's pick, which the backend makes from what Home sends
+ * (backend/src/hero), answered as it does with no flags file: the
+ * airing preference off (`frontend/src/test/hero-pick-fake.ts`). The
+ * Debug page's read of the last walk answers that none was made. A
+ * scenario about either installs its own (`./hero-backend.ts`).
+ */
+const heroRules = [
+	http.post(`${API_BASE}/api/home/hero`, async ({ request }) =>
+		HttpResponse.json<HeroPick>(heroPick(((await request.json()) as HeroPickBody).shows, false))
+	),
+	http.get(`${API_BASE}/api/home/hero/walk`, () =>
+		HttpResponse.json<HeroWalkView>({
+			flag: { name: 'hero_airing_first', on: false, origin: 'defaults' },
+			walk: null
+		})
+	)
+];
+
+/**
  * Last of all, behind every handler a scenario installs (`server.use`
  * puts those first): anything still unanswered here — no handler
  * matched it, or every one that did returned nothing, which in MSW
@@ -169,6 +190,7 @@ export const server = setupServer(
 	http.get(`${API_BASE}/s/:session/subtitles`, () => HttpResponse.json<SessionSubtitle[]>([])),
 	...incidental,
 	...linkRules,
+	...heroRules,
 	undescribedAnswer
 );
 

@@ -248,6 +248,8 @@ async function launchOnce(onLaunch: (app: ElectronApplication) => void) {
 		if (p === '/api/settings') {
 			return r.request().method() === 'PUT' ? answer(r, { status: 204 }) : j(defaultSettings);
 		}
+		// The hero's pick is the backend's own, made from the stubbed list.
+		if (p === '/api/home/hero') return r.continue();
 		if (p === '/api/kitsu/trending-anilist') return j(trending);
 		if (p === '/api/kitsu/top-rated') return j(manyTopRated);
 		if (p.startsWith('/api/image')) return answer(r, { status: 503 });

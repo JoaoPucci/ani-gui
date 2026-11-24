@@ -30,6 +30,7 @@ mod airing;
 mod flags;
 mod franchise;
 pub mod gate;
+pub(crate) mod hero;
 mod link_rules;
 mod refill;
 mod sse_abort;
@@ -181,6 +182,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .merge(account::router())
         .merge(airing::router())
         .merge(franchise::router())
+        .merge(hero::router())
         .merge(refill::router())
         .merge(watch_order::router())
         .with_state(state.clone())
@@ -1011,6 +1013,10 @@ mod kitsu_search_page_test;
 #[cfg(test)]
 #[path = "flags_test.rs"]
 mod flags_tests;
+
+#[cfg(test)]
+#[path = "hero_test.rs"]
+mod hero_tests;
 
 #[cfg(test)]
 #[path = "external_standard_test.rs"]
