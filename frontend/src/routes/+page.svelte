@@ -2665,11 +2665,16 @@
 		transition: box-shadow var(--dur-fast) var(--ease-out-soft);
 	}
 	.resume-card:hover .resume-poster {
-		/* Hover halo replaces the old border-tint cue. Accent-tinted
-		   box-shadow lifts the thumb without adding a 1px ring. */
+		/* Hover halo replaces the old border-tint cue: an accent-tinted
+		   shadow that lifts the thumb, and a 1px accent keyline. */
 		box-shadow:
 			0 12px 28px -8px color-mix(in oklab, var(--accent) 38%, transparent),
 			0 0 0 1px color-mix(in oklab, var(--accent) 60%, transparent);
+	}
+	/* A card the keyboard focused carries the app's ring: under the mouse
+	   its thumb keeps the halo and drops the keyline, a second ring. */
+	.resume-card:focus-visible:hover .resume-poster {
+		box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--accent) 38%, transparent);
 	}
 	/* Bottom scrim under the frame-number — keeps the oversized "EP 24"
 	   readable against any thumbnail without painting a chip. */
