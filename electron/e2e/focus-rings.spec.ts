@@ -940,6 +940,30 @@ async function ringCovered(page: Page): Promise<string | null> {
 	const geometry = await page.evaluate(() => {
 		const el = document.activeElement as HTMLElement | null;
 		if (!el || el === document.body) return null;
+		// What is changed, and how to put it back: through the element's
+		// style declaration, since the page's content policy refuses a
+		// style attribute written from script.
+		const saved: {
+			e: HTMLElement;
+			name: string;
+			value: string;
+			priority: string;
+			styled: boolean;
+		}[] = [];
+		(window as unknown as { ringSaved: typeof saved }).ringSaved = saved;
+		const touch = (e: HTMLElement, name: string, value: string) => {
+			saved.push({
+				e,
+				name,
+				value: e.style.getPropertyValue(name),
+				priority: e.style.getPropertyPriority(name),
+				styled: e.hasAttribute('style')
+			});
+			e.style.setProperty(name, value, 'important');
+		};
+		// A transition still running (a hover's lift) ends here, where the
+		// ring is read, not after it is read.
+		touch(el, 'transition', 'none');
 		const px = (v: string) => Number.parseFloat(v) || 0;
 		const cs = getComputedStyle(el);
 		const r = el.getBoundingClientRect();
@@ -977,28 +1001,6 @@ async function ringCovered(page: Page): Promise<string | null> {
 			];
 		}
 		if (outer - inner < 1) return null;
-		// What is changed, and how to put it back: through the element's
-		// style declaration, since the page's content policy refuses a
-		// style attribute written from script.
-		const saved: {
-			e: HTMLElement;
-			name: string;
-			value: string;
-			priority: string;
-			styled: boolean;
-		}[] = [];
-		(window as unknown as { ringSaved: typeof saved }).ringSaved = saved;
-		const touch = (e: HTMLElement, name: string, value: string) => {
-			saved.push({
-				e,
-				name,
-				value: e.style.getPropertyValue(name),
-				priority: e.style.getPropertyPriority(name),
-				styled: e.hasAttribute('style')
-			});
-			e.style.setProperty(name, value, 'important');
-		};
-		touch(el, 'transition', 'none');
 		touch(el, colour[0], colour[1]);
 		for (const child of el.children) {
 			if (child instanceof HTMLElement) touch(child, 'visibility', 'hidden');
@@ -1042,7 +1044,10 @@ async function ringCovered(page: Page): Promise<string | null> {
 			height: window.innerHeight
 		};
 	});
-	if (!geometry) return null;
+	if (!geometry) {
+		await putBack(page);
+		return null;
+	}
 	const { box, outer, width, height } = geometry;
 	const clip = {
 		x: Math.max(0, Math.floor(box.left - outer - 1)),
