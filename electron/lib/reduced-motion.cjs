@@ -117,7 +117,8 @@ function forcesReducedMotion(answer) {
 }
 
 /**
- * The environment the readers run in: the app's own, without DISPLAY.
+ * The environment the readers run in (and the session-end watcher,
+ * lib/session-end.cjs): the one given, a program's, without DISPLAY.
  * None of them draws anything, and with no session bus to find, gdbus
  * would otherwise fall back to D-Bus's X11 autolaunch and start a
  * dbus-daemon that outlives the reader.

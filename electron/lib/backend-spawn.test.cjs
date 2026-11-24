@@ -37,6 +37,25 @@ test("the caller's environment is not modified", () => {
   assert.deepEqual(env, { PATH: "/bin" });
 });
 
+test("the backend is spawned with the backend's environment, not a program's", async () => {
+  // lib/child-env.cjs userEnvs: a portable AppImage's home and config
+  // stay for the backend, which keeps the app's data there.
+  const spawned = [];
+  await launchBackend({
+    spawn: (bin, args, opts) => (spawned.push(opts.env), { pid: 1 }),
+    bin: "/opt/ani-gui/ani-gui-backend",
+    platform: "linux",
+    envs: {
+      forBackend: () => ({ HOME: "/home/me/Apps/ani-gui.AppImage.home" }),
+      forProgram: () => assert.fail("the backend is the app's, not another program"),
+    },
+    track: () => {},
+    handshake: async () => ({}),
+  });
+  assert.equal(spawned.length, 1);
+  assert.equal(spawned[0].HOME, "/home/me/Apps/ani-gui.AppImage.home");
+});
+
 // The quit path can stop only a backend it has a handle on, and the
 // handshake can take minutes on a first run (lib/backend-handshake.cjs).
 // A quit in that time — or a boot that fails during it — must find the
@@ -51,7 +70,7 @@ function pendingLaunch(child) {
     spawn: () => child,
     bin: "/opt/ani-gui/ani-gui-backend",
     platform: "linux",
-    env: {},
+    envs: { forBackend: () => ({}) },
     track: (c) => tracked.push(c),
     handshake: () =>
       new Promise((resolve, reject) => {
