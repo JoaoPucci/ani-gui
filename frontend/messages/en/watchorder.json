@@ -1,0 +1,137 @@
+{
+	"franchise_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} title",
+				"countPlural=*": "{count} titles"
+			}
+		}
+	],
+	"franchise_cycle_hint": "These are all linked to each other, so there's no clear order to watch them in. They're listed as they're linked.",
+	"franchise_eyebrow": "Franchise",
+	"franchise_failed": "Couldn't load this franchise.",
+	"franchise_films": "Films",
+	"franchise_here": "You are here",
+	"franchise_loop_group": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} linked title, order unclear",
+				"countPlural=*": "{count} linked titles, order unclear"
+			}
+		}
+	],
+	"franchise_loop_group_partial": "Linked titles, order unclear",
+	"franchise_main": "Main story",
+	"franchise_none": "This show has no other seasons or related titles.",
+	"franchise_order_change": "Change in Settings",
+	"franchise_order_note_linked": "In the order the anime databases link them.",
+	"franchise_order_note_released": "In order of release.",
+	"franchise_partial": "There may be more titles than the ones listed here.",
+	"franchise_recaps": "Recaps",
+	"franchise_resume": "Resume",
+	"franchise_retry": "Try again",
+	"franchise_sides": "Side stories & specials",
+	"franchise_start": "Start from the beginning",
+	"franchise_unplaced": "No clear place in the order",
+	"franchise_versions": "Other versions",
+	"handoff_after": "After {title}",
+	"handoff_aria": "Up next: {title}, after {finished}",
+	"handoff_next": "Next",
+	"meta_coming": "Coming {date}",
+	"meta_no_date": "Date not announced",
+	"meta_progress": "EP {episode} of {total}",
+	"meta_progress_open": "EP {episode}",
+	"meta_watched": "Watched",
+	"setting_aria": "Watch order",
+	"setting_hint": "How a series' seasons, films and specials are ordered: as the anime databases link them, or by release date. The links generally follow the story, but they are maintained by each database's community and can be wrong.",
+	"setting_key": "Watch order",
+	"setting_linked": "As linked",
+	"setting_released": "As released",
+	"strip_eyebrow": "Watch order",
+	"strip_first": "The story starts here",
+	"strip_franchise_stack_films": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} film or version",
+				"countPlural=*": "{count} films and versions"
+			}
+		}
+	],
+	"strip_franchise_stack_main": "{count} in the main story",
+	"strip_franchise_stack_recaps": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} recap",
+				"countPlural=*": "{count} recaps"
+			}
+		}
+	],
+	"strip_franchise_stack_sides": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} side story",
+				"countPlural=*": "{count} side stories"
+			}
+		}
+	],
+	"strip_franchise_stack_title": "See the whole franchise",
+	"strip_join": "Comes after these {count}",
+	"strip_last": "Nothing after this yet",
+	"strip_leads_into": "Leads into {title}",
+	"strip_of_total": "of {total}",
+	"strip_outside": "Outside the main story",
+	"strip_seam_from": "From the main story",
+	"strip_seam_into": "Into the main story",
+	"strip_position": "{position} of {total}",
+	"strip_position_open": "Position {position}",
+	"strip_side_story": "Side story",
+	"strip_film": "Film",
+	"strip_unnumbered_branch": "One of the ways to continue",
+	"strip_unnumbered_cycle": [
+		{
+			"declarations": ["input others", "local countPlural = others: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Linked with {others} other, order unclear",
+				"countPlural=*": "Linked with {others} others, order unclear"
+			}
+		}
+	],
+	"strip_watching_key": "You're watching",
+	"strip_ways": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} way to continue",
+				"countPlural=*": "{count} ways to continue"
+			}
+		}
+	],
+	"strip_word_parent": "Parent story",
+	"strip_word_parents": "Parent stories",
+	"strip_word_prequel": "Prequel",
+	"strip_word_prequels": "Prequels",
+	"strip_word_released_after": "Released after",
+	"strip_word_released_before": "Released before",
+	"strip_word_sequel": "Sequel",
+	"strip_word_sequels": "Sequels",
+	"upnext_announce": "Up next: {title}",
+	"upnext_choices": "Ways to continue",
+	"upnext_coming": "Next, when it airs",
+	"upnext_dismiss": "Dismiss",
+	"upnext_franchise_key": "The whole franchise",
+	"upnext_franchise_announce": "Up next: the whole franchise, {name}",
+	"upnext_franchise_label": "The whole franchise: {name}",
+	"upnext_eyebrow": "Up next"
+}

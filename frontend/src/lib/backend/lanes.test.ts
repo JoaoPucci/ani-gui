@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { laneBase, LANES } from './lanes';
+import { laneBase, laneIsOwn, LANES } from './lanes';
 
 const API = 'http://127.0.0.1:1';
 
@@ -26,7 +26,23 @@ describe('laneBase', () => {
 
 	it('names every lane the backend announces', () => {
 		expect([...LANES].sort()).toEqual(
-			['api', 'download', 'image', 'probe', 'resolve', 'stream'].sort()
+			['api', 'download', 'franchise', 'image', 'probe', 'resolve', 'stream'].sort()
 		);
+	});
+});
+
+describe('laneIsOwn', () => {
+	it('is true only for a lane announced at an origin other than the API', () => {
+		expect(laneIsOwn({ franchise: 'http://127.0.0.1:7' }, 'franchise', API)).toBe(true);
+		expect(laneIsOwn({ franchise: 'http://127.0.0.1:7/' }, 'franchise', `${API}/`)).toBe(true);
+	});
+
+	it("is false when the lane falls back to the API's origin", () => {
+		expect(laneIsOwn(undefined, 'franchise', API)).toBe(false);
+		expect(laneIsOwn({}, 'franchise', API)).toBe(false);
+		expect(laneIsOwn({ franchise: '' }, 'franchise', API)).toBe(false);
+		// Announced, but at the API's own origin: still one budget.
+		expect(laneIsOwn({ franchise: `${API}/` }, 'franchise', API)).toBe(false);
+		expect(laneIsOwn({ api: 'http://127.0.0.1:9' }, 'api', API)).toBe(false);
 	});
 });

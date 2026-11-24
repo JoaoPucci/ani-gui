@@ -55,6 +55,7 @@ pub mod spawn;
 #[cfg(all(test, unix))]
 #[path = "stub_file_test.rs"]
 pub(crate) mod stub_file;
+pub mod watch_order;
 
 pub use error::{AniError, Result};
 

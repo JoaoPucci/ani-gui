@@ -1,0 +1,1034 @@
+{
+  "today": "2026-11-24",
+  "franchises": {
+    "29efb968e91f": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "5",
+          "title": "Saga: Origins",
+          "subtype": "OVA",
+          "start": "2013-04-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "42"
+        ],
+        [
+          "42",
+          "50"
+        ],
+        [
+          "5",
+          "10"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "6f0f5d4cd7cb": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "5",
+          "title": "Saga: Origins",
+          "subtype": "OVA",
+          "start": "2013-04-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "42"
+        ],
+        [
+          "5",
+          "10"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "91e9875ba5e3": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2099-01-01",
+          "episodes": null,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "42"
+        ],
+        [
+          "42",
+          "50"
+        ],
+        [
+          "5",
+          "10"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "a7061678093a": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "5",
+          "title": "Saga: Origins",
+          "subtype": "OVA",
+          "start": "2013-04-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "42"
+        ],
+        [
+          "42",
+          "50"
+        ],
+        [
+          "5",
+          "10"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": false
+    },
+    "c8b8a63f33d0": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "50"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true,
+      "chain": {
+        "entries": [
+          {
+            "id": "42",
+            "title": "Saga: Second Arc",
+            "subtype": "TV",
+            "start": "2012-01-01",
+            "episodes": 12,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          },
+          {
+            "id": "50",
+            "title": "Saga: Final Arc",
+            "subtype": "TV",
+            "start": "2014-01-01",
+            "episodes": 12,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          }
+        ],
+        "links": [
+          [
+            "42",
+            "50"
+          ]
+        ],
+        "seams": [
+          "50"
+        ]
+      }
+    },
+    "d61996af0c87": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "60",
+          "title": "Saga: Other Path",
+          "subtype": "TV",
+          "start": "2015-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "42"
+        ],
+        [
+          "42",
+          "50"
+        ],
+        [
+          "42",
+          "60"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "de02523b9ed6": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "50"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true,
+      "chain": {
+        "entries": [
+          {
+            "id": "10",
+            "title": "Saga",
+            "subtype": "TV",
+            "start": "2010-01-01",
+            "episodes": 12,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          },
+          {
+            "id": "42",
+            "title": "Saga: Second Arc",
+            "subtype": "TV",
+            "start": "2012-01-01",
+            "episodes": 12,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          },
+          {
+            "id": "60",
+            "title": "Saga: The Movie",
+            "subtype": "movie",
+            "start": "2013-01-01",
+            "episodes": 12,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          }
+        ],
+        "links": [
+          [
+            "10",
+            "42"
+          ],
+          [
+            "42",
+            "60"
+          ]
+        ],
+        "seams": [
+          "10"
+        ]
+      }
+    },
+    "e704a3d8d126": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "50"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true,
+      "chain": {
+        "entries": [
+          {
+            "id": "10",
+            "title": "Saga",
+            "subtype": "TV",
+            "start": "2010-01-01",
+            "episodes": 12,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          },
+          {
+            "id": "42",
+            "title": "Saga: Second Arc",
+            "subtype": "TV",
+            "start": "2012-01-01",
+            "episodes": 12,
+            "status": "finished",
+            "poster": null,
+            "cover": null
+          }
+        ],
+        "links": [
+          [
+            "10",
+            "42"
+          ]
+        ],
+        "seams": [
+          "10"
+        ]
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "the Up next card at a finale > names the next entry once the video ends, in the Skip Ending pill's place · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {},
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            },
+            "kind": "one"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > drops the last episode's end with its stream on a switch · up-next 42 ep 11",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {},
+      "episode": 11.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": null,
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > follows the order setting · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "released",
+      "franchise": "29efb968e91f",
+      "resumes": {},
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "5",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2013-04-01",
+              "status": "finished",
+              "subtype": "OVA",
+              "title": "Saga: Origins",
+              "unaired": false
+            },
+            "kind": "one"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > lists the ways on at a fork · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "d61996af0c87",
+      "resumes": {},
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entries": [
+              {
+                "cover": null,
+                "episodes": 12,
+                "id": "50",
+                "poster": null,
+                "progress": {
+                  "kind": "none"
+                },
+                "start": "2014-01-01",
+                "status": "finished",
+                "subtype": "TV",
+                "title": "Saga: Final Arc",
+                "unaired": false
+              },
+              {
+                "cover": null,
+                "episodes": 12,
+                "id": "60",
+                "poster": null,
+                "progress": {
+                  "kind": "none"
+                },
+                "start": "2015-01-01",
+                "status": "finished",
+                "subtype": "TV",
+                "title": "Saga: Other Path",
+                "unaired": false
+              }
+            ],
+            "kind": "choices"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > shows a next entry that has not aired with its date, and links nowhere · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "91e9875ba5e3",
+      "resumes": {},
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entry": {
+              "cover": null,
+              "episodes": null,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2099-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": true
+            },
+            "kind": "unaired"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > shows no card where the franchise was read only in part, and the pill shows as before · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "a7061678093a",
+      "resumes": {},
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": null,
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > gives the next entry's meta line the viewer's progress in it · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {
+        "50": "3"
+      },
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "episode": 3.0,
+                "kind": "partway",
+                "total": 12
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            },
+            "kind": "one"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > gives the next entry a row's progress when Kitsu deleted the entry the row recorded · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {
+        "4": "3",
+        "50": "3"
+      },
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "episode": 3.0,
+                "kind": "partway",
+                "total": 12
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            },
+            "kind": "one"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > names the next title of the entry's own chain, not the main story's · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "de02523b9ed6",
+      "resumes": {},
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "60",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2013-01-01",
+              "status": "finished",
+              "subtype": "movie",
+              "title": "Saga: The Movie",
+              "unaired": false
+            },
+            "kind": "one"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > offers the whole franchise at the end of a chain that leads nowhere · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "e704a3d8d126",
+      "resumes": {},
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "front": "10",
+            "id": "42",
+            "name": "Saga",
+            "summary": {
+              "films": 0,
+              "main": 2,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 2
+            }
+          },
+          "kind": "franchise"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > goes on into the main story where the chain leads into it · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "c8b8a63f33d0",
+      "resumes": {},
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            },
+            "kind": "one"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > shows no card at the end of the run · up-next 42 ep 12",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "6f0f5d4cd7cb",
+      "resumes": {},
+      "episode": 12.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": null,
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > shows on the episode past the count once nothing in the entry follows · up-next 42 ep 13",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {},
+      "episode": 13.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            },
+            "kind": "one"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > shows on an extra after the last episode, which has no skip times to ask for · up-next 42 ep 12.5",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {},
+      "episode": 12.5,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": {
+          "card": {
+            "entry": {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            },
+            "kind": "one"
+          },
+          "kind": "entry"
+        },
+        "history": true
+      }
+    },
+    {
+      "name": "the Up next card at a finale > keeps an episode's skip times when an earlier request for them fails late · up-next 42 ep 10",
+      "route": "up-next",
+      "id": "42",
+      "order": "linked",
+      "franchise": "29efb968e91f",
+      "resumes": {},
+      "episode": 10.0,
+      "own": {
+        "status": "finished",
+        "episodes": 12
+      },
+      "answer": {
+        "card": null,
+        "history": true
+      }
+    }
+  ],
+  "rails": []
+}

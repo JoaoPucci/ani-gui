@@ -23,7 +23,8 @@
       "image",
       "probe",
       "resolve",
-      "download"
+      "download",
+      "franchise"
     ],
     "LinkWarning": [
       "season",
@@ -57,10 +58,18 @@
       "mal",
       "inhouse"
     ],
+    "Seam": [
+      "from",
+      "into"
+    ],
     "SearchOrder": [
       "relevance",
       "year",
       "rating"
+    ],
+    "StripKind": [
+      "run",
+      "side"
     ],
     "UnsettledReason": [
       "refused",
@@ -71,6 +80,10 @@
     "VersionKind": [
       "standard",
       "uncensored"
+    ],
+    "WatchOrder": [
+      "linked",
+      "released"
     ]
   },
   "errors": [
@@ -207,6 +220,19 @@
     "REFILL_HEADER": "x-ani-gui-refill"
   },
   "requests": {
+    "AskRow": {
+      "accepts": [
+        "ep_no",
+        "left_part_way",
+        "matched",
+        "playable_count",
+        "row_id"
+      ],
+      "requires": [
+        "ep_no",
+        "row_id"
+      ]
+    },
     "AuthUrlRequest": {
       "accepts": [
         "pkce",
@@ -304,7 +330,8 @@
         "primary_account",
         "syncplay_binary",
         "update_include_prereleases",
-        "use_custom_player_controls"
+        "use_custom_player_controls",
+        "watch_order"
       ],
       "requires": []
     },
@@ -338,6 +365,24 @@
       "requires": [
         "code",
         "pkce"
+      ]
+    },
+    "HandoffMatch": {
+      "accepts": [
+        "episode_count",
+        "id",
+        "status"
+      ],
+      "requires": [
+        "id"
+      ]
+    },
+    "HistoryByKitsuBody": {
+      "accepts": [
+        "ids"
+      ],
+      "requires": [
+        "ids"
       ]
     },
     "KitsuByMalIdsBody": {
@@ -408,6 +453,29 @@
         "episode",
         "mode",
         "title"
+      ]
+    },
+    "PlayedRow": {
+      "accepts": [
+        "id",
+        "kitsu_id"
+      ],
+      "requires": [
+        "id"
+      ]
+    },
+    "RailRequest": {
+      "accepts": [
+        "history",
+        "matches",
+        "rows",
+        "series"
+      ],
+      "requires": [
+        "history",
+        "matches",
+        "rows",
+        "series"
       ]
     },
     "RefreshRequest": {
@@ -520,6 +588,24 @@
       ],
       "requires": [
         "tickets"
+      ]
+    },
+    "WatchOrderDayBody": {
+      "accepts": [
+        "today"
+      ],
+      "requires": [
+        "today"
+      ]
+    },
+    "WatchOrderUpNextBody": {
+      "accepts": [
+        "episode",
+        "today"
+      ],
+      "requires": [
+        "episode",
+        "today"
       ]
     }
   },
@@ -642,6 +728,45 @@
         "line": "hianime:jojos-bizarre-adventure-2000-5182"
       }
     },
+    "ChainEndCard": {
+      "full": {
+        "front": "7158",
+        "id": "7730",
+        "name": "JoJo no Kimyou na Bouken",
+        "summary": {
+          "films": 2,
+          "main": 5,
+          "posters": [
+            {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)"
+            }
+          ],
+          "recaps": 1,
+          "sides": 1,
+          "total": 9
+        }
+      },
+      "min": {
+        "front": "7158",
+        "id": "7730",
+        "name": "JoJo no Kimyou na Bouken",
+        "summary": {
+          "films": 2,
+          "main": 5,
+          "posters": [],
+          "recaps": 1,
+          "sides": 1,
+          "total": 9
+        }
+      }
+    },
     "Config": {
       "full": {
         "auto_play_next": true,
@@ -659,7 +784,8 @@
         "primary_account": "anilist",
         "syncplay_binary": "syncplay",
         "update_include_prereleases": true,
-        "use_custom_player_controls": true
+        "use_custom_player_controls": true,
+        "watch_order": "released"
       },
       "min": {
         "auto_play_next": true,
@@ -677,7 +803,8 @@
         "primary_account": "anilist",
         "syncplay_binary": "syncplay",
         "update_include_prereleases": true,
-        "use_custom_player_controls": true
+        "use_custom_player_controls": true,
+        "watch_order": "released"
       }
     },
     "CreateSessionResponse": {
@@ -750,6 +877,603 @@
       "min": {
         "progress": 8,
         "status": "watching"
+      }
+    },
+    "Eyebrow": {
+      "full": {
+        "position": 1,
+        "total": 2
+      },
+      "min": {
+        "position": 1,
+        "total": 2
+      }
+    },
+    "Franchise": {
+      "full": {
+        "anchor": "7730",
+        "chain": {
+          "entries": [
+            {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)"
+            }
+          ],
+          "links": [
+            [
+              "7158",
+              "7730"
+            ]
+          ],
+          "seams": [
+            "7158"
+          ]
+        },
+        "complete": true,
+        "entries": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "films": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "links": [
+          [
+            "7158",
+            "8271"
+          ]
+        ],
+        "name": "JoJo no Kimyou na Bouken",
+        "name_from": "7158",
+        "parents": {
+          "7730": [
+            "7158"
+          ]
+        },
+        "recaps": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "sides": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "versions": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ]
+      },
+      "min": {
+        "anchor": "7730",
+        "complete": false,
+        "entries": [
+          {
+            "cover": null,
+            "episodes": null,
+            "id": "7158",
+            "poster": null,
+            "start": null,
+            "status": null,
+            "subtype": null,
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "films": [],
+        "links": [],
+        "name": "JoJo no Kimyou na Bouken",
+        "name_from": "7158",
+        "parents": {},
+        "recaps": [],
+        "sides": [],
+        "versions": []
+      }
+    },
+    "FranchiseChain": {
+      "full": {
+        "entries": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "links": [
+          [
+            "7158",
+            "7730"
+          ]
+        ],
+        "seams": [
+          "7158"
+        ]
+      },
+      "min": {
+        "entries": [
+          {
+            "cover": null,
+            "episodes": null,
+            "id": "7158",
+            "poster": null,
+            "start": null,
+            "status": null,
+            "subtype": null,
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "links": [],
+        "seams": []
+      }
+    },
+    "FranchiseEntry": {
+      "full": {
+        "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+        "episodes": 26,
+        "id": "7158",
+        "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+        "start": "2012-10-06",
+        "status": "finished",
+        "subtype": "TV",
+        "title": "JoJo no Kimyou na Bouken (TV)"
+      },
+      "min": {
+        "cover": null,
+        "episodes": null,
+        "id": "7158",
+        "poster": null,
+        "start": null,
+        "status": null,
+        "subtype": null,
+        "title": "JoJo no Kimyou na Bouken (TV)"
+      }
+    },
+    "FranchiseSummary": {
+      "full": {
+        "films": 2,
+        "main": 5,
+        "posters": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "recaps": 1,
+        "sides": 1,
+        "total": 9
+      },
+      "min": {
+        "films": 2,
+        "main": 5,
+        "posters": [],
+        "recaps": 1,
+        "sides": 1,
+        "total": 9
+      }
+    },
+    "FranchiseView": {
+      "full": {
+        "history": true,
+        "order": "released",
+        "page": {
+          "alone": true,
+          "art": {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          },
+          "films": [
+            {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)"
+            }
+          ],
+          "name": "JoJo no Kimyou na Bouken",
+          "opened_from": {
+            "id": "7158",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          },
+          "partial": true,
+          "recap_count": 1,
+          "recaps": [
+            {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)"
+            }
+          ],
+          "resume": {
+            "entry": {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)",
+              "unaired": true
+            },
+            "episode": 7.0,
+            "position": 1
+          },
+          "sections": [
+            {
+              "kind": "group",
+              "rows": [
+                {
+                  "entry": {
+                    "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                    "episodes": 26,
+                    "id": "7158",
+                    "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                    "progress": {
+                      "kind": "none"
+                    },
+                    "start": "2012-10-06",
+                    "status": "finished",
+                    "subtype": "TV",
+                    "title": "JoJo no Kimyou na Bouken (TV)",
+                    "unaired": true
+                  },
+                  "here": true,
+                  "leads_into": "Stardust Crusaders",
+                  "position": 1,
+                  "share": 0.5
+                }
+              ]
+            }
+          ],
+          "sides": [
+            {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)"
+            }
+          ],
+          "start": {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "progress": {
+              "kind": "none"
+            },
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)",
+            "unaired": true
+          },
+          "total": 9,
+          "versions": [
+            {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)"
+            }
+          ]
+        }
+      },
+      "min": {
+        "history": false,
+        "order": "released",
+        "page": null
+      }
+    },
+    "FranchiseWire": {
+      "full": {
+        "alone": true,
+        "art": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)"
+        },
+        "films": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "name": "JoJo no Kimyou na Bouken",
+        "opened_from": {
+          "id": "7158",
+          "title": "JoJo no Kimyou na Bouken (TV)"
+        },
+        "partial": true,
+        "recap_count": 1,
+        "recaps": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "resume": {
+          "entry": {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "progress": {
+              "kind": "none"
+            },
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)",
+            "unaired": true
+          },
+          "episode": 7.0,
+          "position": 1
+        },
+        "sections": [
+          {
+            "kind": "group",
+            "rows": [
+              {
+                "entry": {
+                  "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                  "episodes": 26,
+                  "id": "7158",
+                  "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                  "progress": {
+                    "kind": "none"
+                  },
+                  "start": "2012-10-06",
+                  "status": "finished",
+                  "subtype": "TV",
+                  "title": "JoJo no Kimyou na Bouken (TV)",
+                  "unaired": true
+                },
+                "here": true,
+                "leads_into": "Stardust Crusaders",
+                "position": 1,
+                "share": 0.5
+              }
+            ]
+          }
+        ],
+        "sides": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ],
+        "start": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "progress": {
+            "kind": "none"
+          },
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": true
+        },
+        "total": 9,
+        "versions": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        ]
+      },
+      "min": {
+        "alone": false,
+        "art": {
+          "cover": null,
+          "episodes": null,
+          "id": "7158",
+          "poster": null,
+          "start": null,
+          "status": null,
+          "subtype": null,
+          "title": "JoJo no Kimyou na Bouken (TV)"
+        },
+        "films": [],
+        "name": "JoJo no Kimyou na Bouken",
+        "opened_from": null,
+        "partial": false,
+        "recap_count": null,
+        "recaps": [],
+        "resume": null,
+        "sections": [],
+        "sides": [],
+        "start": null,
+        "total": null,
+        "versions": []
+      }
+    },
+    "Handoff": {
+      "full": {
+        "finished": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)"
+        },
+        "next": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)"
+        }
+      },
+      "min": {
+        "finished": {
+          "cover": null,
+          "episodes": null,
+          "id": "7158",
+          "poster": null,
+          "start": null,
+          "status": null,
+          "subtype": null,
+          "title": "JoJo no Kimyou na Bouken (TV)"
+        },
+        "next": {
+          "cover": null,
+          "episodes": null,
+          "id": "7158",
+          "poster": null,
+          "start": null,
+          "status": null,
+          "subtype": null,
+          "title": "JoJo no Kimyou na Bouken (TV)"
+        }
+      }
+    },
+    "HandoffAnswer": {
+      "full": {
+        "handoff": {
+          "finished": {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          },
+          "next": {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)"
+          }
+        }
+      },
+      "min": {
+        "handoff": null
       }
     },
     "HistoryEntry": {
@@ -1038,6 +1762,51 @@
         "linked": []
       }
     },
+    "LinkWire": {
+      "full": {
+        "complete": true,
+        "similar_hidden": [
+          "8063"
+        ],
+        "stack": {
+          "front": "7158",
+          "summary": {
+            "films": 2,
+            "main": 5,
+            "posters": [
+              {
+                "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                "episodes": 26,
+                "id": "7158",
+                "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                "start": "2012-10-06",
+                "status": "finished",
+                "subtype": "TV",
+                "title": "JoJo no Kimyou na Bouken (TV)"
+              }
+            ],
+            "recaps": 1,
+            "sides": 1,
+            "total": 9
+          }
+        }
+      },
+      "min": {
+        "complete": false,
+        "similar_hidden": [],
+        "stack": {
+          "front": "7158",
+          "summary": {
+            "films": 2,
+            "main": 5,
+            "posters": [],
+            "recaps": 1,
+            "sides": 1,
+            "total": 9
+          }
+        }
+      }
+    },
     "LinkedRow": {
       "full": {
         "ep_no": "2",
@@ -1074,6 +1843,118 @@
         "updated_at_epoch_s": 1700000000
       }
     },
+    "NextWire.choices": {
+      "full": {
+        "entries": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "progress": {
+              "kind": "none"
+            },
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)",
+            "unaired": true
+          }
+        ],
+        "kind": "choices"
+      },
+      "min": {
+        "entries": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "progress": {
+              "kind": "none"
+            },
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)",
+            "unaired": true
+          }
+        ],
+        "kind": "choices"
+      }
+    },
+    "NextWire.one": {
+      "full": {
+        "entry": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "progress": {
+            "kind": "none"
+          },
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": true
+        },
+        "kind": "one"
+      },
+      "min": {
+        "entry": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "progress": {
+            "kind": "none"
+          },
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": true
+        },
+        "kind": "one"
+      }
+    },
+    "NextWire.unaired": {
+      "full": {
+        "entry": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "progress": {
+            "kind": "none"
+          },
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": true
+        },
+        "kind": "unaired"
+      },
+      "min": {
+        "entry": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "progress": {
+            "kind": "none"
+          },
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": true
+        },
+        "kind": "unaired"
+      }
+    },
     "ProgressLine.links_fetched": {
       "full": {
         "kind": "links_fetched",
@@ -1104,6 +1985,69 @@
         "provider": "hianime"
       }
     },
+    "ProgressView.none": {
+      "full": {
+        "kind": "none"
+      },
+      "min": {
+        "kind": "none"
+      }
+    },
+    "ProgressView.partway": {
+      "full": {
+        "episode": 7.5,
+        "kind": "partway",
+        "total": 12
+      },
+      "min": {
+        "episode": 7.5,
+        "kind": "partway",
+        "total": null
+      }
+    },
+    "ProgressView.watched": {
+      "full": {
+        "kind": "watched"
+      },
+      "min": {
+        "kind": "watched"
+      }
+    },
+    "RailView": {
+      "full": {
+        "asks": {
+          "row": "7158"
+        },
+        "handoffs": {
+          "row": {
+            "finished": {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)"
+            },
+            "next": {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)"
+            }
+          }
+        }
+      },
+      "min": {
+        "asks": {},
+        "handoffs": {}
+      }
+    },
     "ReclaimReport": {
       "full": {
         "expired_rows": 5,
@@ -1130,6 +2074,44 @@
         "url": "https://github.com/JoaoPucci/ani-gui/releases/tag/v0.18.0"
       }
     },
+    "ResumeWire": {
+      "full": {
+        "entry": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "progress": {
+            "kind": "none"
+          },
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": true
+        },
+        "episode": 7.0,
+        "position": 1
+      },
+      "min": {
+        "entry": {
+          "cover": null,
+          "episodes": null,
+          "id": "7158",
+          "poster": null,
+          "progress": {
+            "kind": "none"
+          },
+          "start": null,
+          "status": null,
+          "subtype": null,
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": false
+        },
+        "episode": 7.0,
+        "position": null
+      }
+    },
     "RetiredSweepReport": {
       "full": {
         "cache_rows": 3,
@@ -1148,6 +2130,210 @@
         "superseded": []
       }
     },
+    "RowWire": {
+      "full": {
+        "entry": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "progress": {
+            "kind": "none"
+          },
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": true
+        },
+        "here": true,
+        "leads_into": "Stardust Crusaders",
+        "position": 1,
+        "share": 0.5
+      },
+      "min": {
+        "entry": {
+          "cover": null,
+          "episodes": null,
+          "id": "7158",
+          "poster": null,
+          "progress": {
+            "kind": "none"
+          },
+          "start": null,
+          "status": null,
+          "subtype": null,
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": false
+        },
+        "here": false,
+        "leads_into": null,
+        "position": null,
+        "share": 0.5
+      }
+    },
+    "SectionWire.group": {
+      "full": {
+        "kind": "group",
+        "rows": [
+          {
+            "entry": {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)",
+              "unaired": true
+            },
+            "here": true,
+            "leads_into": "Stardust Crusaders",
+            "position": 1,
+            "share": 0.5
+          }
+        ]
+      },
+      "min": {
+        "kind": "group",
+        "rows": [
+          {
+            "entry": {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)",
+              "unaired": true
+            },
+            "here": true,
+            "leads_into": "Stardust Crusaders",
+            "position": 1,
+            "share": 0.5
+          }
+        ]
+      }
+    },
+    "SectionWire.line": {
+      "full": {
+        "kind": "line",
+        "rows": [
+          {
+            "entry": {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)",
+              "unaired": true
+            },
+            "here": true,
+            "leads_into": "Stardust Crusaders",
+            "position": 1,
+            "share": 0.5
+          }
+        ],
+        "unplaced": true
+      },
+      "min": {
+        "kind": "line",
+        "rows": [
+          {
+            "entry": {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)",
+              "unaired": true
+            },
+            "here": true,
+            "leads_into": "Stardust Crusaders",
+            "position": 1,
+            "share": 0.5
+          }
+        ],
+        "unplaced": true
+      }
+    },
+    "SectionWire.ways": {
+      "full": {
+        "kind": "ways",
+        "ways": [
+          [
+            {
+              "entry": {
+                "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                "episodes": 26,
+                "id": "7158",
+                "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                "progress": {
+                  "kind": "none"
+                },
+                "start": "2012-10-06",
+                "status": "finished",
+                "subtype": "TV",
+                "title": "JoJo no Kimyou na Bouken (TV)",
+                "unaired": true
+              },
+              "here": true,
+              "leads_into": "Stardust Crusaders",
+              "position": 1,
+              "share": 0.5
+            }
+          ]
+        ]
+      },
+      "min": {
+        "kind": "ways",
+        "ways": [
+          [
+            {
+              "entry": {
+                "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                "episodes": 26,
+                "id": "7158",
+                "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                "progress": {
+                  "kind": "none"
+                },
+                "start": "2012-10-06",
+                "status": "finished",
+                "subtype": "TV",
+                "title": "JoJo no Kimyou na Bouken (TV)",
+                "unaired": true
+              },
+              "here": true,
+              "leads_into": "Stardust Crusaders",
+              "position": 1,
+              "share": 0.5
+            }
+          ]
+        ]
+      }
+    },
     "SessionSubtitle": {
       "full": {
         "default": true,
@@ -1162,6 +2348,138 @@
         "url": "http://127.0.0.1:4100/s/3f1c/sub/0.vtt"
       }
     },
+    "ShowView": {
+      "full": {
+        "history": true,
+        "link": {
+          "complete": true,
+          "similar_hidden": [
+            "8063"
+          ],
+          "stack": {
+            "front": "7158",
+            "summary": {
+              "films": 2,
+              "main": 5,
+              "posters": [
+                {
+                  "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                  "episodes": 26,
+                  "id": "7158",
+                  "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                  "start": "2012-10-06",
+                  "status": "finished",
+                  "subtype": "TV",
+                  "title": "JoJo no Kimyou na Bouken (TV)"
+                }
+              ],
+              "recaps": 1,
+              "sides": 1,
+              "total": 9
+            }
+          }
+        },
+        "order": "linked",
+        "strip": {
+          "after": [
+            {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)",
+              "unaired": true
+            }
+          ],
+          "before": [
+            {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)",
+              "unaired": true
+            }
+          ],
+          "caption": {
+            "kind": "position",
+            "position": 4,
+            "total": 5
+          },
+          "complete": true,
+          "eyebrow": {
+            "position": 4,
+            "total": 5
+          },
+          "kind": "run",
+          "outside": true,
+          "seams": {
+            "after": "into",
+            "before": "from"
+          },
+          "similar_hidden": [
+            "8063"
+          ],
+          "stack": {
+            "front": "7158",
+            "summary": {
+              "films": 2,
+              "main": 5,
+              "posters": [
+                {
+                  "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                  "episodes": 26,
+                  "id": "7158",
+                  "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                  "start": "2012-10-06",
+                  "status": "finished",
+                  "subtype": "TV",
+                  "title": "JoJo no Kimyou na Bouken (TV)"
+                }
+              ],
+              "recaps": 1,
+              "sides": 1,
+              "total": 9
+            }
+          },
+          "watching": {
+            "entry": {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)",
+              "unaired": true
+            },
+            "episode": 7.5
+          }
+        }
+      },
+      "min": {
+        "history": false,
+        "link": null,
+        "order": "linked",
+        "strip": null
+      }
+    },
     "SkipInterval": {
       "full": {
         "end_time": 180.5,
@@ -1174,12 +2492,228 @@
         "start_time": 90.5
       }
     },
+    "StripCaption.alone": {
+      "full": {
+        "kind": "alone"
+      },
+      "min": {
+        "kind": "alone"
+      }
+    },
+    "StripCaption.branch": {
+      "full": {
+        "kind": "branch"
+      },
+      "min": {
+        "kind": "branch"
+      }
+    },
+    "StripCaption.cycle": {
+      "full": {
+        "count": 10,
+        "kind": "cycle"
+      },
+      "min": {
+        "count": 10,
+        "kind": "cycle"
+      }
+    },
+    "StripCaption.film": {
+      "full": {
+        "kind": "film"
+      },
+      "min": {
+        "kind": "film"
+      }
+    },
+    "StripCaption.numeral": {
+      "full": {
+        "kind": "numeral",
+        "position": 4
+      },
+      "min": {
+        "kind": "numeral",
+        "position": 4
+      }
+    },
+    "StripCaption.partial": {
+      "full": {
+        "kind": "partial"
+      },
+      "min": {
+        "kind": "partial"
+      }
+    },
+    "StripCaption.position": {
+      "full": {
+        "kind": "position",
+        "position": 4,
+        "total": 5
+      },
+      "min": {
+        "kind": "position",
+        "position": 4,
+        "total": 5
+      }
+    },
+    "StripCaption.side": {
+      "full": {
+        "kind": "side"
+      },
+      "min": {
+        "kind": "side"
+      }
+    },
+    "StripSeams": {
+      "full": {
+        "after": "into",
+        "before": "from"
+      },
+      "min": {
+        "after": null,
+        "before": null
+      }
+    },
+    "StripWire": {
+      "full": {
+        "after": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "progress": {
+              "kind": "none"
+            },
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)",
+            "unaired": true
+          }
+        ],
+        "before": [
+          {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "progress": {
+              "kind": "none"
+            },
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)",
+            "unaired": true
+          }
+        ],
+        "caption": {
+          "kind": "position",
+          "position": 4,
+          "total": 5
+        },
+        "complete": true,
+        "eyebrow": {
+          "position": 4,
+          "total": 5
+        },
+        "kind": "run",
+        "outside": true,
+        "seams": {
+          "after": "into",
+          "before": "from"
+        },
+        "similar_hidden": [
+          "8063"
+        ],
+        "stack": {
+          "front": "7158",
+          "summary": {
+            "films": 2,
+            "main": 5,
+            "posters": [
+              {
+                "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                "episodes": 26,
+                "id": "7158",
+                "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                "start": "2012-10-06",
+                "status": "finished",
+                "subtype": "TV",
+                "title": "JoJo no Kimyou na Bouken (TV)"
+              }
+            ],
+            "recaps": 1,
+            "sides": 1,
+            "total": 9
+          }
+        },
+        "watching": {
+          "entry": {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "progress": {
+              "kind": "none"
+            },
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)",
+            "unaired": true
+          },
+          "episode": 7.5
+        }
+      },
+      "min": {
+        "after": [],
+        "before": [],
+        "caption": {
+          "kind": "position",
+          "position": 4,
+          "total": 5
+        },
+        "complete": false,
+        "eyebrow": null,
+        "kind": "run",
+        "outside": false,
+        "seams": {
+          "after": null,
+          "before": null
+        },
+        "similar_hidden": [],
+        "stack": {
+          "front": "7158",
+          "summary": {
+            "films": 2,
+            "main": 5,
+            "posters": [],
+            "recaps": 1,
+            "sides": 1,
+            "total": 9
+          }
+        },
+        "watching": null
+      }
+    },
     "SwitchEpisode": {
       "full": {
         "episode": 7.0
       },
       "min": {
         "episode": null
+      }
+    },
+    "TitleRef": {
+      "full": {
+        "id": "7158",
+        "title": "JoJo no Kimyou na Bouken (TV)"
+      },
+      "min": {
+        "id": "7158",
+        "title": "JoJo no Kimyou na Bouken (TV)"
       }
     },
     "TokensResponse": {
@@ -1192,6 +2726,140 @@
         "access_token": "at",
         "expires_at_epoch_s": 1700000000,
         "refresh_token": null
+      }
+    },
+    "UpNextView": {
+      "full": {
+        "card": {
+          "card": {
+            "front": "7158",
+            "id": "7730",
+            "name": "JoJo no Kimyou na Bouken",
+            "summary": {
+              "films": 2,
+              "main": 5,
+              "posters": [
+                {
+                  "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                  "episodes": 26,
+                  "id": "7158",
+                  "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                  "start": "2012-10-06",
+                  "status": "finished",
+                  "subtype": "TV",
+                  "title": "JoJo no Kimyou na Bouken (TV)"
+                }
+              ],
+              "recaps": 1,
+              "sides": 1,
+              "total": 9
+            }
+          },
+          "kind": "franchise"
+        },
+        "history": true
+      },
+      "min": {
+        "card": null,
+        "history": false
+      }
+    },
+    "UpNextWire.entry": {
+      "full": {
+        "card": {
+          "entry": {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "progress": {
+              "kind": "none"
+            },
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)",
+            "unaired": true
+          },
+          "kind": "one"
+        },
+        "kind": "entry"
+      },
+      "min": {
+        "card": {
+          "entry": {
+            "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+            "episodes": 26,
+            "id": "7158",
+            "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+            "progress": {
+              "kind": "none"
+            },
+            "start": "2012-10-06",
+            "status": "finished",
+            "subtype": "TV",
+            "title": "JoJo no Kimyou na Bouken (TV)",
+            "unaired": true
+          },
+          "kind": "one"
+        },
+        "kind": "entry"
+      }
+    },
+    "UpNextWire.franchise": {
+      "full": {
+        "card": {
+          "front": "7158",
+          "id": "7730",
+          "name": "JoJo no Kimyou na Bouken",
+          "summary": {
+            "films": 2,
+            "main": 5,
+            "posters": [
+              {
+                "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                "episodes": 26,
+                "id": "7158",
+                "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                "start": "2012-10-06",
+                "status": "finished",
+                "subtype": "TV",
+                "title": "JoJo no Kimyou na Bouken (TV)"
+              }
+            ],
+            "recaps": 1,
+            "sides": 1,
+            "total": 9
+          }
+        },
+        "kind": "franchise"
+      },
+      "min": {
+        "card": {
+          "front": "7158",
+          "id": "7730",
+          "name": "JoJo no Kimyou na Bouken",
+          "summary": {
+            "films": 2,
+            "main": 5,
+            "posters": [
+              {
+                "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+                "episodes": 26,
+                "id": "7158",
+                "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+                "start": "2012-10-06",
+                "status": "finished",
+                "subtype": "TV",
+                "title": "JoJo no Kimyou na Bouken (TV)"
+              }
+            ],
+            "recaps": 1,
+            "sides": 1,
+            "total": 9
+          }
+        },
+        "kind": "franchise"
       }
     },
     "UpcomingEpisode": {
@@ -1252,6 +2920,107 @@
       "min": {
         "kind": "uncensored",
         "show_key": "hianime:frieren-uncensored-18543"
+      }
+    },
+    "ViewEntry": {
+      "full": {
+        "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+        "episodes": 26,
+        "id": "7158",
+        "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+        "progress": {
+          "kind": "none"
+        },
+        "start": "2012-10-06",
+        "status": "finished",
+        "subtype": "TV",
+        "title": "JoJo no Kimyou na Bouken (TV)",
+        "unaired": true
+      },
+      "min": {
+        "cover": null,
+        "episodes": null,
+        "id": "7158",
+        "poster": null,
+        "progress": {
+          "kind": "none"
+        },
+        "start": null,
+        "status": null,
+        "subtype": null,
+        "title": "JoJo no Kimyou na Bouken (TV)",
+        "unaired": false
+      }
+    },
+    "WatchOrderStack": {
+      "full": {
+        "front": "7158",
+        "summary": {
+          "films": 2,
+          "main": 5,
+          "posters": [
+            {
+              "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+              "episodes": 26,
+              "id": "7158",
+              "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+              "start": "2012-10-06",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "JoJo no Kimyou na Bouken (TV)"
+            }
+          ],
+          "recaps": 1,
+          "sides": 1,
+          "total": 9
+        }
+      },
+      "min": {
+        "front": "7158",
+        "summary": {
+          "films": 2,
+          "main": 5,
+          "posters": [],
+          "recaps": 1,
+          "sides": 1,
+          "total": 9
+        }
+      }
+    },
+    "WatchingView": {
+      "full": {
+        "entry": {
+          "cover": "https://media.kitsu.app/anime/7158/cover.jpg",
+          "episodes": 26,
+          "id": "7158",
+          "poster": "https://media.kitsu.app/anime/7158/poster.jpg",
+          "progress": {
+            "kind": "none"
+          },
+          "start": "2012-10-06",
+          "status": "finished",
+          "subtype": "TV",
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": true
+        },
+        "episode": 7.5
+      },
+      "min": {
+        "entry": {
+          "cover": null,
+          "episodes": null,
+          "id": "7158",
+          "poster": null,
+          "progress": {
+            "kind": "none"
+          },
+          "start": null,
+          "status": null,
+          "subtype": null,
+          "title": "JoJo no Kimyou na Bouken (TV)",
+          "unaired": false
+        },
+        "episode": 7.5
       }
     }
   }

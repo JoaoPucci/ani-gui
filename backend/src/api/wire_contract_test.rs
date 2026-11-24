@@ -77,6 +77,8 @@ use crate::commands::card_line::{CardLine, CardRow};
 use crate::commands::continue_guess::RuledOutRequest;
 use crate::commands::download::{DownloadArgs, DownloadProgress, DownloadResponse};
 use crate::commands::external_player::ExternalPlayerKind;
+use crate::commands::franchise_walk::{Chain, Franchise};
+use crate::commands::history::ByKitsuEachArgs;
 use crate::commands::history_link::{LinkArgs, LinkGroupArgs, LinkOutcome, LinkedRow};
 use crate::commands::history_number::HistoryNumber;
 use crate::commands::link_candidates::CandidatesArgs;
@@ -94,6 +96,7 @@ use crate::lanes::Lane;
 use crate::meta::anilist_airing::{AiringStatus, UpcomingEpisode};
 use crate::meta::aniskip::SkipInterval;
 use crate::meta::github::ReleaseInfo;
+use crate::meta::kitsu::FranchiseEntry;
 use crate::meta::kitsu::{
     KitsuAnimeRef, KitsuCoverImage, KitsuEpisode, KitsuEpisodeThumbnail, KitsuPosterImage,
 };
@@ -136,6 +139,9 @@ macro_rules! units {
         listed!($ty { $($ty::$v => $ty::$v),+ } $(except $ex)?)
     };
 }
+
+#[path = "wire_contract_watch_order_test.rs"]
+mod watch_order;
 
 const PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wire-contract.json");
 
@@ -224,6 +230,12 @@ fn responses() -> Value {
     put("SkipInterval", response(&skip(), &skip()));
     put("AiringStatus", response(&airing(true), &airing(false)));
     put("UpcomingEpisode", response(&upcoming(), &upcoming()));
+    put("Franchise", response(&franchise(true), &franchise(false)));
+    put("FranchiseChain", response(&chain(true), &chain(false)));
+    put(
+        "FranchiseEntry",
+        response(&franchise_entry(true), &franchise_entry(false)),
+    );
     // No field of the config can be left out, so its one sample is both.
     // Not `Config::default()`: its Syncplay path differs per platform.
     put("Config", response(&config(), &config()));
@@ -276,6 +288,7 @@ fn responses() -> Value {
             &SwitchEpisode { episode: None },
         ),
     );
+    watch_order::responses(&mut out);
     Value::Object(out)
 }
 
@@ -479,6 +492,61 @@ fn upcoming() -> UpcomingEpisode {
     }
 }
 
+fn franchise_entry(full: bool) -> FranchiseEntry {
+    FranchiseEntry {
+        id: "7158".into(),
+        title: "JoJo no Kimyou na Bouken (TV)".into(),
+        subtype: some(full, "TV".into()),
+        start: some(full, "2012-10-06".into()),
+        episodes: some(full, 26),
+        status: some(full, "finished".into()),
+        poster: some(full, "https://media.kitsu.app/anime/7158/poster.jpg".into()),
+        cover: some(full, "https://media.kitsu.app/anime/7158/cover.jpg".into()),
+    }
+}
+
+fn chain(full: bool) -> Chain {
+    Chain {
+        entries: vec![franchise_entry(full)],
+        links: if full {
+            vec![("7158".into(), "7730".into())]
+        } else {
+            Vec::new()
+        },
+        seams: if full {
+            vec!["7158".into()]
+        } else {
+            Vec::new()
+        },
+    }
+}
+
+fn franchise(full: bool) -> Franchise {
+    let list = |v: FranchiseEntry| if full { vec![v] } else { Vec::new() };
+    Franchise {
+        anchor: "7730".into(),
+        name: "JoJo no Kimyou na Bouken".into(),
+        name_from: "7158".into(),
+        entries: vec![franchise_entry(full)],
+        links: if full {
+            vec![("7158".into(), "8271".into())]
+        } else {
+            Vec::new()
+        },
+        versions: list(franchise_entry(full)),
+        films: list(franchise_entry(full)),
+        sides: list(franchise_entry(full)),
+        recaps: list(franchise_entry(full)),
+        parents: if full {
+            [("7730".to_string(), vec!["7158".to_string()])].into()
+        } else {
+            std::collections::BTreeMap::new()
+        },
+        complete: full,
+        chain: some(full, chain(true)),
+    }
+}
+
 fn config() -> Config {
     Config {
         locale: "pt-BR".into(),
@@ -497,6 +565,7 @@ fn config() -> Config {
         update_include_prereleases: true,
         cache_resolutions: true,
         primary_account: "anilist".into(),
+        watch_order: "released".into(),
     }
 }
 
@@ -695,7 +764,7 @@ fn request<T: DeserializeOwned>(min: &Value) -> Value {
 
 fn requests() -> Value {
     let pkce = json!({ "verifier": "v", "challenge": "c", "method": "plain" });
-    json!({
+    let mut all = json!({
         "PlayArgs": request::<PlayArgs>(&json!({
             "title": "Frieren", "episode": "1", "mode": "sub"
         })),
@@ -718,6 +787,7 @@ fn requests() -> Value {
         })),
         "SearchBody": request::<SearchBody>(&json!({ "query": "frieren" })),
         "KitsuByMalIdsBody": request::<KitsuByMalIdsBody>(&json!({ "mal_ids": [52991] })),
+        "HistoryByKitsuBody": request::<ByKitsuEachArgs>(&json!({ "ids": ["7158"] })),
         "WaitBody": request::<WaitBody>(&json!({ "tickets": [7] })),
         "AuthUrlRequest": request::<AuthUrlRequest>(&json!({ "state": "s", "pkce": pkce })),
         "ExchangeCodeRequest": request::<ExchangeCodeRequest>(&json!({
@@ -743,7 +813,9 @@ fn requests() -> Value {
         "SwitchArgs": request::<SwitchArgs>(&json!({
             "pick": "8063", "card": "hianime:frieren-18542", "episode": 2
         })),
-    })
+    });
+    watch_order::requests(all.as_object_mut().expect("an object"));
+    all
 }
 
 // — Enums ————————————————————————————————————————————————————————————
@@ -757,7 +829,7 @@ fn names<T: Serialize>(all: &[T]) -> Value {
 }
 
 fn enums() -> Value {
-    json!({
+    let mut all = json!({
         "MediaKind": names(&media_kinds()),
         "VersionKind": names(&version_kinds()),
         "UnsettledReason": names(&unsettled_reasons()),
@@ -771,13 +843,15 @@ fn enums() -> Value {
         "Lane": lanes().into_iter().map(Lane::name).collect::<Vec<_>>(),
         "LinkWarning": names(&link_warnings()),
         "OfferKind": names(&offer_kinds()),
-    })
+    });
+    watch_order::enums(all.as_object_mut().expect("an object"));
+    all
 }
 
 /// The lanes the launch handshake announces, by the names the renderer
 /// looks each one's origin up under.
 fn lanes() -> Vec<Lane> {
-    units!(Lane: Api, Stream, Image, Probe, Resolve, Download)
+    units!(Lane: Api, Stream, Image, Probe, Resolve, Download, Franchise)
 }
 
 fn media_kinds() -> Vec<MediaKind> {

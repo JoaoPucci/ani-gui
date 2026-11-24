@@ -63,4 +63,36 @@ proptest! {
         };
         prop_assert_eq!(names(&asked, false, &row), expected);
     }
+
+    /// What `RowIdentity::of` keeps of a row answers every id as the
+    /// whole row would, and it reads neither the mapping nor the title
+    /// matches for a recorded id that stands, nor the title matches for
+    /// a row that recorded none, which `names` never reads there.
+    #[test]
+    fn a_row_s_identity_answers_as_the_whole_row(
+        asked in id(),
+        asked_gone in any::<bool>(),
+        recorded in side(),
+        mapped in side(),
+        titled in proptest::collection::vec(id(), 0..3),
+    ) {
+        let whole = RowIds { recorded: as_ref(&recorded), mapped: as_ref(&mapped), title_matched: &titled };
+        let standing = matches!(recorded, Some((_, false)));
+        let (read_mapping, read_titles) = (std::cell::Cell::new(false), std::cell::Cell::new(false));
+        let identity = RowIdentity::of(
+            recorded.clone(),
+            || {
+                read_mapping.set(true);
+                Ok(mapped.clone())
+            },
+            || {
+                read_titles.set(true);
+                Ok(titled.clone())
+            },
+        )
+        .unwrap();
+        prop_assert_eq!(read_mapping.get(), !standing);
+        prop_assert_eq!(read_titles.get(), !standing && recorded.is_some());
+        prop_assert_eq!(identity.names(&asked, asked_gone), names(&asked, asked_gone, &whole));
+    }
 }

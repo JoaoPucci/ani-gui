@@ -89,7 +89,7 @@ export function sixConnections(): Connections {
 	};
 }
 
-/** The ids of the cancelled requests under `prefix` (`/api/kitsu/franchise/`), sorted. */
+/** The paths of the cancelled requests under `prefix` (`/api/watch-order/`), past it, sorted. */
 export function cancelledUnder(c: Connections, prefix: string): string[] {
 	return c.cancelled
 		.filter((p) => p.startsWith(prefix))

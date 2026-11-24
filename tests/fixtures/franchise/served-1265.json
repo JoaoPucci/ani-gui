@@ -1,0 +1,610 @@
+{
+  "anchor": "1265",
+  "name": "Lupin III",
+  "name_from": "1265",
+  "entries": [
+    {
+      "id": "3997",
+      "title": "Lupin III: Pilot Film",
+      "subtype": "movie",
+      "start": "1969-01-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1265",
+      "title": "Lupin III",
+      "subtype": "TV",
+      "start": "1971-10-24",
+      "episodes": 23,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1278",
+      "title": "Lupin III: Part II",
+      "subtype": "TV",
+      "start": "1977-10-03",
+      "episodes": 155,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1279",
+      "title": "Lupin III: Part III",
+      "subtype": "TV",
+      "start": "1984-03-03",
+      "episodes": 50,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "9958",
+      "title": "Lupin Sansei: Part 4",
+      "subtype": "TV",
+      "start": "2015-10-02",
+      "episodes": 24,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "13749",
+      "title": "Lupin Sansei: Part 5",
+      "subtype": "TV",
+      "start": "2018-04-04",
+      "episodes": 24,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "44618",
+      "title": "Lupin Sansei: Part 6",
+      "subtype": "TV",
+      "start": "2021-10-09",
+      "episodes": 24,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45318",
+      "title": "Lupin Sansei: Part 6 - Jidai",
+      "subtype": "special",
+      "start": "2021-10-10",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46654",
+      "title": "LUPIN ZERO",
+      "subtype": "ONA",
+      "start": "2022-12-16",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "1265",
+      "1278"
+    ],
+    [
+      "1278",
+      "1279"
+    ],
+    [
+      "1279",
+      "9958"
+    ],
+    [
+      "3997",
+      "1265"
+    ],
+    [
+      "9958",
+      "13749"
+    ],
+    [
+      "13749",
+      "44618"
+    ],
+    [
+      "45318",
+      "44618"
+    ],
+    [
+      "46654",
+      "1265"
+    ]
+  ],
+  "versions": [
+    {
+      "id": "1281",
+      "title": "Lupin III: Secret File",
+      "subtype": "OVA",
+      "start": "1978-12-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6910",
+      "title": "Lupin the Third, The Woman Called Fujiko Mine",
+      "subtype": "TV",
+      "start": "2012-04-05",
+      "episodes": 13,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "films": [
+    {
+      "id": "1288",
+      "title": "Lupin III: The Secret of Mamo",
+      "subtype": "movie",
+      "start": "1978-12-16",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1283",
+      "title": "Lupin III: The Castle of Cagliostro",
+      "subtype": "movie",
+      "start": "1979-12-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1286",
+      "title": "Lupin III: The Legend of the Gold of Babylon",
+      "subtype": "movie",
+      "start": "1985-07-13",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1285",
+      "title": "Lupin III: The Fuma Conspiracy",
+      "subtype": "movie",
+      "start": "1987-12-26",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1272",
+      "title": "Lupin III: Farewell to Nostradamus",
+      "subtype": "movie",
+      "start": "1995-04-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1269",
+      "title": "Lupin III: Dead or Alive",
+      "subtype": "movie",
+      "start": "1996-04-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "8340",
+      "title": "Lupin the IIIrd: Jigen Daisuke no Bohyou",
+      "subtype": "movie",
+      "start": "2014-06-21",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12530",
+      "title": "Lupin III:  Goemon Ishikawa's Spray of Blood",
+      "subtype": "movie",
+      "start": "2017-02-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42445",
+      "title": "Lupin Sansei: The First",
+      "subtype": "movie",
+      "start": "2019-12-06",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "49378",
+      "title": "LUPIN THE IIIRD THE MOVIE: Fujimi no Ketsuzoku",
+      "subtype": "movie",
+      "start": "2025-06-27",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "sides": [
+    {
+      "id": "1268",
+      "title": "Lupin III: Goodbye Lady Liberty",
+      "subtype": "special",
+      "start": "1989-04-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1274",
+      "title": "Lupin III: The Hemingway Paper Mystery",
+      "subtype": "special",
+      "start": "1990-07-20",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1276",
+      "title": "Lupin III: Napoleon",
+      "subtype": "special",
+      "start": "1991-08-09",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1273",
+      "title": "Lupin III: Bank of Liberty",
+      "subtype": "special",
+      "start": "1992-07-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1291",
+      "title": "Lupin III: Voyage to Danger",
+      "subtype": "special",
+      "start": "1993-07-23",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1270",
+      "title": "Lupin III: Dragon of Doom",
+      "subtype": "special",
+      "start": "1994-07-29",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1287",
+      "title": "Lupin III: The Pursuit of Harimao's Treasure",
+      "subtype": "special",
+      "start": "1995-08-04",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1289",
+      "title": "Lupin III: The Secret of Twilight Gemini",
+      "subtype": "special",
+      "start": "1996-08-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1292",
+      "title": "Lupin III: Island of Assassins",
+      "subtype": "special",
+      "start": "1997-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1290",
+      "title": "Lupin III: Crisis in Tokyo",
+      "subtype": "special",
+      "start": "1998-07-24",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1284",
+      "title": "Lupin III: The Columbus Files",
+      "subtype": "special",
+      "start": "1999-07-30",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1275",
+      "title": "Lupin III: Missed by a Dollar",
+      "subtype": "special",
+      "start": "2000-07-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1266",
+      "title": "Lupin III: Alcatraz Connection",
+      "subtype": "special",
+      "start": "2001-08-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1280",
+      "title": "Lupin III: Return of Pycal",
+      "subtype": "OVA",
+      "start": "2002-04-03",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1271",
+      "title": "Lupin III Episode 0: The First Contact",
+      "subtype": "special",
+      "start": "2002-07-26",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1277",
+      "title": "Lupin III: Operation Return the Treasure",
+      "subtype": "special",
+      "start": "2003-08-01",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1282",
+      "title": "Lupin III: Stolen Lupin",
+      "subtype": "special",
+      "start": "2004-07-30",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "1267",
+      "title": "Lupin III: An Angel's Tactics - Fragments of a Dream Are the Scent of Murder",
+      "subtype": "special",
+      "start": "2005-07-22",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3823",
+      "title": "Lupin III: Seven Days Rhapsody",
+      "subtype": "special",
+      "start": "2006-09-08",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "2727",
+      "title": "Lupin III: Elusiveness of the Fog",
+      "subtype": "special",
+      "start": "2007-07-27",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3556",
+      "title": "Lupin III: Green vs. Red",
+      "subtype": "OVA",
+      "start": "2008-04-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "3885",
+      "title": "Lupin III: Sweet Lost Night - Magic Lamp's Nightmare Premonition",
+      "subtype": "special",
+      "start": "2008-07-25",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "4431",
+      "title": "Lupin III vs. Detective Conan",
+      "subtype": "special",
+      "start": "2009-03-27",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "5193",
+      "title": "Lupin III: The Last Job",
+      "subtype": "special",
+      "start": "2010-02-12",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6597",
+      "title": "Lupin III: Chi no Kokuin - Eien no Mermaid",
+      "subtype": "special",
+      "start": "2011-12-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6921",
+      "title": "Lupin III: Lupin Ikka Seizoroi",
+      "subtype": "special",
+      "start": "2012-03-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "6922",
+      "title": "Lupin VIII",
+      "subtype": "special",
+      "start": "2012-03-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "41382",
+      "title": "Lupin III CG Pilot",
+      "subtype": "special",
+      "start": "2012-03-28",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7308",
+      "title": "Lupin III: Record of Observations of the East - Another Page",
+      "subtype": "special",
+      "start": "2012-11-02",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7383",
+      "title": "Lupin Shanshei",
+      "subtype": "OVA",
+      "start": "2012-12-19",
+      "episodes": 10,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "7923",
+      "title": "Lupin III: Princess of the Breeze - Hidden City in the Sky",
+      "subtype": "special",
+      "start": "2013-11-15",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "12018",
+      "title": "Lupin III: Part 4 Specials",
+      "subtype": "special",
+      "start": "2015-09-06",
+      "episodes": 2,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11667",
+      "title": "Lupin III: Italian Game",
+      "subtype": "special",
+      "start": "2016-01-08",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "42636",
+      "title": "Lupin III: Prison of the Past",
+      "subtype": "special",
+      "start": "2019-11-29",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "46523",
+      "title": "Lupin III VS Cat's Eye",
+      "subtype": "ONA",
+      "start": "2023-01-27",
+      "episodes": 1,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}

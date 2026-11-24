@@ -54,6 +54,7 @@ fn every_key_this_build_builds_is_declared() {
         crate::commands::kitsu::allmanga_kitsu_played_key("hianime:x-1"),
         crate::commands::kitsu::watched_at_key("hianime:x-1"),
         crate::commands::kitsu::anime_detail_key("12"),
+        crate::commands::franchise::listing_key("12"),
         crate::commands::kitsu::title_match_prefix(None, "x") + "1",
         crate::commands::availability::cache_key("12", "sub"),
         crate::commands::listing_tags::key("hianime:x-1"),

@@ -1,0 +1,243 @@
+{
+  "today": "2026-11-24",
+  "franchises": {
+    "794750e325b0": {
+      "anchor": "42",
+      "name": "Saga: Second Arc",
+      "name_from": "42",
+      "entries": [
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [],
+      "versions": [],
+      "films": [
+        {
+          "id": "60",
+          "title": "Saga: The Movie",
+          "subtype": "movie",
+          "start": "2015-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "8fc71258dd6b": {
+      "anchor": "42",
+      "name": "Saga: Second Arc",
+      "name_from": "42",
+      "entries": [
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    },
+    "b30be6035460": {
+      "anchor": "42",
+      "name": "Saga",
+      "name_from": "10",
+      "entries": [
+        {
+          "id": "10",
+          "title": "Saga",
+          "subtype": "TV",
+          "start": "2010-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "42",
+          "title": "Saga: Second Arc",
+          "subtype": "TV",
+          "start": "2012-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        },
+        {
+          "id": "50",
+          "title": "Saga: Final Arc",
+          "subtype": "TV",
+          "start": "2014-01-01",
+          "episodes": 12,
+          "status": "finished",
+          "poster": null,
+          "cover": null
+        }
+      ],
+      "links": [
+        [
+          "10",
+          "42"
+        ],
+        [
+          "42",
+          "50"
+        ]
+      ],
+      "versions": [],
+      "films": [],
+      "sides": [],
+      "recaps": [],
+      "parents": {},
+      "complete": true
+    }
+  },
+  "cases": [
+    {
+      "name": "detail route — the watch-order strip arriving > holds the strip’s room from the first frame, then gives it to the strip · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "b30be6035460",
+      "resumes": {},
+      "answer": {
+        "history": true,
+        "link": null,
+        "order": "linked",
+        "strip": {
+          "after": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "50",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2014-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga: Final Arc",
+              "unaired": false
+            }
+          ],
+          "before": [
+            {
+              "cover": null,
+              "episodes": 12,
+              "id": "10",
+              "poster": null,
+              "progress": {
+                "kind": "none"
+              },
+              "start": "2010-01-01",
+              "status": "finished",
+              "subtype": "TV",
+              "title": "Saga",
+              "unaired": false
+            }
+          ],
+          "caption": {
+            "kind": "position",
+            "position": 2,
+            "total": 3
+          },
+          "complete": true,
+          "eyebrow": {
+            "position": 2,
+            "total": 3
+          },
+          "kind": "run",
+          "outside": false,
+          "seams": {
+            "after": null,
+            "before": null
+          },
+          "similar_hidden": [
+            "10",
+            "50"
+          ],
+          "stack": {
+            "front": "10",
+            "summary": {
+              "films": 0,
+              "main": 3,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 3
+            }
+          },
+          "watching": null
+        }
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip arriving > holds the link’s room for a show whose franchise link comes alone · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "794750e325b0",
+      "resumes": {},
+      "answer": {
+        "history": true,
+        "link": {
+          "complete": true,
+          "similar_hidden": [
+            "60"
+          ],
+          "stack": {
+            "front": "42",
+            "summary": {
+              "films": 1,
+              "main": 1,
+              "posters": [],
+              "recaps": 0,
+              "sides": 0,
+              "total": 2
+            }
+          }
+        },
+        "order": "linked",
+        "strip": null
+      }
+    },
+    {
+      "name": "detail route — the watch-order strip arriving > holds nothing when the show’s listing foretells nothing · show 42",
+      "route": "show",
+      "id": "42",
+      "order": "linked",
+      "franchise": "8fc71258dd6b",
+      "resumes": {},
+      "answer": {
+        "history": true,
+        "link": null,
+        "order": "linked",
+        "strip": null
+      }
+    }
+  ],
+  "rails": []
+}
