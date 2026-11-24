@@ -69,9 +69,11 @@
  * with a download in flight, which shows the download bar; the
  * player's page with the skip button up and the note on a guessed
  * session; a show's page with its watch-order strip (its tiles and
- * the line for the entry being watched); and the player at the end of
- * a show's last episode, with the Up next card naming the entry after
- * it. Each requires the walk to reach those controls.
+ * the line for the entry being watched); with the watch-order mockups
+ * on, their franchise page (its rows and its play button), opened by
+ * its address; and the player at the end of a show's last episode,
+ * with the Up next card naming the entry after it. Each requires the
+ * walk to reach those controls.
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
@@ -112,9 +114,9 @@
  *
  * Under the mouse: at the desktop size, the forward walks of the four
  * pages (and of the show's page with an episode typed), of the hero's
- * empty and failed states, of the player, of the watch-order strip and
- * of the Up next card rest the mouse on every
- * stop that shows, and a hover style must neither replace its ring nor
+ * empty and failed states, of the player, of the watch-order strip, of
+ * the mockups' franchise page and of the Up next card rest the mouse
+ * on every stop that shows, and a hover style must neither replace its ring nor
  * add a second; the read must find the control under the mouse.
  * Whether a lifted, hovered control's ring stays whole is not checked,
  * and the other state tests (Continue Watching, its link dialog, the
@@ -1360,7 +1362,11 @@ const bleach = JSON.parse(
  *  last arc, with an entry before it and one after, while BLEACH itself
  *  is part-watched, so the strip shows its tiles and the line for the
  *  entry being watched. */
-const stripShow = { ...topRated[0], id: '48015', canonical_title: bleach.entries[3].title };
+const stripShow = {
+	...topRated[0],
+	id: '48015',
+	canonical_title: bleach.entries.find((e) => e.id === '48015')!.title
+};
 
 test("the rings on a show page's watch-order strip are drawn once and whole", async () => {
 	test.setTimeout(240_000);
@@ -1410,6 +1416,52 @@ test("the rings on a show page's watch-order strip are drawn once and whole", as
 				});
 				if (forced) assertForced(stops, at, [], stripNeeds);
 				else assertStops(stops, at, [], stripNeeds);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
+			}
+		}
+	} finally {
+		await stopApp(app);
+	}
+});
+
+/** A show the watch-order mockups' fixtures place mid-run: Gintama°. */
+const mockShow = { ...topRated[0], id: '10083', canonical_title: 'Gintama°' };
+
+test("the rings on the watch-order mockups' franchise page are drawn once and whole", async () => {
+	test.setTimeout(240_000);
+	const { app, page } = await launch();
+	try {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await sizeViewport(page, 1440, 900);
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p.startsWith('/api/kitsu/anime/')) return j(mockShow);
+			return r.fallback();
+		});
+		// Diagnostics turns the mockups on. No strip links to the page
+		// here, so it is opened by its address.
+		await page.evaluate(() =>
+			localStorage.setItem('ani-gui:watch-order-mockups', JSON.stringify({ enabled: true }))
+		);
+		await page.goto(new URL(`/anime/${mockShow.id}/franchise`, page.url()).href, {
+			waitUntil: 'domcontentloaded'
+		});
+		await expect(page.locator('.story-row').first()).toBeVisible({ timeout: 15_000 });
+		const needs = ['.story-row', '.btn-glass'];
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `the mockups' franchise page${forced ? ', forced colours' : ''}, ${key}`;
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, {
+					selectors: needs,
+					hovered: underMouse ? hovered : undefined
+				});
+				if (forced) assertForced(stops, at, [], needs);
+				else assertStops(stops, at, [], needs);
 				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
 			}
 		}
