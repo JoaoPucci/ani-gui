@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HistoryEntry } from '$lib/api';
-import { STRIP_WARM_MAX, stripWarmIds, warmContinueStrip } from './strip-warm';
+import { STRIP_WARM_MAX, createWarmWatch, stripWarmIds, warmContinueStrip } from './strip-warm';
+import type { WarmInFlight, WarmOutcome } from './strip-warm';
 
 function row(id: string, kitsu?: string): HistoryEntry {
 	return { id, ep_no: '1', title: id, ...(kitsu === undefined ? {} : { kitsu_id: kitsu }) };
@@ -43,5 +44,78 @@ describe('warmContinueStrip', () => {
 		await new Promise((r) => setTimeout(r, 0));
 		process.off('unhandledRejection', unhandled);
 		expect(unhandled).not.toHaveBeenCalled();
+	});
+});
+
+describe('warmContinueStrip answer', () => {
+	it('names the shows it carries, and ends answered or failed', async () => {
+		const ok = warmContinueStrip([row('a', '12'), row('b', '21')], {
+			warm: () => Promise.resolve()
+		});
+		expect([...(ok?.ids ?? [])]).toEqual(['12', '21']);
+		await expect(ok?.settled).resolves.toBe('answered');
+		const down = warmContinueStrip([row('a', '12')], {
+			warm: () => Promise.reject(new Error('x'))
+		});
+		await expect(down?.settled).resolves.toBe('failed');
+		expect(warmContinueStrip([row('a')], { warm: () => Promise.resolve() })).toBeNull();
+	});
+});
+
+describe('createWarmWatch', () => {
+	function warmOf(ids: string[]) {
+		let end: (o: WarmOutcome) => void = () => {};
+		const settled = new Promise<WarmOutcome>((r) => (end = r));
+		const warm: WarmInFlight = { ids: new Set(ids), settled };
+		return { warm, end };
+	}
+	const tick = () => new Promise((r) => setTimeout(r, 0));
+
+	it('answers the warm still out for a show it carries', async () => {
+		const watch = createWarmWatch();
+		const { warm, end } = warmOf(['12', '21']);
+		watch.track(warm);
+		const pending = watch.pendingFor('12');
+		expect(pending).not.toBeNull();
+		end('answered');
+		await expect(pending).resolves.toBe('answered');
+	});
+
+	it('answers none for a show no warm carries', () => {
+		const watch = createWarmWatch();
+		watch.track(warmOf(['12']).warm);
+		expect(watch.pendingFor('99')).toBeNull();
+	});
+
+	it('answers none once the warm has ended, answered or failed', async () => {
+		for (const outcome of ['answered', 'failed'] as const) {
+			const watch = createWarmWatch();
+			const { warm, end } = warmOf(['12']);
+			watch.track(warm);
+			end(outcome);
+			await tick();
+			expect(watch.pendingFor('12'), outcome).toBeNull();
+		}
+	});
+
+	it('answers none before any warm, and ignores a strip that sent none', () => {
+		const watch = createWarmWatch();
+		expect(watch.pendingFor('12')).toBeNull();
+		watch.track(null);
+		expect(watch.pendingFor('12')).toBeNull();
+	});
+
+	it('keeps an earlier warm still out when Home sends another', async () => {
+		const watch = createWarmWatch();
+		const first = warmOf(['12']);
+		const second = warmOf(['21']);
+		watch.track(first.warm);
+		watch.track(second.warm);
+		expect(watch.pendingFor('12')).not.toBeNull();
+		expect(watch.pendingFor('21')).not.toBeNull();
+		first.end('answered');
+		await tick();
+		expect(watch.pendingFor('12')).toBeNull();
+		expect(watch.pendingFor('21')).not.toBeNull();
 	});
 });
