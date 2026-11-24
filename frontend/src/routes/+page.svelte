@@ -2252,6 +2252,13 @@
 		border-color: var(--bone-100);
 		box-shadow: 0 8px 20px -8px color-mix(in oklab, var(--accent) 60%, transparent);
 	}
+	/* Under the mouse, a button the keyboard focused keeps the app's ring
+	   in front of its hover shadow, which replaced it. */
+	.btn-primary:focus-visible:hover {
+		box-shadow:
+			var(--ring),
+			0 8px 20px -8px color-mix(in oklab, var(--accent) 60%, transparent);
+	}
 	.btn-ghost {
 		color: var(--bone-200);
 	}
@@ -2409,6 +2416,8 @@
 	.resume-link:focus-visible {
 		outline: 2px solid var(--accent-persimmon);
 		outline-offset: 2px;
+		/* The outline is the ring: the app's (tokens.css) drew a second. */
+		box-shadow: none;
 	}
 	.resume-link :global(.guess-mark) {
 		flex: none;
@@ -2474,8 +2483,14 @@
 		background: var(--accent-oxblood);
 	}
 	.resume-delete:focus-visible {
+		/* Hugging the chip: it sits up against the row's top edge, which
+		   cut a ring drawn further out. The outline is the ring: the
+		   app's (tokens.css) drew a second. */
 		outline: 2px solid var(--accent-oxblood);
-		outline-offset: 2px;
+		outline-offset: 0;
+		box-shadow: none;
+		/* The same in a forced-colours theme (tokens.css). */
+		--ring-forced-offset: 0;
 	}
 
 	/* The row style switch's place: the head of the rows, flush with
