@@ -40,11 +40,12 @@
  * the theme's colours, the spec also reads that what it draws stays in
  * the theme: a switch's thumb inside its track's border, a chosen
  * button's separator and words, a picked result's words, and the bars
- * drawn whole. And in every state it pictures, and with each of the
- * download dialog's modes chosen, it reads what the page computes for
- * every element that opts out, with what it holds, since opting out is
- * inherited: each colour it paints is a system colour, whichever rule
- * paints it. Keyboard focus in this theme
+ * drawn whole. And in every state it pictures, with each of the
+ * download dialog's modes chosen, and with each control that opts out
+ * under the mouse and focused from the keyboard, it reads what the page
+ * computes for every element that opts out, with what it holds, since
+ * opting out is inherited: each colour it paints is a system colour,
+ * whichever rule paints it. Whether keyboard focus shows in this theme
  * is not checked here (focus-rings.spec.ts). Every API request is
  * stubbed, but for the player test's play and stream (see
  * real-play.ts).
@@ -372,22 +373,30 @@ function outOfTheme(page: Page): Promise<string[]> {
 	});
 }
 
-/** `target` focused as the keyboard focuses it (`:focus-visible`), and
- *  what opts out of the theme then painting in its colours: a focused
- *  control's own ring rules name it more specifically than a
- *  forced-colours block may. Focus is let go after. */
-async function inThemeFocused(page: Page, target: Locator, what: string) {
+/** A control under the mouse, then focused as the keyboard focuses it
+ *  (`:focus-visible`), and in each, what opts out of the theme painting
+ *  in its colours: a hovered or focused control's own rules name it
+ *  more specifically than a forced-colours block may, and the opt-out
+ *  brings back what they draw. `hover` is what the mouse rests on and
+ *  `focus` what takes focus (a switch's input, beside the track it
+ *  draws), each the same element unless given apart. The mouse goes
+ *  back to the window's corner and focus is let go after. */
+async function inThemeTouched(page: Page, what: string, target: Locator, focus: Locator = target) {
+	const frames = () =>
+		page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+	await target.first().hover();
+	await frames();
+	await inTheme(page, `${what}, under the mouse`);
+	await page.mouse.move(1, 1);
 	await page.keyboard.press('Shift');
-	await target.first().focus();
+	await focus.first().focus();
 	expect(
-		await target.first().evaluate((el) => el.matches(':focus-visible')),
+		await focus.first().evaluate((el) => el.matches(':focus-visible')),
 		`${what} is focused as the keyboard focuses it`
 	).toBe(true);
-	await page.evaluate(
-		() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-	);
+	await frames();
 	await inTheme(page, `${what}, focused`);
-	await target.first().evaluate((el) => (el as HTMLElement).blur());
+	await focus.first().evaluate((el) => (el as HTMLElement).blur());
 }
 
 /** What opts out of the theme in this state paints in its colours. */
@@ -468,6 +477,9 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		await page.mouse.move(1, 1);
 		const second = pager.locator('.hero-pager-dot').nth(1);
 		await shows(page, second, "the hero pager's current show", () => second.click());
+		for (const dot of await pager.locator('.hero-pager-dot').all()) {
+			await inThemeTouched(page, "a hero pager's dot", dot);
+		}
 
 		// The hero's framing switch and the rows' style switch, shown
 		// while the diagnostics page's toggle is on: a pressed choice.
@@ -490,6 +502,7 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			const label = (await unpressed.textContent())?.trim() ?? '';
 			const choice = page.locator(`${group} button`, { hasText: exactly(label) });
 			await shows(page, choice, `${group}, ${label} pressed`, () => choice.click(), 6);
+			await inThemeTouched(page, `${group}, ${label} pressed`, choice);
 		}
 
 		// The rail: the Settings link, on Home and then on Settings.
@@ -508,6 +521,7 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			6,
 			{ skip: 0 }
 		);
+		await inThemeTouched(page, "the rail's current page", settingsLink);
 
 		// The version link at the rail's foot, on Settings and on About.
 		const foot = page.locator('a.rail-foot');
@@ -522,6 +536,7 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			6,
 			{ skip: 0 }
 		);
+		await inThemeTouched(page, "the rail's version link, current", foot);
 		await settingsLink.click();
 		await expect(page.locator('select.select-input').first()).toBeVisible({ timeout: 15_000 });
 
@@ -562,6 +577,24 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			await still(page);
 		}
 
+		// Each switch on, and then off, under the mouse and focused: its
+		// track draws the state, beside the input that takes focus.
+		for (let n = 0; n < 2; n++) {
+			for (let i = 0; i < count; i++) {
+				const sw = switches.nth(i);
+				await sw.scrollIntoViewIfNeeded();
+				const on = await sw.locator('input').isChecked();
+				await inThemeTouched(
+					page,
+					`switch ${i + 1}, ${on ? 'on' : 'off'}`,
+					sw.locator('.switch-track'),
+					sw.locator('input')
+				);
+				await sw.locator('.switch-track').click();
+				await still(page);
+			}
+		}
+
 		// Each segmented control: another of its buttons chosen.
 		const groups = page.locator('.seg:has(.seg-btn:not(.active):not(:disabled))');
 		const groupCount = await groups.count();
@@ -593,7 +626,10 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 				"a chosen button's separator is the highlight"
 			)
 			.toBe(await systemColour(page, 'Highlight'));
-		await inThemeFocused(page, page.locator('.seg .seg-btn.active'), "a settings' chosen button");
+		for (const chosen of await page.locator('.seg .seg-btn.active').all()) {
+			await chosen.scrollIntoViewIfNeeded();
+			await inThemeTouched(page, "a settings' chosen button", chosen);
+		}
 
 		// A show's Sub/Dub control.
 		await page.locator('a.brand').click();
@@ -631,7 +667,7 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 		// Where the chosen one stays chosen (the other was there to pick).
 		const audioChosen = audio.locator('.seg-btn.active');
 		if (await audioChosen.count()) {
-			await inThemeFocused(page, audioChosen, "a show's chosen Sub/Dub button");
+			await inThemeTouched(page, "a show's chosen Sub/Dub button", audioChosen);
 		}
 
 		// The download bar's progress, shown and hidden.
@@ -674,7 +710,7 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 			await expect(mode).toHaveAttribute('aria-pressed', 'true');
 			await still(page);
 			await inTheme(page, `the download dialog's ${label} mode, chosen`);
-			await inThemeFocused(page, mode, `the download dialog's ${label} mode, chosen`);
+			await inThemeTouched(page, `the download dialog's ${label} mode, chosen`, mode);
 		}
 		await range.click();
 		await still(page);
@@ -867,6 +903,7 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 			// focus is in them. On CI they had faded by the time the
 			// timeline was pictured with the pointer alone; the timeline's
 			// focus holds them up, and their opacity is checked.
+			await inThemeTouched(page, "the player's timeline", scrubber);
 			await scrubber.focus();
 			await expect(page.locator('.player-controls')).toHaveCSS('opacity', '1');
 			const fill = page.locator('.pc-scrubber-fill');
