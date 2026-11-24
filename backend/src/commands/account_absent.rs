@@ -17,8 +17,9 @@ use crate::error::{AniError, Result};
 /// that read answers absent. A read the tracker rate-limits, or refuses
 /// the bearer for, reports that, since it says what to do next; any
 /// other read keeps the write's own error. Every other failure of the
-/// write (a rate limit, a revoked bearer, a 5xx, the network) says
-/// nothing about the entry, is not confirmed, and comes back as it came.
+/// write (a rate limit, a revoked bearer, a 5xx, a 408 or 425 — the
+/// tracker not taking the write this time — the network) says nothing
+/// about the entry, is not confirmed, and comes back as it came.
 ///
 /// # Errors
 /// The write's error, unless the tracker answered that the entry is
@@ -42,14 +43,18 @@ pub(crate) async fn update_unless_absent(
 }
 
 /// Whether a write's `err` leaves open that the entry is gone: the
-/// tracker rejecting it (a 4xx other than absence), or
+/// tracker rejecting it (a 4xx other than absence, 408, 425 or 429), or
 /// answering with no entry. A 401 and a 429 reach here as their own
 /// variants, not as a status.
 fn needs_confirming(err: &AniError) -> bool {
     match err {
-        // The trackers' transports answer a 4xx as `TrackerRejected`;
-        // an `Upstream` 4xx is read the same way, defensively.
-        AniError::Upstream { status } => (400..500).contains(status),
+        // The trackers' transports answer a rejecting 4xx as
+        // `TrackerRejected`; an `Upstream` one is read the same way,
+        // defensively. A 408, 425 or 429 rejects nothing: the tracker
+        // did not take the write this time.
+        AniError::Upstream { status } => {
+            (400..500).contains(status) && !crate::error::is_transient_4xx(*status)
+        }
         AniError::TrackerRejected { .. } | AniError::ParseFailed { .. } => true,
         _ => false,
     }

@@ -446,7 +446,7 @@ impl AniError {
 /// The 4xx statuses that say the upstream did not take the request this
 /// time rather than answer it: a request timeout (408), too early (425)
 /// and a rate limit (429). Asking again can be answered.
-fn is_transient_4xx(status: u16) -> bool {
+pub(crate) fn is_transient_4xx(status: u16) -> bool {
     matches!(status, 408 | 425 | 429)
 }
 
