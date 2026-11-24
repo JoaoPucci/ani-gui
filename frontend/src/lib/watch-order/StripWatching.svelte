@@ -59,6 +59,8 @@
 	.chip:focus-visible {
 		outline: 2px solid var(--bone-100);
 		outline-offset: 2px;
+		/* The outline is the ring: the app's (tokens.css) drew a second. */
+		box-shadow: none;
 	}
 	.chip-poster {
 		position: relative;
