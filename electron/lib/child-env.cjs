@@ -249,7 +249,7 @@ function withUserEnv({ platform, target, launch, execPath, open, realpath, accou
  * or environment:
  *
  * - `forProgram()`, for a program that is not the app (the reduced-motion
- *   read, the AppImage's restart waiter);
+ *   read, the session-end watcher, the AppImage's restart waiter);
  * - `forBackend()`, for the app's own backend: the same, but a portable
  *   AppImage's home and config stay, where the app keeps its data;
  * - `asUser(open)`, for a shell call that starts a program from the
