@@ -397,6 +397,24 @@ test("from a portable AppImage, an account with no home on record keeps the port
   assert.deepStrictEqual(env, { HOME: launch.HOME, XDG_CONFIG_HOME: launch.XDG_CONFIG_HOME, PATH: "/usr/bin" });
 });
 
+test("from an AppImage with only a portable config, the child gets none, account home known or not", () => {
+  // Dropping the portable XDG_CONFIG_HOME needs no account home: the
+  // child's default is $HOME/.config, and HOME here is the user's own.
+  const launch = launchedFromImage({ HOME: "/home/me", PATH: "/usr/bin" });
+  launch.XDG_CONFIG_HOME = `${launch.APPIMAGE}.config`;
+  const env = childEnv({
+    platform: "linux",
+    launch,
+    now: launch,
+    execPath: IMAGE_EXEC,
+    realpath: (p) => p,
+    accountHome: () => {
+      throw new Error("uv_os_get_passwd returned ENOENT");
+    },
+  });
+  assert.deepStrictEqual(env, { HOME: "/home/me", PATH: "/usr/bin" });
+});
+
 test("a HOME or XDG_CONFIG_HOME the user set elsewhere is theirs, from the AppImage too", () => {
   const launch = launchedFromImage({ HOME: "/srv/me", XDG_CONFIG_HOME: "/srv/me/cfg", PATH: "/usr/bin" });
   const env = childEnv({

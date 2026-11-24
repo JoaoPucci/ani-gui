@@ -10,7 +10,16 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const fc = require("fast-check");
 
-const { LAUNCHER_SWITCHES, WAIT_THEN_EXEC, relaunch, relaunchPlan, restart, userArgs } = require("./relaunch.cjs");
+const {
+  EXTRACTION_WAIT_TICKS,
+  LAUNCHER_SWITCHES,
+  WAIT_EXTRACTION_THEN_EXEC,
+  WAIT_THEN_EXEC,
+  relaunch,
+  relaunchPlan,
+  restart,
+  userArgs,
+} = require("./relaunch.cjs");
 
 const appImageEnv = {
   APPIMAGE: "/home/me/Apps/ani-gui-0.18.0-x86_64.AppImage",
@@ -87,8 +96,8 @@ test("in the AppImage, the relaunch waits for this process and then runs the App
 test("an AppImage that runs extracted, not mounted, restarts extracted too", () => {
   // --appimage-extract-and-run (for a system without FUSE) is taken by
   // the runtime and never reaches argv: it shows only as the directory
-  // the runtime extracted into instead of a mount. The runtime reads the
-  // option as the image's first argument.
+  // the runtime extracted into instead of a mount. The runtime acts on
+  // the first argument that starts with `--`, so it goes first.
   const dir = "/tmp/appimage_extracted_0123abcd";
   const plan = relaunchPlan({
     platform: "linux",
@@ -97,8 +106,18 @@ test("an AppImage that runs extracted, not mounted, restarts extracted too", () 
     argv: [`${dir}/ani-gui.bin`, "--enable-wayland-ime", "--some-user-flag"],
     pid: 4242,
   });
-  assert.deepEqual(plan.args.slice(4), [appImageEnv.APPIMAGE, "--appimage-extract-and-run", "--some-user-flag"]);
-  // A mounted image restarts mounted.
+  assert.deepEqual(plan.args, [
+    "-c",
+    WAIT_EXTRACTION_THEN_EXEC,
+    "ani-gui-restart",
+    "4242",
+    dir,
+    String(EXTRACTION_WAIT_TICKS),
+    appImageEnv.APPIMAGE,
+    "--appimage-extract-and-run",
+    "--some-user-flag",
+  ]);
+  // A mounted image restarts mounted, waiting for this process alone.
   const mounted = relaunchPlan({
     platform: "linux",
     env: appImageEnv,
@@ -106,47 +125,49 @@ test("an AppImage that runs extracted, not mounted, restarts extracted too", () 
     argv: [appImageExec, "--some-user-flag"],
     pid: 4242,
   });
+  assert.equal(mounted.args[1], WAIT_THEN_EXEC);
   assert.ok(!mounted.args.includes("--appimage-extract-and-run"));
 });
 
-test("an extracted AppImage's restart waits for the runtime to remove what it extracted", () => {
-  // Run extracted, the runtime forks the app and, once it exits, removes
-  // the extraction; the next launch extracts into the same directory,
-  // named by the image's hash. So the waiter outlives the runtime, this
-  // process's parent, when that parent is the image itself.
-  const dir = "/tmp/appimage_extracted_0123abcd";
-  const of = (exeOf) =>
-    relaunchPlan({
-      platform: "linux",
-      env: { ...appImageEnv, APPDIR: dir },
-      execPath: `${dir}/ani-gui.bin`,
-      argv: [`${dir}/ani-gui.bin`],
-      pid: 4242,
-      ppid: 4241,
-      exeOf,
-      realpath: (p) => p,
-    });
-  assert.equal(of((pid) => (pid === 4241 ? appImageEnv.APPIMAGE : "/other")).args[3], "4241");
-  // A parent that is not the image (it is gone, and something else took
-  // the process over) is not waited on: this process is.
-  assert.equal(of(() => "/usr/lib/systemd/systemd").args[3], "4242");
-  assert.equal(
-    of(() => {
-      throw new Error("ENOENT");
-    }).args[3],
-    "4242",
-  );
-  // Mounted, each launch has a mount of its own: this process is waited on.
-  const mounted = relaunchPlan({
-    platform: "linux",
-    env: appImageEnv,
-    execPath: appImageExec,
-    argv: [appImageExec],
-    pid: 4242,
-    ppid: 4241,
-    exeOf: () => appImageEnv.APPIMAGE,
-  });
-  assert.equal(mounted.args[3], "4242");
+test("an extracted restart runs once the old extraction is gone, or once it has waited long enough", async (t) => {
+  // Run extracted, the runtime removes the extraction after the app has
+  // exited, and the next launch extracts into the same directory (named
+  // by the image's hash): started before the removal ends, it would lose
+  // files to it. Who removes it is the runtime, which is not always this
+  // process's parent (a terminal launch runs the app under the
+  // launcher's shell), so the waiter watches the directory itself. A
+  // runtime told to keep it (NO_CLEANUP) never removes it: the wait is
+  // bounded.
+  if (process.platform === "win32") return t.skip("POSIX shell");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-relaunch-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const run = async (ticks, removeAfterMs) => {
+    const dir = fs.mkdtempSync(path.join(root, "appimage_extracted_"));
+    const out = path.join(root, `ran-${ticks}`);
+    const app = spawn(process.execPath, ["-e", "setTimeout(() => {}, 300)"], { stdio: "ignore" });
+    const exited = new Promise((resolve) => app.on("exit", resolve));
+    let removed = Infinity;
+    if (removeAfterMs !== null) {
+      exited.then(() =>
+        setTimeout(() => {
+          fs.rmSync(dir, { recursive: true, force: true });
+          removed = Date.now();
+        }, removeAfterMs),
+      );
+    }
+    const target = [process.execPath, "-e", `require("fs").writeFileSync(${JSON.stringify(out)}, String(Date.now()))`];
+    const args = ["-c", WAIT_EXTRACTION_THEN_EXEC, "ani-gui-restart", String(app.pid), dir, String(ticks), ...target];
+    const waiter = spawn("/bin/sh", args, { stdio: "ignore" });
+    const start = Date.now();
+    assert.equal(await new Promise((resolve) => waiter.on("exit", resolve)), 0);
+    return { ran: Number(fs.readFileSync(out, "utf-8")), removed, start };
+  };
+  // Removed a little after the app exits: the command waits for it.
+  const removedLate = await run(100, 500);
+  assert.ok(removedLate.ran >= removedLate.removed, "ran only once the extraction was gone");
+  // Never removed: the command runs once the bound (3 ticks of 0.1 s) is up.
+  const kept = await run(3, null);
+  assert.ok(kept.ran - kept.start < 5000, "a kept extraction does not hold the restart up for long");
 });
 
 test("everywhere else the plan is Electron's own relaunch (this binary, these arguments)", () => {
