@@ -63,12 +63,14 @@
  * control does not count. A ring beside or around the control must show
  * against what it is drawn on.
  *
- * Two more tests walk what shows only in some states, at the desktop
+ * More tests walk what shows only in some states, at the desktop
  * size: Home with a guessed Continue Watching card, a pinned sign-in
  * toast and the update badge; the card's link dialog; a show's page
- * with a download in flight, which shows the download bar; and the
+ * with a download in flight, which shows the download bar; the
  * player's page with the skip button up and the note on a guessed
- * session. Each requires the walk to reach those controls.
+ * session; and a show's page with its watch-order strip (its tiles and
+ * the line for the entry being watched). Each requires the walk to
+ * reach those controls.
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
@@ -109,7 +111,8 @@
  *
  * Under the mouse: at the desktop size, the forward walks of the four
  * pages (and of the show's page with an episode typed), of the hero's
- * empty and failed states and of the player rest the mouse on every
+ * empty and failed states, of the player and of the watch-order strip
+ * rest the mouse on every
  * stop that shows, and a hover style must neither replace its ring nor
  * add a second; the read must find the control under the mouse.
  * Whether a lifted, hovered control's ring stays whole is not checked,
@@ -1336,6 +1339,77 @@ test('the rings on Continue Watching, its link dialog, a toast, the update badge
 				// One download in flight: its one action is the whole list.
 				if (forced) assertForced(stops, at, [], ['.dl-row-act'], 1);
 				else assertStops(stops, at, [], ['.dl-row-act'], 1);
+			}
+		}
+	} finally {
+		await stopApp(app);
+	}
+});
+
+/** BLEACH's franchise as the backend serves it (the walk's recorded
+ *  answer, which the frontend's strip tests read too). */
+const bleach = JSON.parse(
+	fs.readFileSync(
+		path.resolve(__dirname, '../../tests/fixtures/franchise/served-244.json'),
+		'utf8'
+	)
+) as { anchor: string; entries: { id: string; title: string }[] };
+
+/** A show the franchise places mid-run: the third part of BLEACH's
+ *  last arc, with an entry before it and one after, while BLEACH itself
+ *  is part-watched, so the strip shows its tiles and the line for the
+ *  entry being watched. */
+const stripShow = { ...topRated[0], id: '48015', canonical_title: bleach.entries[3].title };
+
+test("the rings on a show page's watch-order strip are drawn once and whole", async () => {
+	test.setTimeout(240_000);
+	const { app, page } = await launch();
+	try {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await sizeViewport(page, 1440, 900);
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p === '/api/kitsu/top-rated') return j([stripShow]);
+			if (p.startsWith('/api/kitsu/anime/')) return j(stripShow);
+			// The walk answers from the show asked about: the same
+			// franchise, anchored there.
+			if (p.startsWith('/api/kitsu/franchise/')) {
+				return j({ ...bleach, anchor: decodeURIComponent(p.split('/').pop() ?? '') });
+			}
+			if (p === '/api/history/by-kitsu') {
+				const { ids } = r.request().postDataJSON() as { ids: string[] };
+				return j(
+					Object.fromEntries(
+						ids.map((i) => [
+							i,
+							i === '244' ? { id: 'allmanga-bleach', ep_no: '6', title: 'BLEACH' } : null
+						])
+					)
+				);
+			}
+			return r.fallback();
+		});
+		await remount(page);
+
+		await page.locator(`a[href$="/anime/${stripShow.id}"]`).first().click();
+		await expect.poll(() => page.url()).toContain(`/anime/${stripShow.id}`);
+		await expect(page.locator('.trio .tile').first()).toBeVisible({ timeout: 15_000 });
+		const stripNeeds = ['.trio .tile', '.trio .chip'];
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `the watch-order strip${forced ? ', forced colours' : ''}, ${key}`;
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, {
+					selectors: stripNeeds,
+					hovered: underMouse ? hovered : undefined
+				});
+				if (forced) assertForced(stops, at, [], stripNeeds);
+				else assertStops(stops, at, [], stripNeeds);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
 			}
 		}
 	} finally {
