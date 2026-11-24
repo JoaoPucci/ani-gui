@@ -66,11 +66,18 @@ describe('the walk labels', () => {
 		expect(originLabel('something-new')).toBe('something-new');
 	});
 
-	it('says airing for an airing show, and the status Kitsu gave otherwise', () => {
+	it('says airing for an airing show, and names the status Kitsu gave otherwise', () => {
 		const step = (status: string | null, airing: boolean) =>
 			({ status, airing }) as Pick<HeroWalkStep, 'status' | 'airing'>;
 		expect(statusLabel(step('current', true))).toBe(m.diagnostics_hero_walk_status_airing());
-		expect(statusLabel(step('finished', false))).toBe('finished');
+		expect(statusLabel(step('finished', false))).toBe(m.diagnostics_hero_walk_status_finished());
+		expect(statusLabel(step('upcoming', false))).toBe(m.diagnostics_hero_walk_status_upcoming());
+		expect(statusLabel(step('unreleased', false))).toBe(
+			m.diagnostics_hero_walk_status_unreleased()
+		);
+		expect(statusLabel(step('tba', false))).toBe(m.diagnostics_hero_walk_status_tba());
+		// A status Kitsu adds later is shown as Kitsu names it.
+		expect(statusLabel(step('hiatus', false))).toBe('hiatus');
 		expect(statusLabel(step(null, false))).toBe(m.diagnostics_hero_walk_status_unknown());
 	});
 });

@@ -123,15 +123,16 @@ describe('the Debug page shows the home hero pick', () => {
 		const yes = m.diagnostics_hero_walk_yes();
 		const no = m.diagnostics_hero_walk_no();
 		const art = m.diagnostics_hero_walk_art_cover();
+		const finished = m.diagnostics_hero_walk_status_finished();
 		const taken = (slot: number, reason: string) => m.diagnostics_hero_walk_taken({ slot, reason });
 		expect(rows()).toEqual([
-			['1', 'First Finished', art, 'finished', no, taken(2, m.diagnostics_hero_walk_taken_art())],
-			['2', 'Second Finished', art, 'finished', no, taken(3, m.diagnostics_hero_walk_taken_art())],
+			['1', 'First Finished', art, finished, no, taken(2, m.diagnostics_hero_walk_taken_art())],
+			['2', 'Second Finished', art, finished, no, taken(3, m.diagnostics_hero_walk_taken_art())],
 			[
 				'3',
 				'Third Finished',
 				art,
-				'finished',
+				finished,
 				yes,
 				m.diagnostics_hero_walk_skipped({ reason: m.diagnostics_hero_walk_skipped_not_airing() })
 			],
