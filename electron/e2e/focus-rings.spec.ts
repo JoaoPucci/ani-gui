@@ -1368,10 +1368,11 @@ test("the rings on the watch-order mockups' strip and franchise page are drawn o
 			if (p.startsWith('/api/kitsu/anime/')) return j(mockShow);
 			return r.fallback();
 		});
-		// The mockups on, with the strip's default choices first and then
-		// the other line for the entry being watched, the button to the
-		// franchise page and its bordered highlight. The choices the
-		// storage leaves out are the mockups' defaults (mock/prefs.ts).
+		// The mockups on, with the strip's default choices first, then
+		// the other line for the entry being watched with the button to
+		// the franchise page, then the poster stack's bordered highlight.
+		// The choices the storage leaves out are the mockups' defaults
+		// (mock/prefs.ts).
 		const variants = [
 			{
 				label: 'defaults',
@@ -1382,6 +1383,11 @@ test("the rings on the watch-order mockups' strip and franchise page are drawn o
 				label: 'sentence and button',
 				prefs: { enabled: true, resume: 'sentence', cta: 'button', stackHover: 'border' },
 				needs: ['.trio .tile', '.trio .text-btn', '.trio .btn-franchise']
+			},
+			{
+				label: 'bordered stack',
+				prefs: { enabled: true, stackHover: 'border' },
+				needs: ['.trio .tile', '.trio .stack.hl-border']
 			}
 		];
 		// Home again, so it asks the stubs above. Each show page reads the
