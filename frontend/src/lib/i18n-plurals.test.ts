@@ -12,6 +12,8 @@
 // Messages are looked up by name so the table can name a message the
 // catalogue does not have yet and still type-check; a missing one
 // fails its row rather than the compile.
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { m } from '$lib/paraglide/messages';
 
@@ -485,6 +487,145 @@ const ROWS: Row[] = [
 			25: 'Нельзя скачать больше 25 эпизодов этого тайтла.',
 			11: 'Нельзя скачать больше 11 эпизодов этого тайтла.'
 		}
+	},
+	// The watch order counts shows, groups and ways to continue.
+	{
+		message: 'watchorder_franchise_count',
+		en: { 0: '0 titles', 1: '1 title', 2: '2 titles' },
+		'pt-BR': { 0: '0 animes', 1: '1 anime', 2: '2 animes' },
+		'es-419': { 0: '0 animes', 1: '1 anime', 2: '2 animes' },
+		ru: {
+			1: '1 тайтл',
+			2: '2 тайтла',
+			5: '5 тайтлов',
+			21: '21 тайтл',
+			22: '22 тайтла',
+			25: '25 тайтлов',
+			11: '11 тайтлов'
+		}
+	},
+	{
+		message: 'watchorder_franchise_loop_group',
+		en: {
+			0: '0 linked titles, order unclear',
+			1: '1 linked title, order unclear',
+			2: '2 linked titles, order unclear'
+		},
+		'pt-BR': {
+			0: '0 animes vinculados, ordem incerta',
+			1: '1 anime vinculado, ordem incerta',
+			2: '2 animes vinculados, ordem incerta'
+		},
+		'es-419': {
+			0: '0 animes enlazados, sin orden claro',
+			1: '1 anime enlazado, sin orden claro',
+			2: '2 animes enlazados, sin orden claro'
+		},
+		ru: {
+			1: '1 связанный тайтл, порядок неясен',
+			2: '2 связанных тайтла, порядок неясен',
+			5: '5 связанных тайтлов, порядок неясен',
+			21: '21 связанный тайтл, порядок неясен',
+			22: '22 связанных тайтла, порядок неясен',
+			25: '25 связанных тайтлов, порядок неясен',
+			11: '11 связанных тайтлов, порядок неясен'
+		}
+	},
+	{
+		message: 'watchorder_strip_franchise_stack_films',
+		en: { 0: '0 films and versions', 1: '1 film or version', 2: '2 films and versions' },
+		'pt-BR': { 0: '0 filmes e versões', 1: '1 filme ou versão', 2: '2 filmes e versões' },
+		'es-419': {
+			0: '0 películas y versiones',
+			1: '1 película o versión',
+			2: '2 películas y versiones'
+		},
+		ru: {
+			1: 'Фильмы и версии: 1',
+			2: 'Фильмы и версии: 2',
+			5: 'Фильмы и версии: 5',
+			21: 'Фильмы и версии: 21',
+			22: 'Фильмы и версии: 22',
+			25: 'Фильмы и версии: 25',
+			11: 'Фильмы и версии: 11'
+		}
+	},
+	{
+		message: 'watchorder_strip_franchise_stack_sides',
+		en: { 0: '0 side stories', 1: '1 side story', 2: '2 side stories' },
+		'pt-BR': { 0: '0 histórias paralelas', 1: '1 história paralela', 2: '2 histórias paralelas' },
+		'es-419': { 0: '0 historias paralelas', 1: '1 historia paralela', 2: '2 historias paralelas' },
+		ru: {
+			1: 'Побочные истории: 1',
+			2: 'Побочные истории: 2',
+			5: 'Побочные истории: 5',
+			21: 'Побочные истории: 21',
+			22: 'Побочные истории: 22',
+			25: 'Побочные истории: 25',
+			11: 'Побочные истории: 11'
+		}
+	},
+	{
+		message: 'watchorder_strip_franchise_stack_recaps',
+		en: { 0: '0 recaps', 1: '1 recap', 2: '2 recaps' },
+		'pt-BR': { 0: '0 recapitulações', 1: '1 recapitulação', 2: '2 recapitulações' },
+		'es-419': { 0: '0 resúmenes', 1: '1 resumen', 2: '2 resúmenes' },
+		ru: {
+			1: 'Пересказы: 1',
+			2: 'Пересказы: 2',
+			5: 'Пересказы: 5',
+			21: 'Пересказы: 21',
+			22: 'Пересказы: 22',
+			25: 'Пересказы: 25',
+			11: 'Пересказы: 11'
+		}
+	},
+	{
+		message: 'watchorder_strip_ways',
+		en: { 0: '0 ways to continue', 1: '1 way to continue', 2: '2 ways to continue' },
+		'pt-BR': {
+			0: '0 caminhos para continuar',
+			1: '1 caminho para continuar',
+			2: '2 caminhos para continuar'
+		},
+		'es-419': { 0: '0 formas de continuar', 1: '1 forma de continuar', 2: '2 formas de continuar' },
+		ru: {
+			1: '1 вариант продолжения',
+			2: '2 варианта продолжения',
+			5: '5 вариантов продолжения',
+			21: '21 вариант продолжения',
+			22: '22 варианта продолжения',
+			25: '25 вариантов продолжения',
+			11: '11 вариантов продолжения'
+		}
+	},
+	{
+		message: 'watchorder_strip_unnumbered_cycle',
+		inputs: (n) => ({ others: n }),
+		en: {
+			0: 'Linked with 0 others, order unclear',
+			1: 'Linked with 1 other, order unclear',
+			2: 'Linked with 2 others, order unclear'
+		},
+		'pt-BR': {
+			0: 'Vinculado a 0 outros, ordem incerta',
+			1: 'Vinculado a 1 outro, ordem incerta',
+			2: 'Vinculado a 2 outros, ordem incerta'
+		},
+		'es-419': {
+			0: 'Enlazado con otros 0 animes, sin orden claro',
+			1: 'Enlazado con 1 anime más, sin orden claro',
+			2: 'Enlazado con otros 2 animes, sin orden claro'
+		},
+		ru: {
+			1: 'Связан ещё с 1 тайтлом, порядок неясен',
+			2: 'Связан ещё с 2 тайтлами, порядок неясен',
+			5: 'Связан ещё с 5 тайтлами, порядок неясен',
+			21: 'Связан ещё с 21 тайтлом, порядок неясен',
+			22: 'Связан ещё с 22 тайтлами, порядок неясен',
+			25: 'Связан ещё с 25 тайтлами, порядок неясен',
+			11: 'Связан ещё с 11 тайтлами, порядок неясен'
+		}
 	}
 ];
 
@@ -535,5 +676,56 @@ describe('counted words agree with their count', () => {
 				expect(text, `${locale} ${name}`).not.toMatch(/\(s\)/);
 			}
 		}
+	});
+});
+
+describe("every plural message follows its locale's rule", () => {
+	const root = join(__dirname, '..', '..', 'messages');
+	type Variant = { declarations?: string[]; selectors?: string[]; match?: Record<string, string> };
+	/** `file.key` → each plural variant of the locale's messages. */
+	function variants(locale: string): [string, Variant][] {
+		const out: [string, Variant][] = [];
+		for (const file of readdirSync(join(root, locale)).filter((f) => f.endsWith('.json'))) {
+			const parsed = JSON.parse(readFileSync(join(root, locale, file), 'utf8'));
+			for (const [key, value] of Object.entries(parsed)) {
+				if (!Array.isArray(value)) continue;
+				for (const v of value as Variant[]) {
+					if (v.declarations?.some((d) => d.endsWith(': plural'))) out.push([`${file}.${key}`, v]);
+				}
+			}
+		}
+		return out;
+	}
+
+	// No integer reaches Russian's `other`, so the catch-all shows only
+	// for a count that is not a number, and reads best in `many`. Most
+	// messages let the catch-all be the many form; one that also spells
+	// `many` out has to give the catch-all the same words.
+	it('a Russian catch-all carries the many form', () => {
+		const found = variants('ru')
+			.filter(([, v]) => v.selectors?.length === 1)
+			.filter(([, v]) => {
+				const sel = v.selectors![0];
+				const many = v.match![`${sel}=many`];
+				return many !== undefined && v.match![`${sel}=*`] !== many;
+			})
+			.map(([name]) => name);
+		expect(found).toEqual([]);
+	});
+
+	// CLDR files Portuguese 0 under `one`, so every plural message
+	// matches 0 on its number input ahead of the rule.
+	it('a Portuguese plural matches 0 on its input', () => {
+		const found = variants('pt-BR')
+			.filter(([, v]) => {
+				const input = v
+					.declarations!.find((d) => d.endsWith(': plural'))!
+					.split('=')[1]
+					.trim()
+					.split(':')[0];
+				return !Object.keys(v.match ?? {}).some((k) => k.startsWith(`${input}=0`));
+			})
+			.map(([name]) => name);
+		expect(found).toEqual([]);
 	});
 });

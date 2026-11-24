@@ -343,3 +343,23 @@ describe('the watch order names a parent story apart from the main story', () =>
 		});
 	}
 });
+
+describe("Russian sets a show's name in guillemets", () => {
+	// The watch order names a show inside a sentence or a label, as the
+	// rest of the Russian app does: «{title}».
+	const TITLE_KEYS = [
+		'watchorder.handoff_after',
+		'watchorder.handoff_aria',
+		'watchorder.strip_leads_into',
+		'watchorder.upnext_announce'
+	];
+	it('every name in a watch order message is quoted', () => {
+		expect(
+			offenders(
+				'ru',
+				(s) => /(^|[^«])\{(title|finished)\}|\{(title|finished)\}([^»]|$)/.test(s),
+				TITLE_KEYS
+			)
+		).toEqual([]);
+	});
+});
