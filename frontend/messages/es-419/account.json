@@ -55,7 +55,7 @@
 	"signin_unreachable_message": "No se pudo contactar con {provider} para renovar tu sesión. Puede que todavía sea válida. La app seguirá intentándolo.",
 	"signin_unreachable_action": "Intentar ahora",
 	"signin_unknown_message": "No se pudo renovar tu inicio de sesión en {provider}. Inténtalo de nuevo o vuelve a conectar si sigue fallando.",
-	"signin_unknown_action": "Reintentar",
+	"signin_unknown_action": "Volver a intentar",
 	"keyring_waiting": "Esperando el llavero del sistema. Tus cuentas se cargarán en cuanto responda. Si te lo pide, desbloquéalo.",
 	"primary_badge": "Principal",
 	"primary_make": "Usar como principal",
