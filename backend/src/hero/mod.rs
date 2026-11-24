@@ -22,6 +22,8 @@
 //! each group in trending order. The fill is untouched. With it off the
 //! pick is exactly the rule above.
 
+pub mod last;
+
 use serde::{Deserialize, Serialize};
 
 use crate::flags::{FlagDecl, FlagKind, Resolved};

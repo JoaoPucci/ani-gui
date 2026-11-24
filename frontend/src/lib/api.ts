@@ -1576,6 +1576,92 @@ export function kitsuTrendingAnilist(opts: ReadOptions = {}): Promise<KitsuAnime
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/trending-anilist', opts);
 }
 
+/** What art of its own a trending show has for the home hero
+ *  (backend/src/hero): AniList's banner, a slot of Kitsu's cover, or
+ *  neither. */
+export const HERO_ARTS = ['banner', 'cover', 'none'] as const;
+export type HeroArt = (typeof HERO_ARTS)[number];
+/** Why the hero's pick took a show. */
+export const HERO_TAKEN_BECAUSE = ['art', 'airing_art', 'fill'] as const;
+export type HeroTakenBecause = (typeof HERO_TAKEN_BECAUSE)[number];
+/** Why the hero's pick passed a show over, leaving it to the row. */
+export const HERO_SKIPPED_BECAUSE = ['repeat', 'not_airing', 'hero_full', 'no_art'] as const;
+export type HeroSkippedBecause = (typeof HERO_SKIPPED_BECAUSE)[number];
+
+/** What the pick did with one entry of the trending list. */
+export type HeroVerdict =
+	| { kind: 'taken'; slot: number; because: HeroTakenBecause }
+	| { kind: 'skipped'; because: HeroSkippedBecause };
+
+/** One entry of the trending list, as the hero's pick saw it. */
+export interface HeroWalkStep {
+	/** Its place in the list, 1 first. */
+	rank: number;
+	id: string;
+	title: string;
+	art: HeroArt;
+	status: string | null;
+	airing: boolean;
+	/** Whether the airing preference decided it. */
+	preference_applied: boolean;
+	verdict: HeroVerdict;
+}
+
+/** The walk behind one hero pick: the entries read, in trending order,
+ *  up to the one that settled the hero. */
+export interface HeroWalk {
+	airing_first: boolean;
+	count: number;
+	/** How many entries the list had; those past the last step are in
+	 *  the row. */
+	entries: number;
+	steps: HeroWalkStep[];
+}
+
+/** The hero's shows and the row's, by id, and the walk that chose them. */
+export interface HeroPick {
+	hero: string[];
+	row: string[];
+	walk: HeroWalk;
+}
+
+/** The airing preference, as the Debug page shows it. */
+export interface HeroFlagView {
+	name: string;
+	on: boolean;
+	/** Where the launch's flags came from: `file`, `cache`, `defaults`,
+	 *  `test` or `pending`. */
+	origin: string;
+}
+
+/** The Debug page's view of the last hero pick. */
+export interface HeroWalkView {
+	flag: HeroFlagView;
+	/** Null until Home has asked for a pick this session. */
+	walk: HeroWalk | null;
+}
+
+/** The slots of Kitsu's cover the hero's pick reads. */
+export interface HeroCoverSlots {
+	large?: string | null;
+	original?: string | null;
+	small?: string | null;
+}
+
+/** One trending show, as much of it as the hero's pick reads. */
+export interface HeroShow {
+	id: string;
+	title?: string;
+	status?: string | null;
+	anilist_banner?: string | null;
+	cover_image?: HeroCoverSlots | null;
+}
+
+/** Body of `POST /api/home/hero`. */
+export interface HeroPickBody {
+	shows: HeroShow[];
+}
+
 /** Body of `/api/kitsu/by-mal-ids`. */
 export interface KitsuByMalIdsBody {
 	mal_ids: number[];
