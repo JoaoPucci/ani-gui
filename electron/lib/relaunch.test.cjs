@@ -332,11 +332,15 @@ test("Restart in the AppImage starts the waiter from the user's environment, not
     CHROME_DESKTOP: "ani-gui.desktop",
   };
   const now = { ...launch, GDK_BACKEND: "wayland", NO_AT_BRIDGE: "1", ANI_GUI_BACKEND_PORT: "4100" };
+  // A portable image: the waiter is a program, not the app's backend, so
+  // it gets the account's home (the new image's runtime sets the
+  // portable one again).
+  launch.HOME = now.HOME = `${appImageEnv.APPIMAGE}.home`;
   const spawned = [];
   const { userEnvs } = require("./child-env.cjs");
   const proc = { platform: "linux", env: now, execPath: appImageExec, argv: [appImageExec], pid: 4242 };
   restart(
-    { proc, envs: userEnvs(proc, launch) },
+    { proc, envs: userEnvs(proc, launch, { accountHome: () => appImageEnv.HOME }) },
     {
       app: { relaunch: () => assert.fail("the AppImage does not use Electron's relaunch") },
       spawn: (cmd, args, opts) => (spawned.push(opts.env), { unref: () => {}, on: () => {} }),

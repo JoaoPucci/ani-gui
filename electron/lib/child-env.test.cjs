@@ -529,3 +529,16 @@ test("userEnvs: off Linux every environment is the process's own, untouched", ()
   assert.strictEqual(envs.forBackend(), env);
   assert.strictEqual(envs.asUser(() => 7), 7);
 });
+
+test("userEnvs reads the process's environment at each call, so what main.js exports later is passed on", () => {
+  // main.js builds the environments before it exports ANI_GUI_DEV, and
+  // the dev backend needs it to stay off the installed app's profile.
+  const { userEnvs } = require("./child-env.cjs");
+  const launch = { HOME: "/home/me", PATH: "/usr/bin" };
+  const proc = { platform: "linux", env: { ...launch }, execPath: "/opt/ani-gui/ani-gui.bin" };
+  const envs = userEnvs(proc, launch);
+  proc.env.ANI_GUI_DEV = "1";
+  assert.strictEqual(envs.forBackend().ANI_GUI_DEV, "1");
+  assert.strictEqual(envs.forProgram().ANI_GUI_DEV, "1");
+  assert.strictEqual(envs.asUser(() => proc.env.ANI_GUI_DEV), "1");
+});
