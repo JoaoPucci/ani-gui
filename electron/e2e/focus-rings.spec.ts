@@ -70,8 +70,9 @@
  * player's page with the skip button up and the note on a guessed
  * session; and, with the watch-order mockups on, a show's page with
  * their strip (its tiles, the line for the entry being watched and the
- * franchise link) and the franchise page it links to. Each requires
- * the walk to reach those controls.
+ * franchise link, in both of the line's and the link's variants) and
+ * the franchise page it links to (its rows and its play button). Each
+ * requires the walk to reach those controls.
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
@@ -1367,47 +1368,73 @@ test("the rings on the watch-order mockups' strip and franchise page are drawn o
 			if (p.startsWith('/api/kitsu/anime/')) return j(mockShow);
 			return r.fallback();
 		});
-		// Diagnostics' switch, as it stores it: the mockups on.
-		await page.evaluate(() =>
-			localStorage.setItem('ani-gui:watch-order-mockups', JSON.stringify({ enabled: true }))
-		);
-		await remount(page);
-
-		await page.locator(`a[href$="/anime/${mockShow.id}"]`).first().click();
-		await expect.poll(() => page.url()).toContain(`/anime/${mockShow.id}`);
-		await expect(page.locator('.trio .tile').first()).toBeVisible({ timeout: 15_000 });
-		const stripNeeds = ['.trio .tile', '.trio .chip', '.trio .stack'];
-		for (const forced of [false, true]) {
-			await forcedColours(page, forced);
-			for (const key of ['Tab', 'Shift+Tab'] as const) {
-				const at = `the mockups' strip${forced ? ', forced colours' : ''}, ${key}`;
-				const hovered: Stop[] = [];
-				const underMouse = !forced && key === 'Tab';
-				const stops = await walk(page, key, {
-					selectors: stripNeeds,
-					hovered: underMouse ? hovered : undefined
-				});
-				if (forced) assertForced(stops, at, [], stripNeeds);
-				else assertStops(stops, at, [], stripNeeds);
-				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
+		// The mockups on, with the strip's default choices first and then
+		// the other line for the entry being watched, the button to the
+		// franchise page and its bordered highlight. The choices the
+		// storage leaves out are the mockups' defaults (mock/prefs.ts).
+		const variants = [
+			{
+				label: 'defaults',
+				prefs: { enabled: true },
+				needs: ['.trio .tile', '.trio .chip', '.trio .stack']
+			},
+			{
+				label: 'sentence and button',
+				prefs: { enabled: true, resume: 'sentence', cta: 'button', stackHover: 'border' },
+				needs: ['.trio .tile', '.trio .text-btn', '.trio .btn-franchise']
 			}
+		];
+		// Home again, so it asks the stubs above. Each show page reads the
+		// choices as it mounts.
+		await remount(page);
+		const openShow = async (prefs: Record<string, unknown>) => {
+			await page.evaluate(
+				(p) => localStorage.setItem('ani-gui:watch-order-mockups', JSON.stringify(p)),
+				prefs
+			);
+			await page.locator('a.brand').click();
+			await page.locator(`a[href$="/anime/${mockShow.id}"]`).first().click();
+			await expect.poll(() => page.url()).toContain(`/anime/${mockShow.id}`);
+		};
+		for (const variant of variants) {
+			await openShow(variant.prefs);
+			await expect(page.locator(variant.needs[1]).first()).toBeVisible({ timeout: 15_000 });
+			for (const forced of [false, true]) {
+				await forcedColours(page, forced);
+				for (const key of ['Tab', 'Shift+Tab'] as const) {
+					const at = `the mockups' strip, ${variant.label}${forced ? ', forced colours' : ''}, ${key}`;
+					const hovered: Stop[] = [];
+					const underMouse = !forced && key === 'Tab';
+					const stops = await walk(page, key, {
+						selectors: variant.needs,
+						hovered: underMouse ? hovered : undefined
+					});
+					if (forced) assertForced(stops, at, [], variant.needs);
+					else assertStops(stops, at, [], variant.needs);
+					if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
+				}
+			}
+			await forcedColours(page, false);
 		}
-		await forcedColours(page, false);
 
+		// The franchise page, from the default strip's poster stack.
+		await openShow(variants[0].prefs);
 		await page.locator('.trio .stack').click();
 		await expect.poll(() => page.url()).toContain(`/anime/${mockShow.id}/franchise`);
-		await expect(page.locator('main a[href*="/anime/"]').first()).toBeVisible({
-			timeout: 15_000
-		});
+		await expect(page.locator('.story-row').first()).toBeVisible({ timeout: 15_000 });
+		const franchiseNeeds = ['.story-row', '.btn-glass'];
 		for (const forced of [false, true]) {
 			await forcedColours(page, forced);
 			for (const key of ['Tab', 'Shift+Tab'] as const) {
 				const at = `the mockups' franchise page${forced ? ', forced colours' : ''}, ${key}`;
 				const hovered: Stop[] = [];
 				const underMouse = !forced && key === 'Tab';
-				const stops = await walk(page, key, { hovered: underMouse ? hovered : undefined });
-				if (forced) assertForced(stops, at, []);
-				else assertStops(stops, at, []);
+				const stops = await walk(page, key, {
+					selectors: franchiseNeeds,
+					hovered: underMouse ? hovered : undefined
+				});
+				if (forced) assertForced(stops, at, [], franchiseNeeds);
+				else assertStops(stops, at, [], franchiseNeeds);
 				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
 			}
 		}
