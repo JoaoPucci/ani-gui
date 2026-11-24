@@ -107,7 +107,7 @@ const {
   writeGeometry,
 } = require("./lib/window-geometry.cjs");
 const { bootedWith, launchFlagsOf, waitForLaunchFlags } = require("./lib/launch-flags.cjs");
-const { applyReducedMotion, execText, readerEnv } = require("./lib/reduced-motion.cjs");
+const { applyReducedMotion, execText } = require("./lib/reduced-motion.cjs");
 const { watchSessionEnd } = require("./lib/session-end.cjs");
 const {
   blockFor,
@@ -1270,7 +1270,7 @@ app.whenReady().then(() => {
     platform: process.platform,
     powerMonitor,
     spawn,
-    env: readerEnv(process.env),
+    envs,
     onEnding: (reason) => {
       stopSignals.sessionEnding();
       console.log(`[main] the session is ending (${reason}); quitting`);
