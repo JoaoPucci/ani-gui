@@ -84,6 +84,31 @@ test("in the AppImage, the relaunch waits for this process and then runs the App
   assert.equal(plan.env.APPIMAGE, appImageEnv.APPIMAGE);
 });
 
+test("an AppImage that runs extracted, not mounted, restarts extracted too", () => {
+  // --appimage-extract-and-run (for a system without FUSE) is taken by
+  // the runtime and never reaches argv: it shows only as the directory
+  // the runtime extracted into instead of a mount. The runtime reads the
+  // option as the image's first argument.
+  const dir = "/tmp/appimage_extracted_0123abcd";
+  const plan = relaunchPlan({
+    platform: "linux",
+    env: { ...appImageEnv, APPDIR: dir },
+    execPath: `${dir}/ani-gui.bin`,
+    argv: [`${dir}/ani-gui.bin`, "--enable-wayland-ime", "--some-user-flag"],
+    pid: 4242,
+  });
+  assert.deepEqual(plan.args.slice(4), [appImageEnv.APPIMAGE, "--appimage-extract-and-run", "--some-user-flag"]);
+  // A mounted image restarts mounted.
+  const mounted = relaunchPlan({
+    platform: "linux",
+    env: appImageEnv,
+    execPath: appImageExec,
+    argv: [appImageExec, "--some-user-flag"],
+    pid: 4242,
+  });
+  assert.ok(!mounted.args.includes("--appimage-extract-and-run"));
+});
+
 test("everywhere else the plan is Electron's own relaunch (this binary, these arguments)", () => {
   const cases = [
     // The .deb, through its wrapper's environment and switches.
