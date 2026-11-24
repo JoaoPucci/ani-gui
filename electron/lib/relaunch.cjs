@@ -40,7 +40,10 @@
 //   AppRun added it (the sandbox probe got no answer) or the person
 //   passed it: the new AppRun reads it as the person's own and starts
 //   without the sandbox, as this launch did, without probing again
-//   (lib/appimage-tree.cjs). The waiter gets the user's environment,
+//   (lib/appimage-tree.cjs). An image the runtime ran extracted
+//   (--appimage-extract-and-run, for a system without FUSE, which the
+//   runtime takes before the app sees its arguments) is restarted with
+//   the option again. The waiter gets the user's environment,
 //   which has none of what this image's runtime and AppRun added
 //   ($APPIMAGE, $APPDIR, the mount's entries in PATH, LD_LIBRARY_PATH,
 //   XDG_DATA_DIRS and GSETTINGS_SCHEMA_DIR; lib/child-env.cjs): the new
@@ -59,6 +62,7 @@
 // one, say) leaks both into the terminals it opens.
 
 const fs = require("node:fs");
+const path = require("node:path");
 const { childEnv, ownMount } = require("./child-env.cjs");
 
 /** What the packaged Linux launchers put before the person's
@@ -67,6 +71,12 @@ const { childEnv, ownMount } = require("./child-env.cjs");
  *  The AppImage's AppRun's --no-sandbox is not one of them; it depends
  *  on the launch (lib/appimage-tree.cjs). */
 const LAUNCHER_SWITCHES = ["--enable-wayland-ime"];
+
+/** Where the AppImage runtime puts the app when it runs it extracted
+ *  (type2-runtime: `/tmp/appimage_extracted_<hash>`), and the option
+ *  that asks it to. */
+const EXTRACTED_PREFIX = "appimage_extracted_";
+const EXTRACT_AND_RUN = "--appimage-extract-and-run";
 
 /** The waiter: `$1` is the process to outlive, the rest the command to
  *  run once it is gone. Nothing is interpolated into the script. */
@@ -98,11 +108,15 @@ function userArgs(argv) {
 function relaunchPlan({ platform, env, execPath, argv, pid, realpath }) {
   const image = appImageOf({ platform, env, execPath, realpath });
   if (!image) return { kind: "relaunch" };
-  const { APPDIR: _mount, ...rest } = env;
+  const { APPDIR: mount, ...rest } = env;
+  // Run extracted rather than mounted, the launch had
+  // --appimage-extract-and-run, which the runtime took before argv and
+  // reads only as the image's first argument.
+  const extracted = path.posix.basename(mount).startsWith(EXTRACTED_PREFIX) ? [EXTRACT_AND_RUN] : [];
   return {
     kind: "spawn",
     command: "/bin/sh",
-    args: ["-c", WAIT_THEN_EXEC, "ani-gui-restart", String(pid), image, ...userArgs(argv)],
+    args: ["-c", WAIT_THEN_EXEC, "ani-gui-restart", String(pid), image, ...extracted, ...userArgs(argv)],
     env: rest,
   };
 }
