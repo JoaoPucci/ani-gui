@@ -1242,11 +1242,14 @@
 		box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 60%, transparent);
 	}
 	/* A forced-colours theme drops the track's shadow, and the field
-	   that takes focus is transparent: the track draws an outline. */
+	   that takes focus is transparent: the track draws an outline. A
+	   checked track opts out of the theme (below), which would bring
+	   the shadow back in the accent, so none is drawn. */
 	@media (forced-colors: active) {
 		.switch input:focus-visible + .switch-track {
 			outline: var(--ring-forced, 2px solid CanvasText);
 			outline-offset: var(--ring-forced-offset, 2px);
+			box-shadow: none;
 		}
 	}
 	.switch-state {
