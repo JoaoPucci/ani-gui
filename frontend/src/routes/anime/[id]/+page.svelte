@@ -3018,6 +3018,19 @@
 	.seg-btn:last-child {
 		border-inline-end: 0;
 	}
+	/* Inside the button's box: the track clips what overflows it. On the
+	   chosen button, whose fill is the accent, the ring's colours swap
+	   so it still shows. */
+	.seg-btn:focus-visible {
+		box-shadow: var(--ring-inset);
+		/* A forced-colours theme's outline (tokens.css), inside too. */
+		--ring-forced-offset: -4px;
+	}
+	.seg-btn.active:focus-visible {
+		box-shadow:
+			inset 0 0 0 2px var(--ink-000),
+			inset 0 0 0 4px var(--bone-100);
+	}
 	.seg-btn:hover:not(:disabled):not(.active) {
 		color: var(--bone-100);
 	}
@@ -3272,6 +3285,15 @@
 		z-index: 1;
 		border-color: color-mix(in oklab, var(--accent) 80%, var(--ink-300));
 		box-shadow:
+			0 12px 28px -6px color-mix(in oklab, var(--accent) 28%, transparent),
+			0 4px 10px -4px rgb(0 0 0 / 0.45);
+	}
+
+	/* Under the mouse, a tile the keyboard focused keeps the app's ring
+	   in front of its hover shadow, which replaced it. */
+	.ep-tile:focus-visible:hover:not(.ep-tile-disabled) {
+		box-shadow:
+			var(--ring),
 			0 12px 28px -6px color-mix(in oklab, var(--accent) 28%, transparent),
 			0 4px 10px -4px rgb(0 0 0 / 0.45);
 	}
@@ -3639,6 +3661,14 @@
 			0 0 8px color-mix(in oklab, var(--accent) 50%, transparent),
 			0 0 16px color-mix(in oklab, var(--accent) 25%, transparent);
 	}
+	/* The app's ring on the pill while its field has focus: the field
+	   turns its own off. The Go button inside it rings itself. */
+	.ep-jump-pill:has(.jump-input:focus-visible) {
+		box-shadow:
+			var(--ring),
+			0 0 8px color-mix(in oklab, var(--accent) 50%, transparent),
+			0 0 16px color-mix(in oklab, var(--accent) 25%, transparent);
+	}
 	.jump-input {
 		flex: 1;
 		min-inline-size: 0; /* let the input shrink inside the pill */
@@ -3769,6 +3799,13 @@
 		border-color: color-mix(in oklab, var(--accent) 80%, transparent);
 		background: color-mix(in oklab, var(--accent) 10%, transparent);
 		box-shadow: 0 0 12px color-mix(in oklab, var(--accent) 30%, transparent);
+	}
+	/* Under the mouse, a button the keyboard focused keeps the app's ring
+	   in front of its hover glow, which replaced it. */
+	.ep-pager-mini-btn:focus-visible:hover:not(:disabled) {
+		box-shadow:
+			var(--ring),
+			0 0 12px color-mix(in oklab, var(--accent) 30%, transparent);
 	}
 	.ep-pager-mini-btn:first-child:hover:not(:disabled) svg {
 		transform: translateX(-2px);

@@ -140,12 +140,26 @@
 	.winctl-btn:hover::before {
 		background: color-mix(in srgb, currentColor 16%, transparent);
 	}
+	/* The chip carries the ring. The button is the bar's full height and
+	   meets the window's top edge, so a ring of its own (the app's,
+	   tokens.css) drew a tall rectangle cut off at the top. */
 	.winctl-btn:focus-visible {
 		outline: none;
+		box-shadow: none;
 	}
 	.winctl-btn:focus-visible::before {
-		outline: 2px solid var(--accent, currentColor);
-		outline-offset: 0;
+		box-shadow: var(--ring);
+	}
+	/* A forced-colours theme drops the shadow: the chip's ring is an
+	   outline there, and the button keeps none of its own. */
+	@media (forced-colors: active) {
+		.winctl-btn {
+			--ring-forced: none;
+		}
+		.winctl-btn:focus-visible::before {
+			outline: 2px solid CanvasText;
+			box-shadow: none;
+		}
 	}
 	.winctl-btn--close:hover {
 		color: #fff;

@@ -83,6 +83,8 @@
 	.update-badge:focus-visible {
 		outline: 2px solid var(--brand);
 		outline-offset: 2px;
+		/* The outline is the ring: the app's (tokens.css) drew a second. */
+		box-shadow: none;
 	}
 
 	/* Neon-style glow. Applied as filter: drop-shadow on the icon
