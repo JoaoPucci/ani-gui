@@ -40,7 +40,7 @@ function rig({ spawnThrows = false } = {}) {
       spawned.push({ cmd, args, options });
       return child;
     },
-    env: { PATH: "/usr/bin" },
+    envs: { forProgram: () => ({ PATH: "/usr/bin" }) },
     onEnding: (reason) => endings.push(reason),
     logError: (...args) => errors.push(args),
   });
@@ -121,7 +121,7 @@ test("off Linux nothing is listened for", () => {
       platform,
       powerMonitor,
       spawn: () => (spawned += 1),
-      env: {},
+      envs: { forProgram: () => ({}) },
       onEnding: () => assert.fail("no ending off Linux"),
       logError: () => {},
     });
@@ -164,7 +164,7 @@ test("Electron is told of the shutdown listener, so it holds the inhibitor", () 
     spawn: () => {
       throw new Error("no watcher here");
     },
-    env: {},
+    envs: { forProgram: () => ({}) },
     onEnding: () => {},
     logError: () => {},
   });
@@ -186,6 +186,30 @@ test("the session ends once, however many announcements arrive", () => {
   shutdown();
   child.stdout.write(`${SESSION_OVER}\n`);
   assert.deepEqual(endings, ["logout"]);
+});
+
+test("the watcher runs in a program's environment, without DISPLAY", () => {
+  // It starts system programs (sh, setpriv, gdbus) and needs nothing of
+  // the app's own: the user's PATH to find them and the session bus
+  // address (lib/child-env.cjs userEnvs). With no session bus to find,
+  // gdbus would fall back to D-Bus's X11 autolaunch and start a
+  // dbus-daemon that outlives it, so DISPLAY is not passed on.
+  const spawned = [];
+  watchSessionEnd({
+    platform: "linux",
+    powerMonitor: electronPowerMonitor(),
+    spawn: (cmd, args, options) => {
+      spawned.push(options.env);
+      throw new Error("not started here");
+    },
+    envs: {
+      forProgram: () => ({ PATH: "/usr/bin", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus", DISPLAY: ":0" }),
+      forBackend: () => assert.fail("the watcher is not the app's backend"),
+    },
+    onEnding: () => {},
+    logError: () => {},
+  });
+  assert.deepEqual(spawned, [{ PATH: "/usr/bin", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus" }]);
 });
 
 test("the watcher runs gdbus monitor on gnome-session, in the env given", () => {
