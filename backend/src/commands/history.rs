@@ -86,43 +86,6 @@ pub(crate) fn history_list_through(
         .collect())
 }
 
-/// Find the history entry (if any) for the supplied `kitsu_id`: a row
-/// that records it as the show played, matched with no mapping at
-/// all; a row whose recorded entry Kitsu answered gone (a 404 or 410,
-/// [`super::kitsu_gone`]), matched as one that records none or else by
-/// the title match the home page stored for it; or, for a row that
-/// records none, one whose show id maps to it
-/// — resolving that row's `id`, a provider slug on rows written since
-/// the migration, through the `(show id → kitsu_id)` reverse cache a
-/// successful play stamps.
-/// Of two rows that map to the entry, the one the user watched last
-/// is returned — the latest watched-at stamp, a stamped row over an
-/// unstamped one, then the further progress, then file order — the
-/// rule the Continue Watching strip applies to the same rows, so
-/// the two surfaces name one episode. Returns `None` when:
-///   - The history file is missing or empty.
-///   - No entry records `kitsu_id`, and no entry that records none has
-///     a cached mapping equal to it.
-///
-/// A row that records no id can be in the file without being in the
-/// reverse cache: a play that had no Kitsu id to record, a pairing the
-/// cross-cour guard refused, or a row older than the mapping itself.
-/// Those rows are skipped here and show no Resume affordance until a
-/// play records them — by design, since the alternative is a Kitsu
-/// search per row.
-///
-/// # Errors
-/// Returns [`crate::error::AniError::Io`] when the history file
-/// exists but cannot be read; SQLite errors propagate from the
-/// reverse-cache lookup and from the watched-at stamp's, since a
-/// read that fails says nothing about the row it was for.
-pub fn history_by_kitsu(
-    state: &crate::app::AppState,
-    kitsu_id: &str,
-) -> Result<Option<HistoryEntry>> {
-    by_kitsu::history_by_kitsu_except(state, kitsu_id, |_| false)
-}
-
 /// Every show's watched-at moment, for the Continue Watching strip
 /// to sort and dedupe by: the cache's stamps, and for each history
 /// row the later of its own moment and the cache's, so a row whose
@@ -145,15 +108,18 @@ pub fn watched_at_all(
     Ok(stamps)
 }
 
+// The resume lookup, beside this file for the per-file complexity bar.
+#[path = "history_by_kitsu.rs"]
+mod by_kitsu;
+pub use by_kitsu::{
+    history_by_kitsu, history_by_kitsu_each, history_by_kitsu_except, ByKitsuEachArgs,
+};
+
 // The read path where a failed cache read is an error, for a caller
 // that writes what it reads; beside this file for the per-file
 // complexity bar.
 #[path = "history_checked.rs"]
 mod checked;
-
-#[path = "history_by_kitsu.rs"]
-mod by_kitsu;
-pub use by_kitsu::history_by_kitsu_except;
 pub(crate) use checked::history_list_checked;
 
 #[cfg(test)]

@@ -70,6 +70,9 @@ pub(crate) mod download_tool;
 mod download_tool_output;
 mod download_transfer;
 pub mod external_player;
+pub mod franchise;
+pub mod franchise_first_hop;
+pub mod franchise_walk;
 pub(crate) mod guess_guard;
 pub(crate) mod guessed_from;
 pub mod history;
@@ -156,6 +159,7 @@ pub(crate) mod title_match_rows;
 pub(crate) mod title_match_store;
 pub(crate) mod title_match_year;
 pub(crate) mod tracker_map;
+pub mod watch_order;
 
 pub use app_info::app_info;
 pub use external_player::{open_external_player, LaunchArgs};

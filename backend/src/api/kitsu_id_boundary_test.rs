@@ -175,6 +175,14 @@ async fn the_id_routes_refuse_a_value_that_is_not_an_id() {
         )
         .await;
         assert_refused(kitsu, "GET", &format!("/api/kitsu/airing/{id}"), "").await;
+        assert_refused(kitsu, "GET", &format!("/api/kitsu/franchise/{id}"), "").await;
+        assert_refused(
+            kitsu,
+            "GET",
+            &format!("/api/kitsu/franchise/{id}/first-hop"),
+            "",
+        )
+        .await;
         assert_refused(
             kitsu,
             "GET",
@@ -190,6 +198,22 @@ async fn the_id_routes_refuse_a_value_that_is_not_an_id() {
         )
         .await;
         assert_refused(kitsu, "GET", &format!("/api/history/by-kitsu/{id}"), "").await;
+        for route in ["show", "franchise", "handoff"] {
+            assert_refused(
+                kitsu,
+                "POST",
+                &format!("/api/watch-order/{id}/{route}"),
+                r#"{"today":"2026-11-02"}"#,
+            )
+            .await;
+        }
+        assert_refused(
+            kitsu,
+            "POST",
+            &format!("/api/watch-order/{id}/up-next"),
+            r#"{"today":"2026-11-02","episode":1}"#,
+        )
+        .await;
         assert_refused(
             kitsu,
             "GET",

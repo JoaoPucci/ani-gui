@@ -1,0 +1,118 @@
+{
+	"franchise_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} тайтл",
+				"countPlural=few": "{count} тайтла",
+				"countPlural=many": "{count} тайтлов",
+				"countPlural=*": "{count} тайтла"
+			}
+		}
+	],
+	"franchise_cycle_hint": "Все они связаны друг с другом, поэтому ясного порядка просмотра нет. Они показаны в порядке связей.",
+	"franchise_eyebrow": "Франшиза",
+	"franchise_failed": "Не удалось загрузить франшизу.",
+	"franchise_films": "Фильмы",
+	"franchise_here": "Вы здесь",
+	"franchise_loop_group": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} связанный тайтл, порядок неясен",
+				"countPlural=few": "{count} связанных тайтла, порядок неясен",
+				"countPlural=many": "{count} связанных тайтлов, порядок неясен",
+				"countPlural=*": "{count} связанного тайтла, порядок неясен"
+			}
+		}
+	],
+	"franchise_loop_group_partial": "Связанные тайтлы, порядок неясен",
+	"franchise_main": "Основная история",
+	"franchise_none": "У этого аниме нет других сезонов и связанных тайтлов.",
+	"franchise_order_change": "Изменить в настройках",
+	"franchise_order_note_linked": "В порядке, в котором их связывают базы данных аниме.",
+	"franchise_order_note_released": "В порядке выхода.",
+	"franchise_partial": "Возможно, тайтлов больше, чем показано здесь.",
+	"franchise_recaps": "Пересказы",
+	"franchise_resume": "Продолжить",
+	"franchise_retry": "Повторить",
+	"franchise_sides": "Побочные истории и спецвыпуски",
+	"franchise_start": "Начать с начала",
+	"franchise_unplaced": "Место в порядке просмотра неясно",
+	"franchise_versions": "Другие версии",
+	"handoff_after": "После «{title}»",
+	"handoff_aria": "Далее: {title}, после «{finished}»",
+	"handoff_next": "Далее",
+	"meta_coming": "Выходит {date}",
+	"meta_no_date": "Дата не объявлена",
+	"meta_progress": "ЭП {episode} из {total}",
+	"meta_progress_open": "ЭП {episode}",
+	"meta_watched": "Просмотрено",
+	"setting_aria": "Порядок просмотра",
+	"setting_hint": "Как упорядочены сезоны, фильмы и спецвыпуски серии: как их связывают базы данных аниме или по дате выхода. Связи обычно следуют сюжету, но их ведёт сообщество каждой базы, и в них бывают ошибки.",
+	"setting_key": "Порядок просмотра",
+	"setting_linked": "По связям",
+	"setting_released": "По выходу",
+	"strip_eyebrow": "Порядок просмотра",
+	"strip_first": "Отсюда всё начинается",
+	"strip_franchise_stack_films": "Фильмы и версии: {count}",
+	"strip_franchise_stack_main": "В основной истории: {count}",
+	"strip_franchise_stack_recaps": "Пересказы: {count}",
+	"strip_franchise_stack_sides": "Побочные истории: {count}",
+	"strip_franchise_stack_title": "Смотреть всю франшизу",
+	"strip_join": "Идёт после этих частей ({count})",
+	"strip_last": "Дальше пока ничего нет",
+	"strip_leads_into": "Ведёт к «{title}»",
+	"strip_of_total": "из {total}",
+	"strip_outside": "Вне основной истории",
+	"strip_seam_from": "Из основной истории",
+	"strip_seam_into": "Дальше в основной истории",
+	"strip_position": "{position} из {total}",
+	"strip_position_open": "Позиция {position}",
+	"strip_side_story": "Побочная история",
+	"strip_film": "Фильм",
+	"strip_unnumbered_branch": "Один из вариантов продолжения",
+	"strip_unnumbered_cycle": [
+		{
+			"declarations": ["input others", "local countPlural = others: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Связан ещё с {others} тайтлом, порядок неясен",
+				"countPlural=few": "Связан ещё с {others} тайтлами, порядок неясен",
+				"countPlural=many": "Связан ещё с {others} тайтлами, порядок неясен",
+				"countPlural=*": "Связан ещё с {others} тайтлами, порядок неясен"
+			}
+		}
+	],
+	"strip_watching_key": "Вы смотрите",
+	"strip_ways": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} вариант продолжения",
+				"countPlural=few": "{count} варианта продолжения",
+				"countPlural=many": "{count} вариантов продолжения",
+				"countPlural=*": "{count} варианта продолжения"
+			}
+		}
+	],
+	"strip_word_parent": "Исходная история",
+	"strip_word_parents": "Исходные истории",
+	"strip_word_prequel": "Приквел",
+	"strip_word_prequels": "Приквелы",
+	"strip_word_released_after": "Вышло позже",
+	"strip_word_released_before": "Вышло раньше",
+	"strip_word_sequel": "Сиквел",
+	"strip_word_sequels": "Сиквелы",
+	"upnext_announce": "Далее: {title}",
+	"upnext_choices": "Варианты продолжения",
+	"upnext_coming": "Далее, когда выйдет",
+	"upnext_dismiss": "Закрыть",
+	"upnext_franchise_key": "Вся франшиза",
+	"upnext_franchise_announce": "Далее: вся франшиза, {name}",
+	"upnext_franchise_label": "Вся франшиза: {name}",
+	"upnext_eyebrow": "Далее"
+}

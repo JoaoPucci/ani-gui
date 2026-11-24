@@ -147,6 +147,16 @@ async function launchAppWithStubsOnce(
   await stub("**/api/kitsu/episodes/*", (r) => answer(r, json([])));
   await stub("**/api/kitsu/airing/*", (r) => answer(r, json(null)));
   await stub("**/api/history/by-kitsu/*", (r) => answer(r, json(null)));
+  // The show's watch order, as the backend answers for a show alone:
+  // no strip and no franchise link.
+  await stub("**/api/watch-order/*/show", (r) =>
+    answer(r, json({ order: "linked", strip: null, link: null, history: true })),
+  );
+  // The walk's first hop, which the page holds the strip's room by:
+  // nothing, for a show alone.
+  await stub("**/api/kitsu/franchise/*/first-hop", (r) =>
+    answer(r, json({ signal: "none" })),
+  );
   await stub("**/api/download/default-dir", (r) => answer(r, json(null)));
   await stub("**/api/availability", (r) =>
     answer(r, json({ available: true, episode_count: 12, extra_episodes: [] })),

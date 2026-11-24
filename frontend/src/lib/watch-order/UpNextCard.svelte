@@ -1,0 +1,308 @@
+<!--
+  The player's "Up next" card at a finale (the backend's answer decides
+  which, `$lib/api` `UpNextWire`). It takes the skip pill's corner, surface and accent
+  border, and grows into a card: the next entry's poster beside its
+  title and meta, the ways on, the next entry not aired yet, or, at
+  the end of a chain that leads nowhere, the whole franchise, fanning
+  the strip link's poster stack (./PosterFan) beside its name and what
+  its page holds, in the franchise's own accent.
+
+  It waits for a click, which opens the next entry's show page or the
+  franchise page; it never takes focus by itself, Esc dismisses it
+  while it has focus, and it is announced once, politely.
+-->
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
+	import { imageProxyUrl, type UpNextWire, type ViewEntry } from '$lib/api';
+	import { accentFor } from '$lib/design/accent';
+	import { m } from '$lib/paraglide/messages';
+	import { settle } from '$lib/motion/settle';
+	import MetaLine from './MetaLine.svelte';
+	import PosterFan from './PosterFan.svelte';
+	import { dismissKey, focusBack, focusEntered, focusLeft, keyboardClick } from './focus-return';
+	import { metaLine } from './meta';
+	import { stackCards } from './stack-fan';
+	import { stackTotal } from './strip-copy';
+	import {
+		cardAccentId,
+		cardAnnouncement,
+		cardEntries,
+		cardKey,
+		franchiseCardLabel,
+		franchiseCardMeta
+	} from './up-next-view';
+
+	let {
+		card: shown,
+		announce,
+		onannounce,
+		ondismiss
+	}: {
+		card: UpNextWire;
+		/** False once this viewing has announced the card. */
+		announce: boolean;
+		onannounce: () => void;
+		ondismiss: () => void;
+	} = $props();
+
+	const entries = $derived(shown.kind === 'entry' ? cardEntries(shown) : []);
+	const accent = $derived(accentFor(cardAccentId(shown)));
+	const key = $derived(cardKey(shown));
+	const image = (e: ViewEntry) => imageProxyUrl(e.poster);
+
+	// Filled after mount: a live region that already holds its text
+	// when it appears is not announced by every screen reader.
+	let said = $state('');
+	onMount(() => {
+		if (!announce) return;
+		said = cardAnnouncement(shown);
+		onannounce();
+	});
+
+	// Focus given back on a dismissal: $lib/watch-order/focus-return
+	// has the rules; this keeps its state and focuses its answer.
+	let cameFrom: HTMLElement | null = null;
+	let card = $state<HTMLElement | null>(null);
+	const inCard = (el: Node) => card?.contains(el) ?? false;
+	function onfocusin(e: FocusEvent) {
+		const from = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
+		cameFrom = focusEntered(cameFrom, from, inCard);
+	}
+	function onfocusout(e: FocusEvent) {
+		const to = e.relatedTarget instanceof Node ? e.relatedTarget : null;
+		cameFrom = focusLeft(cameFrom, to, inCard);
+	}
+	function dismiss(byKeyboard: boolean) {
+		const active = document.activeElement;
+		const back = focusBack(cameFrom, byKeyboard, active !== null && inCard(active));
+		ondismiss();
+		if (back?.isConnected) back.focus();
+	}
+
+	function onkeydown(e: KeyboardEvent) {
+		if (dismissKey(e.key)) {
+			e.stopPropagation();
+			dismiss(true);
+		}
+	}
+</script>
+
+{#snippet inner(e: ViewEntry, compact: boolean)}
+	<span class="art" class:compact>
+		{#if image(e)}<img src={image(e)} alt="" />{/if}
+	</span>
+	<span class="text">
+		{#if !compact}<span class="key">{key}</span>{/if}
+		<span class="title">{e.title}</span>
+		<MetaLine segments={metaLine(e)} />
+	</span>
+{/snippet}
+
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+	class="up-next"
+	style:--accent={accent}
+	bind:this={card}
+	{onkeydown}
+	{onfocusin}
+	{onfocusout}
+	transition:settle={{ duration: 200 }}
+>
+	<span class="sr-only" role="status">{said}</span>
+	<button
+		type="button"
+		class="dismiss"
+		aria-label={m.watchorder_upnext_dismiss()}
+		onclick={(e) => dismiss(keyboardClick(e.detail))}
+	>
+		<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+			<path
+				d="M4 4l8 8M12 4l-8 8"
+				stroke="currentColor"
+				stroke-width="1.8"
+				stroke-linecap="round"
+			/>
+		</svg>
+	</button>
+	{#if shown.kind === 'franchise'}
+		{@const franchise = shown.card}
+		<a
+			class="row single franchise"
+			data-fan-host
+			href={resolve('/anime/[id]/franchise', { id: franchise.id })}
+			title={franchise.name}
+			aria-label={franchiseCardLabel(franchise)}
+		>
+			<PosterFan
+				cards={stackCards(franchise.summary.posters, 3)}
+				total={stackTotal(franchise.summary, true)}
+			/>
+			<span class="text">
+				<span class="key">{key}</span>
+				<span class="title">{franchise.name}</span>
+				<span class="franchise-meta">{franchiseCardMeta(franchise.summary)}</span>
+			</span>
+		</a>
+	{:else if shown.card.kind === 'choices'}
+		<p class="key list-key">{key}</p>
+		<ul class="choices">
+			{#each entries as e (e.id)}
+				<li>
+					<a
+						class="row"
+						href={resolve('/anime/[id]', { id: e.id })}
+						title={e.title}
+						aria-label={e.title}
+					>
+						{@render inner(e, true)}
+					</a>
+				</li>
+			{/each}
+		</ul>
+	{:else if shown.card.kind === 'unaired'}
+		<div class="row single">{@render inner(shown.card.entry, false)}</div>
+	{:else}
+		<a
+			class="row single"
+			href={resolve('/anime/[id]', { id: shown.card.entry.id })}
+			title={shown.card.entry.title}
+			aria-label={shown.card.entry.title}
+		>
+			{@render inner(shown.card.entry, false)}
+		</a>
+	{/if}
+</div>
+
+<style>
+	.up-next {
+		position: absolute;
+		z-index: 4;
+		inset-inline-end: calc(1.5rem + var(--player-letterbox-x, 0px));
+		inset-block-end: calc(5rem + var(--player-letterbox-y, 0px));
+		inline-size: min(22rem, calc(100% - 3rem));
+		padding: var(--space-3);
+		color: var(--bone-100);
+		background: rgb(15 15 17 / 0.92);
+		border: 1px solid color-mix(in oklab, var(--accent) 70%, transparent);
+		border-radius: var(--radius-card);
+		box-shadow:
+			0 1px 0 rgb(255 255 255 / 0.08) inset,
+			0 8px 24px rgb(0 0 0 / 0.45),
+			0 2px 8px rgb(0 0 0 / 0.3);
+	}
+	.row {
+		display: grid;
+		grid-template-columns: 4.5rem minmax(0, 1fr);
+		gap: var(--space-3);
+		align-items: center;
+		padding: var(--space-2);
+		margin: calc(-1 * var(--space-2));
+		border-radius: var(--radius-control);
+		color: inherit;
+		transition: background-color var(--dur-fast) var(--ease-out-soft);
+	}
+	a.row:hover {
+		background: color-mix(in oklab, var(--accent) 92%, #000);
+	}
+	a.row:focus-visible {
+		outline: 2px solid var(--bone-100);
+		outline-offset: 2px;
+		box-shadow: none;
+	}
+	.art {
+		position: relative;
+		display: block;
+		aspect-ratio: var(--poster-aspect);
+		overflow: hidden;
+		border-radius: calc(var(--radius-card) - 2px);
+		background: var(--ink-100);
+	}
+	.art.compact {
+		inline-size: 2.75rem;
+	}
+	.art img {
+		position: absolute;
+		inset: 0;
+		inline-size: 100%;
+		block-size: 100%;
+		object-fit: cover;
+	}
+	.text {
+		display: grid;
+		gap: var(--space-1);
+		min-inline-size: 0;
+		padding-inline-end: var(--space-5);
+	}
+	.key {
+		font-size: var(--type-micro);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		color: color-mix(in oklab, var(--bone-100) 75%, transparent);
+	}
+	.list-key {
+		margin: 0 0 var(--space-3);
+		padding-inline-end: var(--space-6);
+	}
+	/* Three lines: the card is narrow, and the words that tell the
+	   next entry apart come last. */
+	.title {
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		font-size: 1rem;
+		font-weight: 600;
+		line-height: 1.3;
+	}
+	.choices {
+		display: grid;
+		gap: var(--space-3);
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.choices .row {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+	.choices .title {
+		font-size: var(--type-meta);
+	}
+	.dismiss {
+		position: absolute;
+		z-index: 1;
+		inset-block-start: var(--space-2);
+		inset-inline-end: var(--space-2);
+		display: grid;
+		place-items: center;
+		inline-size: 1.75rem;
+		block-size: 1.75rem;
+		border-radius: var(--radius-pill);
+		color: var(--bone-300);
+		background: rgb(15 15 17 / 0.7);
+		transition: color var(--dur-fast) var(--ease-out-soft);
+	}
+	.dismiss:hover {
+		color: var(--bone-100);
+	}
+	/* The franchise card fans the strip link's stack (./PosterFan, which
+	   keeps every card inside its own box), so it reads as a page rather
+	   than a title to play. */
+	.row.franchise {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+	.franchise-meta {
+		font-size: var(--type-meta);
+		color: color-mix(in oklab, var(--bone-100) 70%, transparent);
+	}
+	.sr-only {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+</style>

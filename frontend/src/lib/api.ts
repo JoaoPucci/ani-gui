@@ -16,7 +16,7 @@ import { notePlayed } from '$lib/history/guess-plays';
 import type { RetiredSweepReport } from '$lib/diagnostics/retired-sweep';
 import type { CacheReclaimReport } from '$lib/diagnostics/cache-reclaim';
 import { clearAllPositions } from '$lib/play/watch-position';
-import { laneBase, type Lane } from '$lib/backend/lanes';
+import { laneBase, laneIsOwn, type Lane } from '$lib/backend/lanes';
 import { withSecretHeader } from '$lib/backend/secret';
 import { getLocale } from '$lib/paraglide/runtime';
 import { probeLimiter } from '$lib/availability/probe-limiter';
@@ -180,6 +180,20 @@ function windowLanes(): Partial<Record<string, string>> | undefined {
 export function windowLaneBase(lane: Lane): string | null {
 	if (typeof window === 'undefined' || !window.aniGui?.apiBase) return null;
 	return laneBase(window.aniGui.lanes, lane, window.aniGui.apiBase);
+}
+
+/**
+ * Whether `lane` has an origin of its own on the preload bridge, so its
+ * requests do not take the API origin's connections. False with no
+ * bridge (browser-only dev), where every lane falls back to the API.
+ */
+export function windowLaneIsOwn(lane: Lane): boolean {
+	return laneIsOwn(windowLanes(), lane, windowApiBase());
+}
+
+/** The API origin the preload bridge carries, or '' without one. */
+function windowApiBase(): string {
+	return typeof window === 'undefined' ? '' : (window.aniGui?.apiBase ?? '');
 }
 
 /**
@@ -547,6 +561,10 @@ export interface Config {
 	 *  (UI falls back to AniList-first). Drives the topbar chip + the
 	 *  Watch Later rail order, not write-back (which fans to all). */
 	primary_account: string;
+	/** The order franchise surfaces show a run in: the order Kitsu's
+	 *  prequel and sequel links give (the default) or start dates. The
+	 *  backend reads an unknown stored value as `'linked'`. */
+	watch_order: 'linked' | 'released';
 }
 
 /** Single-size thumbnail Kitsu exposes for episodes (no tiny/small variants). */
@@ -875,6 +893,12 @@ export function historyByKitsu(
 		`/api/history/by-kitsu/${encodeURIComponent(kitsuId)}`,
 		opts
 	);
+}
+
+/** `POST /api/history/by-kitsu`'s body (backend
+ *  `commands::history::ByKitsuEachArgs`). */
+export interface HistoryByKitsuBody {
+	ids: readonly string[];
 }
 
 /** The episode one history row reads as now, and the number it read as
@@ -1649,6 +1673,443 @@ export function airingGet(
 	return getJson<AiringStatus>(`/api/kitsu/airing/${encodeURIComponent(kitsuId)}${qs}`, {
 		signal: opts.signal
 	});
+}
+
+/** One entry of a franchise, as `GET /api/kitsu/franchise/:id`
+ *  serves it (backend `meta::kitsu::FranchiseEntry`). */
+export interface FranchiseEntry {
+	id: string;
+	/** Kitsu's canonical title. */
+	title: string;
+	/** Kitsu's subtype as served (`TV`, `movie`, `OVA`, `ONA`,
+	 *  `special`, …), or null when Kitsu has none. */
+	subtype: string | null;
+	/** `YYYY-MM-DD`, or null. */
+	start: string | null;
+	episodes: number | null;
+	status: string | null;
+	/** The poster's medium size, else small, else the original. */
+	poster: string | null;
+	/** The cover's large size, else the original. */
+	cover: string | null;
+}
+
+/** The franchise around an anime (backend
+ *  `commands::franchise_walk::Franchise`). Every list but `entries` is
+ *  sorted by start (unknown last), then numeric id; an id appears in
+ *  one list at most. The backend's walk decides the name; ordering,
+ *  positions and layout are the frontend's to compute. */
+export interface Franchise {
+	/** The id asked about. */
+	anchor: string;
+	/** The franchise's name: the title of the main story's first series
+	 *  by start, else of its first entry, without Kitsu's format suffix
+	 *  where nothing else in the franchise would then read the same. */
+	name: string;
+	/** The main-story entry the name comes from: the franchise page's
+	 *  artwork and the front card of the strip's poster stack. */
+	name_from: string;
+	/** The main story: start order, then numeric id. The anchor is
+	 *  among them unless it is a side story, or an entry the main story
+	 *  leaves out, listed around it (and then, mostly, on its `chain`). */
+	entries: FranchiseEntry[];
+	/** Prequel → sequel pairs between two run members. */
+	links: [string, string][];
+	/** Other versions of the run's entries. */
+	versions: FranchiseEntry[];
+	/** Films around the run. */
+	films: FranchiseEntry[];
+	/** Side stories, spin-offs and the rest around the run. */
+	sides: FranchiseEntry[];
+	/** Recaps. */
+	recaps: FranchiseEntry[];
+	/** A side-story anchor outside any run → its parent stories in the
+	 *  run, or, where the main story leaves them all out, in its
+	 *  `chain`, in start order. Empty otherwise. */
+	parents: Record<string, string[]>;
+	/** False when the walk stopped at its bound or a listing was cut
+	 *  short. */
+	complete: boolean;
+	/** The page's own chain, when the main story leaves the page out,
+	 *  or the chain a side story whose parents it leaves out is drawn on
+	 *  (its earliest parent's); absent otherwise. */
+	chain?: FranchiseChain;
+}
+
+/** A chain outside the main story (backend
+ *  `commands::franchise_walk::Chain`): the franchise's entries outside
+ *  it joined by prequel and sequel links to the page (or, for a side
+ *  story, to its parent), and the main-story titles one of them is
+ *  linked to, its seams. */
+export interface FranchiseChain {
+	/** Its own titles and its seams: start order, then numeric id. */
+	entries: FranchiseEntry[];
+	/** Prequel → sequel pairs between two of its entries. */
+	links: [string, string][];
+	/** The ids of `entries` that are main-story titles. */
+	seams: string[];
+}
+
+/** What the show page will draw once the franchise walk answers, as
+ *  the show's own relation listing (and, where needed, the show's
+ *  detail and the walk's parent check) foretells it (backend
+ *  `commands::franchise_walk::first_hop`): the watch-order strip, the
+ *  franchise link alone, or nothing. Only `strip` can turn out wrong. */
+export type FirstHop = 'strip' | 'link' | 'none';
+
+/** `GET /api/kitsu/franchise/:id/first-hop`'s answer. */
+export interface FirstHopAnswer {
+	signal: FirstHop;
+}
+
+/** The first hop of `kitsuId`'s franchise walk, read through the
+ *  walk's own reads and caches so the two never disagree on the data.
+ *  It waits on Kitsu as the walk does, so the page that asked passes
+ *  `signal` and cancels it when the viewer leaves. */
+export async function kitsuFranchiseFirstHop(
+	kitsuId: string,
+	opts: ReadOptions = {}
+): Promise<FirstHop> {
+	const { signal } = await getJson<FirstHopAnswer>(
+		`/api/kitsu/franchise/${encodeURIComponent(kitsuId)}/first-hop`,
+		{ ...opts, lane: 'franchise' }
+	);
+	return signal;
+}
+
+// — The watch order (backend `crate::watch_order::wire`) ——————————————
+//
+// Every decision the watch-order surfaces draw — order, numbering,
+// grouping, progress, what follows a finale, Continue's hand-off — is
+// the backend's (AGENTS §14). These are its answers; the renderer words
+// and draws them.
+
+/** The order setting's two values (backend `WatchOrder`). */
+export type WatchOrder = 'linked' | 'released';
+
+/** An entry's progress as a card reads it. */
+export type ProgressView =
+	| { kind: 'none' }
+	| { kind: 'watched' }
+	| { kind: 'partway'; episode: number; total: number | null };
+
+/** An entry as a watch-order card shows it: the franchise entry, whether
+ *  it has aired on the viewer's day, and its progress. */
+export interface ViewEntry extends FranchiseEntry {
+	unaired: boolean;
+	progress: ProgressView;
+}
+
+/** Whether the strip shows a run member or a side story beside the run. */
+export type StripKind = 'run' | 'side';
+
+/** A main-story title beside a chain's own: the one it comes from, or
+ *  the one it leads into. */
+export type Seam = 'from' | 'into';
+
+/** What the strip's centre says about the entry's place. */
+export type StripCaption =
+	| { kind: 'position'; position: number; total: number }
+	| { kind: 'numeral'; position: number }
+	| { kind: 'partial' }
+	| { kind: 'side' }
+	| { kind: 'film' }
+	| { kind: 'cycle'; count: number }
+	| { kind: 'branch' }
+	| { kind: 'alone' };
+
+/** "05 of 09" in the masthead eyebrow. */
+export interface Eyebrow {
+	position: number;
+	total: number;
+}
+
+/** Where a strip column holds a main-story title the chain meets, alone. */
+export interface StripSeams {
+	before: Seam | null;
+	after: Seam | null;
+}
+
+/** The counts behind the "Whole franchise" control, and up to three
+ *  entries with a poster to fan out, the front entry first. */
+export interface FranchiseSummary {
+	total: number;
+	main: number;
+	/** Films and other versions. */
+	films: number;
+	sides: number;
+	recaps: number;
+	posters: FranchiseEntry[];
+}
+
+/** The poster stack that links to the franchise page. */
+export interface WatchOrderStack {
+	/** The main-story entry it is fronted by. */
+	front: string;
+	summary: FranchiseSummary;
+}
+
+/** The entry the viewer is part-way through. */
+export interface WatchingView {
+	entry: ViewEntry;
+	episode: number;
+}
+
+/** The show page's strip. */
+export interface StripWire {
+	kind: StripKind;
+	caption: StripCaption;
+	/** Only where the run is one line. */
+	eyebrow: Eyebrow | null;
+	/** False for a franchise read in part: counts may be short. */
+	complete: boolean;
+	/** The page is outside the main story, drawn on a chain. */
+	outside: boolean;
+	seams: StripSeams;
+	before: ViewEntry[];
+	after: ViewEntry[];
+	/** The entry being watched, when no tile shows it. */
+	watching: WatchingView | null;
+	/** The link to the franchise page, stacked from the main story. */
+	stack: WatchOrderStack;
+	/** Ids "Similar titles" leaves out: the rest of the franchise. */
+	similar_hidden: string[];
+}
+
+/** The franchise link a show page shows on its own, with no strip. */
+export interface LinkWire {
+	stack: WatchOrderStack;
+	complete: boolean;
+	similar_hidden: string[];
+}
+
+/** `POST /api/watch-order/:id/show`'s answer. */
+export interface ShowView {
+	order: WatchOrder;
+	strip: StripWire | null;
+	link: LinkWire | null;
+	/** Whether the history rows were read: false where they could not
+	 *  be, and the answer carries no progress for that reason. A page
+	 *  reading again after a history link keeps what it drew. */
+	history: boolean;
+}
+
+/** One title of the franchise page's main story. */
+export interface RowWire {
+	entry: ViewEntry;
+	/** The oversized numeral, on numbered stretches only. */
+	position: number | null;
+	/** Share watched, 0–1, for the progress line. */
+	share: number;
+	/** The title this one leads into, where it only leads into another. */
+	leads_into: string | null;
+	/** The title the page was opened from. */
+	here: boolean;
+}
+
+/** One part of the franchise page's main story. */
+export type SectionWire =
+	| { kind: 'line'; rows: RowWire[]; unplaced: boolean }
+	| { kind: 'ways'; ways: RowWire[][] }
+	| { kind: 'group'; rows: RowWire[] };
+
+/** Where Resume goes. */
+export interface ResumeWire {
+	entry: ViewEntry;
+	episode: number;
+	/** Its number, for a franchise read whole. */
+	position: number | null;
+}
+
+/** A title the franchise page's trail links back to. */
+export interface TitleRef {
+	id: string;
+	title: string;
+}
+
+/** The franchise page. */
+export interface FranchiseWire {
+	name: string;
+	/** The title the name comes from: the masthead's artwork and accent. */
+	art: FranchiseEntry;
+	/** Every title the page lists; null for a franchise read in part. */
+	total: number | null;
+	/** The franchise is the show alone, from a read whole. */
+	alone: boolean;
+	resume: ResumeWire | null;
+	/** Where "Start from the beginning" goes. */
+	start: ViewEntry | null;
+	sections: SectionWire[];
+	versions: FranchiseEntry[];
+	films: FranchiseEntry[];
+	sides: FranchiseEntry[];
+	recaps: FranchiseEntry[];
+	/** How many recaps the heading counts: null for a read in part. */
+	recap_count: number | null;
+	/** The franchise read stopped early. */
+	partial: boolean;
+	/** The title the page was opened from, where the page lists it. */
+	opened_from: TitleRef | null;
+}
+
+/** `POST /api/watch-order/:id/franchise`'s answer. */
+export interface FranchiseView {
+	order: WatchOrder;
+	page: FranchiseWire | null;
+	/** Whether the history rows were read: false where they could not
+	 *  be, and the answer carries no progress for that reason. A page
+	 *  reading again after a history link keeps what it drew. */
+	history: boolean;
+}
+
+/** What follows a finale, its entries as the card shows them. */
+export type NextWire =
+	| { kind: 'one'; entry: ViewEntry }
+	| { kind: 'unaired'; entry: ViewEntry }
+	| { kind: 'choices'; entries: ViewEntry[] };
+
+/** The card at the last title of a chain that leads nowhere: the
+ *  franchise page, by its name, fronted by the entry the name comes from. */
+export interface ChainEndCard {
+	name: string;
+	/** The id the franchise page is opened for. */
+	id: string;
+	front: string;
+	summary: FranchiseSummary;
+}
+
+/** The one card the player shows at a finale. */
+export type UpNextWire =
+	| { kind: 'entry'; card: NextWire }
+	| { kind: 'franchise'; card: ChainEndCard };
+
+/** `POST /api/watch-order/:id/up-next`'s answer. */
+export interface UpNextView {
+	card: UpNextWire | null;
+	/** Whether the history rows were read: false where they could not
+	 *  be, and the answer carries no progress for that reason. A page
+	 *  reading again after a history link keeps what it drew. */
+	history: boolean;
+}
+
+/** A Continue card moved on: the entry played through, and the one after it. */
+export interface Handoff {
+	finished: FranchiseEntry;
+	next: FranchiseEntry;
+}
+
+/** `POST /api/watch-order/:id/handoff`'s answer. */
+export interface HandoffAnswer {
+	handoff: Handoff | null;
+}
+
+/** What a Continue row's Kitsu match says about the entry it plays. */
+export interface HandoffMatch {
+	id: string;
+	status?: string | null;
+	episode_count?: number | null;
+}
+
+/** One Continue row as the hand-off's ask reads it. */
+export interface AskRow {
+	row_id: string;
+	matched?: HandoffMatch | null;
+	ep_no: string;
+	/** The availability probe's episode count, once it answers. */
+	playable_count?: number | null;
+	/** The player kept a resume position for the row's last episode. */
+	left_part_way?: boolean;
+}
+
+/** A history row as the played set reads it. */
+export interface PlayedRow {
+	id: string;
+	kitsu_id?: string | null;
+}
+
+/** `POST /api/watch-order/rail`'s body: what Home has read so far. */
+export interface RailRequest {
+	rows: AskRow[];
+	history: PlayedRow[];
+	/** Each history row's match id, or null for a row matched to nothing;
+	 *  a row still being matched is absent. */
+	matches: Record<string, string | null>;
+	/** The hand-offs read so far, by the Kitsu id that asked. */
+	series: Record<string, Handoff | null>;
+}
+
+/** Home's rail: which ids to read a hand-off for, and the hand-offs shown. */
+export interface RailView {
+	asks: Record<string, string | null>;
+	handoffs: Record<string, Handoff>;
+}
+
+/** `{ today }` for the watch-order reads. */
+export interface WatchOrderDayBody {
+	/** The viewer's local day, `YYYY-MM-DD`. */
+	today: string;
+}
+
+/** `{ today, episode }` for the player's Up next read. */
+export interface WatchOrderUpNextBody extends WatchOrderDayBody {
+	episode: number;
+}
+
+const watchOrderPath = (kitsuId: string, what: string) =>
+	`/api/watch-order/${encodeURIComponent(kitsuId)}/${what}`;
+
+/** What the show page draws from the watch order. The backend walks the
+ *  franchise while the response is open, so it goes on the franchise
+ *  lane and the page cancels it with `signal` when it goes. */
+export function watchOrderShow(
+	kitsuId: string,
+	body: WatchOrderDayBody,
+	opts: ReadOptions = {}
+): Promise<ShowView> {
+	return postJson<ShowView>(watchOrderPath(kitsuId, 'show'), body, { ...opts, lane: 'franchise' });
+}
+
+/** What the franchise page draws, on the franchise lane. */
+export function watchOrderFranchise(
+	kitsuId: string,
+	body: WatchOrderDayBody,
+	opts: ReadOptions = {}
+): Promise<FranchiseView> {
+	return postJson<FranchiseView>(watchOrderPath(kitsuId, 'franchise'), body, {
+		...opts,
+		lane: 'franchise'
+	});
+}
+
+/** The player's Up next card for `episode`, on the franchise lane. */
+export function watchOrderUpNext(
+	kitsuId: string,
+	body: WatchOrderUpNextBody,
+	opts: ReadOptions = {}
+): Promise<UpNextView> {
+	return postJson<UpNextView>(watchOrderPath(kitsuId, 'up-next'), body, {
+		...opts,
+		lane: 'franchise'
+	});
+}
+
+/** A Continue row's hand-off from `kitsuId`, on the franchise lane. */
+export async function watchOrderHandoff(
+	kitsuId: string,
+	body: WatchOrderDayBody,
+	opts: ReadOptions = {}
+): Promise<Handoff | null> {
+	const answer = await postJson<HandoffAnswer>(watchOrderPath(kitsuId, 'handoff'), body, {
+		...opts,
+		lane: 'franchise'
+	});
+	return answer.handoff;
+}
+
+/** Home's rail over what it has read so far. Pure on the backend's
+ *  side: no walk, so it goes on the API lane. */
+export function watchOrderRail(body: RailRequest, opts: ReadOptions = {}): Promise<RailView> {
+	return postJson<RailView>('/api/watch-order/rail', body, opts);
 }
 
 export function kitsuTopRated(opts: ReadOptions = {}): Promise<KitsuAnimeRef[]> {

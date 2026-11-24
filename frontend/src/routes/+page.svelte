@@ -72,6 +72,9 @@
 		kitsuAnimeDetail,
 		kitsuByMalIds,
 		kitsuEpisodes,
+		windowLaneIsOwn,
+		watchOrderHandoff,
+		watchOrderRail,
 		kitsuTopRated,
 		kitsuTrendingAnilist,
 		markWatched,
@@ -80,8 +83,10 @@
 		watchedAtAll,
 		type Config,
 		type CreateSessionResponse,
+		type Handoff,
 		type HistoryEntry,
 		type KitsuAnimeRef,
+		type RailView,
 		type KitsuEpisode
 	} from '$lib/api';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -159,6 +164,11 @@
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
+	import HandoffCard from '$lib/watch-order/HandoffCard.svelte';
+	import { createHandoffReads, handoffWalksAtOnce } from '$lib/watch-order/handoff-reads';
+	import { railRequest } from '$lib/watch-order/rail-request';
+	import { latestRead } from '$lib/watch-order/latest-read';
+	import { localDay } from '$lib/watch-order/entry';
 	import SkeletonRow from '$lib/components/SkeletonRow.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
@@ -1335,6 +1345,69 @@
 
 	// epOf / titleOf were absorbed into resolveHistoryEntry — see
 	// $lib/history/resolve.ts (target.displayEpisode / displayTitle).
+
+	// Continue Watching's hand-off: a row whose finale was played
+	// through moves on to the show that comes next, once that row's
+	// hand-off has been read. The backend decides it all: which rows ask
+	// (`asks`), each asking series' hand-off (`watchOrderHandoff`, which
+	// also asks its resume lookup whether a history row resumes the next
+	// entry) and which rows show one (`watchOrderRail`, over what Home
+	// has read so far: the rows, their matches and probes, the played
+	// rows). Only an asking row's series is read, each once per visit
+	// until the history changes; until it answers, and when it cannot be
+	// read, the row keeps its ordinary card. A row's availability probe
+	// can answer after the card moved on: when it finds an episode past
+	// Kitsu's count, the card goes back to offering that episode. The
+	// probe may never answer, so the hand-off does not wait for it.
+	let handoffSeries = $state<Record<string, Handoff | null>>({});
+	const handoffToday = localDay(new Date());
+	const handoffReads = createHandoffReads(
+		(id, signal) => watchOrderHandoff(id, { today: handoffToday }, { signal }),
+		(id, handoff) => {
+			handoffSeries = { ...handoffSeries, [id]: handoff };
+		},
+		handoffWalksAtOnce(windowLaneIsOwn('franchise'))
+	);
+	// The rail, read again whenever what Home sends changes; only the
+	// latest read's answer is drawn, a superseded one is cancelled, and
+	// the last answer stays drawn until the next lands (or if it fails).
+	let rail = $state<RailView | null>(null);
+	const railReads = latestRead<RailView | null>((r) => {
+		if (r) rail = r;
+	});
+	const handoffRail = $derived(
+		railRequest(
+			dedupedHistory,
+			history ?? [],
+			historyMatches,
+			historyPlayableCounts,
+			handoffSeries,
+			leftPartWay
+		)
+	);
+	$effect(() => {
+		const body = handoffRail;
+		if (body) railReads.refresh((signal) => watchOrderRail(body, { signal }).catch(() => null));
+	});
+	// A row removed from the history may have been the one that resumed
+	// a next show, so the hand-offs are asked again when it changes. The
+	// last answers stand until the new ones land, so a moved-on card
+	// does not drop back while they are out.
+	let askedFor: HistoryEntry[] | null = null;
+	$effect(() => {
+		if (history !== askedFor) {
+			askedFor = history;
+			handoffReads.forget();
+		}
+		for (const kitsuId of Object.values(rail?.asks ?? {}))
+			if (kitsuId !== null) handoffReads.want(kitsuId);
+	});
+	// Home going cancels the reads still out: a hand-off read holds its
+	// response open while the backend walks the franchise.
+	onDestroy(() => {
+		handoffReads.stop();
+		railReads.stop();
+	});
 </script>
 
 <svelte:head>
@@ -1608,6 +1681,7 @@
 	>
 		{#each dedupedHistory as entry (entry.id)}
 			{@const match = historyMatches[entry.id]}
+			{@const handoff = rail?.handoffs[entry.id]}
 			{@const ep = historyEpisodes[entry.id]}
 			{@const target = resolveHistoryEntry(entry, match ?? null)}
 			{@const accent = accentFor(match?.id ?? entry.id)}
@@ -1689,7 +1763,11 @@
 			     card is clickable while its artwork is still a
 			     skeleton. -->
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
-				{#if resumable && match}
+				{#if handoff}
+					<!-- The finale was played through: the card moves on to
+					     the next show's page. -->
+					<HandoffCard {handoff} />
+				{:else if resumable && match}
 					<button
 						type="button"
 						class="resume-card"
