@@ -61,7 +61,8 @@ export function appConfig(mode: 'sub' | 'dub' = 'sub'): Config {
 		auto_skip_ed: false,
 		use_custom_player_controls: true,
 		update_include_prereleases: false,
-		primary_account: ''
+		primary_account: '',
+		watch_order: 'linked'
 	};
 }
 

@@ -81,7 +81,8 @@ function config(mode: 'sub' | 'dub'): Config {
 		use_custom_player_controls: true,
 		update_include_prereleases: false,
 		primary_account: '',
-		cache_resolutions: false
+		cache_resolutions: false,
+		watch_order: 'linked'
 	};
 }
 

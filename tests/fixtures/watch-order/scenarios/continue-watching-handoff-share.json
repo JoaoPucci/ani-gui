@@ -1,0 +1,651 @@
+{
+  "today": "2026-11-24",
+  "franchises": {},
+  "cases": [],
+  "rails": [
+    {
+      "name": "Continue Watching hand-off — the franchise lane > walks six series at once on the franchise lane, and a card's resume still goes through",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-101",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-102",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-103",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-104",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-105",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-106",
+            "matched": null,
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-middle",
+            "matched": null,
+            "ep_no": "5",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-101",
+            "kitsu_id": "101"
+          },
+          {
+            "id": "p-102",
+            "kitsu_id": "102"
+          },
+          {
+            "id": "p-103",
+            "kitsu_id": "103"
+          },
+          {
+            "id": "p-104",
+            "kitsu_id": "104"
+          },
+          {
+            "id": "p-105",
+            "kitsu_id": "105"
+          },
+          {
+            "id": "p-106",
+            "kitsu_id": "106"
+          },
+          {
+            "id": "p-middle",
+            "kitsu_id": "200"
+          }
+        ],
+        "matches": {},
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-101": null,
+          "p-102": null,
+          "p-103": null,
+          "p-104": null,
+          "p-105": null,
+          "p-106": null,
+          "p-middle": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching hand-off — the franchise lane > walks six series at once on the franchise lane, and a card's resume still goes through",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-101",
+            "matched": {
+              "id": "101",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-102",
+            "matched": {
+              "id": "102",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-103",
+            "matched": {
+              "id": "103",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-104",
+            "matched": {
+              "id": "104",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-105",
+            "matched": {
+              "id": "105",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-106",
+            "matched": {
+              "id": "106",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-middle",
+            "matched": {
+              "id": "200",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "5",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-101",
+            "kitsu_id": "101"
+          },
+          {
+            "id": "p-102",
+            "kitsu_id": "102"
+          },
+          {
+            "id": "p-103",
+            "kitsu_id": "103"
+          },
+          {
+            "id": "p-104",
+            "kitsu_id": "104"
+          },
+          {
+            "id": "p-105",
+            "kitsu_id": "105"
+          },
+          {
+            "id": "p-106",
+            "kitsu_id": "106"
+          },
+          {
+            "id": "p-middle",
+            "kitsu_id": "200"
+          }
+        ],
+        "matches": {
+          "p-101": "101",
+          "p-102": "102",
+          "p-103": "103",
+          "p-104": "104",
+          "p-105": "105",
+          "p-106": "106",
+          "p-middle": "200"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-101": "101",
+          "p-102": "102",
+          "p-103": "103",
+          "p-104": "104",
+          "p-105": "105",
+          "p-106": "106",
+          "p-middle": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching hand-off — the franchise lane > walks six series at once on the franchise lane, and a card's resume still goes through",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-101",
+            "matched": {
+              "id": "101",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-102",
+            "matched": {
+              "id": "102",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-103",
+            "matched": {
+              "id": "103",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-104",
+            "matched": {
+              "id": "104",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-105",
+            "matched": {
+              "id": "105",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-106",
+            "matched": {
+              "id": "106",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": null,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-middle",
+            "matched": {
+              "id": "200",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "5",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-101",
+            "kitsu_id": "101"
+          },
+          {
+            "id": "p-102",
+            "kitsu_id": "102"
+          },
+          {
+            "id": "p-103",
+            "kitsu_id": "103"
+          },
+          {
+            "id": "p-104",
+            "kitsu_id": "104"
+          },
+          {
+            "id": "p-105",
+            "kitsu_id": "105"
+          },
+          {
+            "id": "p-106",
+            "kitsu_id": "106"
+          },
+          {
+            "id": "p-middle",
+            "kitsu_id": "200"
+          }
+        ],
+        "matches": {
+          "p-101": "101",
+          "p-102": "102",
+          "p-103": "103",
+          "p-104": "104",
+          "p-105": "105",
+          "p-106": "106",
+          "p-middle": "200"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-101": "101",
+          "p-102": "102",
+          "p-103": "103",
+          "p-104": "104",
+          "p-105": "105",
+          "p-106": "106",
+          "p-middle": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching hand-off — the franchise lane > walks six series at once on the franchise lane, and a card's resume still goes through",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-101",
+            "matched": {
+              "id": "101",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-102",
+            "matched": {
+              "id": "102",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-103",
+            "matched": {
+              "id": "103",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-104",
+            "matched": {
+              "id": "104",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-105",
+            "matched": {
+              "id": "105",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-106",
+            "matched": {
+              "id": "106",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-middle",
+            "matched": {
+              "id": "200",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "5",
+            "playable_count": null,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-101",
+            "kitsu_id": "101"
+          },
+          {
+            "id": "p-102",
+            "kitsu_id": "102"
+          },
+          {
+            "id": "p-103",
+            "kitsu_id": "103"
+          },
+          {
+            "id": "p-104",
+            "kitsu_id": "104"
+          },
+          {
+            "id": "p-105",
+            "kitsu_id": "105"
+          },
+          {
+            "id": "p-106",
+            "kitsu_id": "106"
+          },
+          {
+            "id": "p-middle",
+            "kitsu_id": "200"
+          }
+        ],
+        "matches": {
+          "p-101": "101",
+          "p-102": "102",
+          "p-103": "103",
+          "p-104": "104",
+          "p-105": "105",
+          "p-106": "106",
+          "p-middle": "200"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-101": "101",
+          "p-102": "102",
+          "p-103": "103",
+          "p-104": "104",
+          "p-105": "105",
+          "p-106": "106",
+          "p-middle": null
+        },
+        "handoffs": {}
+      }
+    },
+    {
+      "name": "Continue Watching hand-off — the franchise lane > walks six series at once on the franchise lane, and a card's resume still goes through",
+      "request": {
+        "rows": [
+          {
+            "row_id": "p-101",
+            "matched": {
+              "id": "101",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-102",
+            "matched": {
+              "id": "102",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-103",
+            "matched": {
+              "id": "103",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-104",
+            "matched": {
+              "id": "104",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-105",
+            "matched": {
+              "id": "105",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-106",
+            "matched": {
+              "id": "106",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "13",
+            "playable_count": 13,
+            "left_part_way": false
+          },
+          {
+            "row_id": "p-middle",
+            "matched": {
+              "id": "200",
+              "status": "finished",
+              "episode_count": 13
+            },
+            "ep_no": "5",
+            "playable_count": 13,
+            "left_part_way": false
+          }
+        ],
+        "history": [
+          {
+            "id": "p-101",
+            "kitsu_id": "101"
+          },
+          {
+            "id": "p-102",
+            "kitsu_id": "102"
+          },
+          {
+            "id": "p-103",
+            "kitsu_id": "103"
+          },
+          {
+            "id": "p-104",
+            "kitsu_id": "104"
+          },
+          {
+            "id": "p-105",
+            "kitsu_id": "105"
+          },
+          {
+            "id": "p-106",
+            "kitsu_id": "106"
+          },
+          {
+            "id": "p-middle",
+            "kitsu_id": "200"
+          }
+        ],
+        "matches": {
+          "p-101": "101",
+          "p-102": "102",
+          "p-103": "103",
+          "p-104": "104",
+          "p-105": "105",
+          "p-106": "106",
+          "p-middle": "200"
+        },
+        "series": {}
+      },
+      "answer": {
+        "asks": {
+          "p-101": "101",
+          "p-102": "102",
+          "p-103": "103",
+          "p-104": "104",
+          "p-105": "105",
+          "p-106": "106",
+          "p-middle": null
+        },
+        "handoffs": {}
+      }
+    }
+  ]
+}
