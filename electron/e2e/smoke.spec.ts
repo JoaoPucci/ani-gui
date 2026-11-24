@@ -116,6 +116,8 @@ async function launchAppWithStubsOnce(
     answer(r, json(cardLinesAnswer(r.request().postDataJSON()))),
   );
   await stub("**/api/kitsu/trending-anilist", (r) => answer(r, json(trending)));
+  // The hero's pick is the backend's own, made from the stubbed list.
+  await stub("**/api/home/hero", (r) => r.continue());
   await stub("**/api/kitsu/top-rated", (r) => {
     topRatedAsked?.();
     return answer(r, json(topRated));

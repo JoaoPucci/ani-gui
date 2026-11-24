@@ -154,6 +154,8 @@ async function launchAppWithContinueStubsOnce(
 
 		if (p === '/api/app-info') return j(appInfo);
 		if (p === '/api/settings') return j(defaultSettings);
+		// The hero's pick is the backend's own, made from the stubbed list.
+		if (p === '/api/home/hero') return r.continue();
 		if (p === '/api/kitsu/trending-anilist') return j(trending);
 		if (p === '/api/kitsu/top-rated') return j(topRated);
 		if (p.startsWith('/api/image')) return answer(r, { status: 503 });
