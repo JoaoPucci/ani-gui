@@ -69,11 +69,13 @@
  * with a download in flight, which shows the download bar; the
  * player's page with the skip button up and the note on a guessed
  * session; a show's page with its watch-order strip (its tiles and
- * the line for the entry being watched); the player at the end of a
- * show's last episode, with the Up next card naming the entry after
- * it; and Home with a Continue Watching card that moved on from a
- * finale to the entry after it. Each requires the walk to reach those
- * controls.
+ * the line for the entry being watched); with the watch-order mockups
+ * on, their franchise page (its rows and its play button), opened by
+ * its address; the player at the end of a show's last episode, with
+ * the Up next card naming what follows it in each of its forms (one
+ * entry, a fork of two, one not aired); and Home with a Continue
+ * Watching card that moved on from a finale to the entry after it.
+ * Each requires the walk to reach those controls.
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
@@ -87,8 +89,8 @@
  *
  * Home's hero with nothing to feature and with trending unanswered is
  * walked too, forward only, at the desktop size, under the mouse and in
- * forced colours; the player test types a number so the episode field's Go
- * button is reached.
+ * forced colours; the skip button's player test types a number so the
+ * episode field's Go button is reached.
  *
  * What it does not reach: the Account, About and Debug pages, and the
  * menus, dialogs and popovers other than the link dialog and the
@@ -104,7 +106,7 @@
  * spread around the element's box, and a `::before` chip's box from its
  * size, centred on its control as the window buttons place it: a
  * pseudo-element has no box a script can read. Every API request is
- * stubbed, but for the player test's play and stream, which run on the
+ * stubbed, but for the player tests' play and stream, which run on the
  * backend's replay of a seeded row (see real-play.ts).
  *
  * A ring on an element inside a control is found only through a rule
@@ -115,9 +117,10 @@
  * Under the mouse: at the desktop size, the forward walks of the four
  * pages (and of the show's page with an episode typed), of the hero's
  * empty and failed states, of the player, of the watch-order strip, of
- * the Up next card and of Home with a hand-off card rest the mouse on
- * every stop that shows, and a hover style must neither replace its ring nor
- * add a second; the read must find the control under the mouse.
+ * the mockups' franchise page, of the Up next card and of Home with a
+ * hand-off card rest the mouse on every stop that shows, and a hover
+ * style must neither replace its ring nor add a second; the read must
+ * find the control under the mouse.
  * Whether a lifted, hovered control's ring stays whole is not checked,
  * and the other state tests (Continue Watching, its link dialog, the
  * download bar and list) do not rest the mouse.
@@ -1362,7 +1365,11 @@ const bleach = JSON.parse(
  *  last arc, with an entry before it and one after, while BLEACH itself
  *  is part-watched, so the strip shows its tiles and the line for the
  *  entry being watched. */
-const stripShow = { ...topRated[0], id: '48015', canonical_title: bleach.entries[3].title };
+const stripShow = {
+	...topRated[0],
+	id: '48015',
+	canonical_title: bleach.entries.find((e) => e.id === '48015')!.title
+};
 
 test("the rings on a show page's watch-order strip are drawn once and whole", async () => {
 	test.setTimeout(240_000);
@@ -1412,6 +1419,52 @@ test("the rings on a show page's watch-order strip are drawn once and whole", as
 				});
 				if (forced) assertForced(stops, at, [], stripNeeds);
 				else assertStops(stops, at, [], stripNeeds);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
+			}
+		}
+	} finally {
+		await stopApp(app);
+	}
+});
+
+/** A show the watch-order mockups' fixtures place mid-run: Gintama°. */
+const mockShow = { ...topRated[0], id: '10083', canonical_title: 'Gintama°' };
+
+test("the rings on the watch-order mockups' franchise page are drawn once and whole", async () => {
+	test.setTimeout(240_000);
+	const { app, page } = await launch();
+	try {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await sizeViewport(page, 1440, 900);
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p.startsWith('/api/kitsu/anime/')) return j(mockShow);
+			return r.fallback();
+		});
+		// Diagnostics turns the mockups on. No strip links to the page
+		// here, so it is opened by its address.
+		await page.evaluate(() =>
+			localStorage.setItem('ani-gui:watch-order-mockups', JSON.stringify({ enabled: true }))
+		);
+		await page.goto(new URL(`/anime/${mockShow.id}/franchise`, page.url()).href, {
+			waitUntil: 'domcontentloaded'
+		});
+		await expect(page.locator('.story-row').first()).toBeVisible({ timeout: 15_000 });
+		const needs = ['.story-row', '.btn-glass'];
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `the mockups' franchise page${forced ? ', forced colours' : ''}, ${key}`;
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, {
+					selectors: needs,
+					hovered: underMouse ? hovered : undefined
+				});
+				if (forced) assertForced(stops, at, [], needs);
+				else assertStops(stops, at, [], needs);
 				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
 			}
 		}
@@ -1541,9 +1594,9 @@ async function walkPlayer(origin: string) {
 	}
 }
 
-/** The Continue card's show with its sixth episode as its last, and a
- *  franchise in which a second season follows it: the episode the card
- *  plays is the show's finale, so its end brings up the Up next card. */
+/** The Continue card's show with its sixth episode as its last: the
+ *  episode the card plays is the show's finale, so its end brings up the
+ *  Up next card for what the franchise puts after it. */
 const finaleShow = { ...continueKitsuMatch, episode_count: 6 };
 const finaleEntry = (id: string, title: string, start: string, episodes: number) => ({
 	id,
@@ -1555,26 +1608,63 @@ const finaleEntry = (id: string, title: string, start: string, episodes: number)
 	poster: null,
 	cover: null
 });
-const finaleFranchise = {
+/** The show's franchise with `after` following it. */
+const finaleFranchise = (after: ReturnType<typeof finaleEntry>[]) => ({
 	anchor: finaleShow.id,
 	name: finaleShow.canonical_title,
 	name_from: finaleShow.id,
 	entries: [
 		finaleEntry(finaleShow.id, finaleShow.canonical_title, finaleShow.start_date, 6),
-		finaleEntry(`${finaleShow.id}-2`, `${finaleShow.canonical_title} Season 2`, '2025-01-10', 12)
+		...after
 	],
-	links: [[finaleShow.id, `${finaleShow.id}-2`]],
+	links: after.map((e) => [finaleShow.id, e.id]),
 	versions: [],
 	films: [],
 	sides: [],
 	recaps: [],
 	parents: {},
 	complete: true
-};
+});
+const season2 = finaleEntry(
+	`${finaleShow.id}-2`,
+	`${finaleShow.canonical_title} Season 2`,
+	'2025-01-10',
+	12
+);
+/** The card's three forms: one entry after the show, a fork of two,
+ *  and one that has not aired, whose row links nowhere. */
+const upNextForms = [
+	{
+		label: 'one entry',
+		after: [season2],
+		needs: ['.up-next a.row', '.up-next .dismiss'],
+		rows: 1
+	},
+	{
+		label: 'a fork',
+		after: [
+			season2,
+			finaleEntry(
+				`${finaleShow.id}-film`,
+				`${finaleShow.canonical_title} The Movie`,
+				'2025-03-01',
+				1
+			)
+		],
+		needs: ['.up-next .choices a.row', '.up-next .dismiss'],
+		rows: 2
+	},
+	{
+		label: 'an entry not aired',
+		after: [{ ...season2, start: '2999-01-01', status: 'upcoming', episodes: null }],
+		needs: ['.up-next .dismiss'],
+		rows: 0
+	}
+];
 
-test("the rings on the player's Up next card are drawn once and whole", async () => {
-	test.setTimeout(180_000);
-	const media = await mediaServer();
+/** Plays the finale with `form`'s franchise, brings the Up next card up
+ *  at the video's end and walks it. */
+async function walkUpNext(origin: string, form: (typeof upNextForms)[number]) {
 	const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ani-gui-focus-rings-up-next-'));
 	writeReplayConfig(profile, 'locale = "en"\n');
 	const app = await launchPackagedApp(
@@ -1594,53 +1684,73 @@ test("the rings on the player's Up next card are drawn once and whole", async ()
 		const play = await routeRealPlay(page, {
 			profile,
 			settings: { locale: 'en', use_custom_player_controls: true },
-			stream: { upstreamUrl: `${media.origin}/master.m3u8`, mediaKind: 'hls' },
+			stream: { upstreamUrl: `${origin}/master.m3u8`, mediaKind: 'hls' },
 			show: { match: finaleShow, episode: continueKitsuEpisode6 }
 		});
+		const franchise = finaleFranchise(form.after);
 		await page.route('**/api/**', async (r) => {
 			const p = new URL(r.request().url()).pathname;
 			const j = (body: unknown) =>
 				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-			if (p.startsWith('/api/kitsu/franchise/')) return j(finaleFranchise);
+			if (p.startsWith('/api/kitsu/franchise/')) return j(franchise);
 			if (p === '/api/history/by-kitsu') {
 				const { ids } = r.request().postDataJSON() as { ids: string[] };
 				return j(Object.fromEntries(ids.map((i) => [i, null])));
 			}
 			return r.fallback();
 		});
-		await remount(page);
 		await sizeViewport(page, 1440, 900);
 		await playFromContinue(page, play);
-		// The end of the finale brings the card up.
 		await expect(page.locator('video')).toBeVisible({ timeout: 30_000 });
 		await expect
-			.poll(() => page.evaluate(() => document.querySelector('video')?.duration ?? 0), {
-				timeout: 30_000
-			})
-			.toBeGreaterThan(0);
+			.poll(
+				() =>
+					page.evaluate(() => {
+						const d = document.querySelector('video')?.duration ?? 0;
+						return Number.isFinite(d) && d > 0;
+					}),
+				{ timeout: 30_000 }
+			)
+			.toBe(true);
 		await page.evaluate(() => {
 			const video = document.querySelector('video')!;
 			video.currentTime = video.duration;
 		});
-		await expect(page.locator('.up-next a.row').first()).toBeVisible({ timeout: 30_000 });
-		const needs = ['.up-next a.row', '.up-next .dismiss'];
+		const card = page.locator('.up-next');
+		await expect(card).toBeVisible({ timeout: 30_000 });
+		// The card names what follows: each row links to its entry.
+		const rows = card.locator('a.row');
+		await expect(rows).toHaveCount(form.rows);
+		for (const [i, e] of form.after.slice(0, form.rows).entries()) {
+			await expect(rows.nth(i)).toHaveAttribute('href', new RegExp(`/anime/${e.id}$`));
+		}
 		for (const forced of [false, true]) {
 			await forcedColours(page, forced);
 			for (const key of ['Tab', 'Shift+Tab'] as const) {
-				const at = `the Up next card${forced ? ', forced colours' : ''}, ${key}`;
+				await expect(card, 'the card stays up for the walk').toBeVisible();
+				const at = `the Up next card, ${form.label}${forced ? ', forced colours' : ''}, ${key}`;
 				const hovered: Stop[] = [];
 				const underMouse = !forced && key === 'Tab';
 				const stops = await walk(page, key, {
-					selectors: needs,
+					selectors: form.needs,
 					hovered: underMouse ? hovered : undefined
 				});
-				if (forced) assertForced(stops, at, [], needs);
-				else assertStops(stops, at, [], needs);
+				if (forced) assertForced(stops, at, [], form.needs);
+				else assertStops(stops, at, [], form.needs);
 				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
 			}
 		}
 	} finally {
 		await stopApp(app);
+	}
+}
+
+test("the rings on the player's Up next card are drawn once and whole", async () => {
+	test.setTimeout(300_000);
+	const media = await mediaServer();
+	try {
+		for (const form of upNextForms) await walkUpNext(media.origin, form);
+	} finally {
 		media.close();
 	}
 });
@@ -1667,7 +1777,7 @@ test("the rings on Continue Watching's hand-off card are drawn once and whole", 
 			if (p.startsWith('/api/allmanga-kitsu-map/')) return j(finaleShow.id);
 			if (p === `/api/kitsu/anime/${finaleShow.id}`) return j(finaleShow);
 			if (p === `/api/kitsu/episodes/${finaleShow.id}`) return j(continueEpisodes.slice(0, 6));
-			if (p.startsWith('/api/kitsu/franchise/')) return j(finaleFranchise);
+			if (p.startsWith('/api/kitsu/franchise/')) return j(finaleFranchise([season2]));
 			if (p === '/api/history/by-kitsu') {
 				const { ids } = r.request().postDataJSON() as { ids: string[] };
 				return j(Object.fromEntries(ids.map((i) => [i, null])));
