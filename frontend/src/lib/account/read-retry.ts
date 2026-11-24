@@ -17,10 +17,10 @@
 // tracker's rejection of the request (`tracker_rejected`, HTTP 422) and
 // a refused bearer (401) with statuses that say asking again gets the
 // same answer, so any 4xx the backend sends but a rate limit (429) or a
-// timeout (408) is not retried. A tracker that did not take the request
-// this time (its 5xx, 408 or 425) reaches the page as the backend's 502,
-// and that, like any failure that can pass — the network, a missing
-// bearer — keeps the schedule.
+// timeout (408) is not retried. A tracker failing (its 5xx) or not
+// taking the request this time (its 408 or 425) reaches the page as the
+// backend's 502, and that, like any failure that can pass — the
+// network, a missing bearer — keeps the schedule.
 
 import { AccountApiError } from './api';
 import { isRateLimit } from './set-entry-outcome';

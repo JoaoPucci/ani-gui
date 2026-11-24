@@ -17,8 +17,8 @@ use crate::error::{AniError, Result};
 /// that read answers absent. A read the tracker rate-limits, or refuses
 /// the bearer for, reports that, since it says what to do next; any
 /// other read keeps the write's own error. Every other failure of the
-/// write (a rate limit, a revoked bearer, a 5xx, a 408 or 425 — the
-/// tracker not taking the write this time — the network) says nothing
+/// write (a rate limit, a revoked bearer, a 5xx, the network, or a 408
+/// or 425, the tracker not taking the write this time) says nothing
 /// about the entry, is not confirmed, and comes back as it came.
 ///
 /// # Errors

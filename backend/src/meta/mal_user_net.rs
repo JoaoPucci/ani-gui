@@ -75,13 +75,12 @@ impl MalProvider {
     /// [`AniError::RateLimited`] with the advertised wait, any other
     /// non-2xx → [`AniError::from_tracker_status`] (a 4xx the tracker's
     /// rejection; a 5xx, a 408 or a 425 the upstream failing). Shared by
-    /// the bearer-authed
-    /// request helpers so the branches live in one place. NOT used for
-    /// the OAuth token endpoint, where a 401 means "bad code / refresh
-    /// token", not a bad bearer: it surfaces as the tracker's rejection
-    /// (`TrackerRejected`) like any other rejecting 4xx there, and the
-    /// refresh grant
-    /// reads its 400 or 401 as `RefreshRejected` (`refresh_refusal`).
+    /// the bearer-authed request helpers so the branches live in one
+    /// place. NOT used for the OAuth token endpoint, where a 401 means
+    /// "bad code / refresh token", not a bad bearer: it surfaces as the
+    /// tracker's rejection (`TrackerRejected`) like any other rejecting
+    /// 4xx there, and the refresh grant reads its 400 or 401 as
+    /// `RefreshRejected` (`refresh_refusal`).
     fn check_response(resp: &reqwest::Response) -> Result<()> {
         let status = resp.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
