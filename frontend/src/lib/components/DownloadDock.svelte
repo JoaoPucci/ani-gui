@@ -225,7 +225,11 @@
 							]
 								.filter((id) => id !== null)
 								.join(' ')}
-							<li class="dl-row dl-row-{item.status}" title={item.title} role="none">
+							<!-- The status is an attribute, not a `dl-row-<status>` class:
+							     those names are the row's own parts (`dl-row-queued`,
+							     `dl-row-error`), and a row carrying one took on that
+							     part's size and shape. -->
+							<li class="dl-row" data-status={item.status} title={item.title} role="none">
 								<span class="dl-row-text" id="{item.id}-text">
 									<span class="dl-row-title">{item.title}</span>
 									<span class="dl-row-sep" aria-hidden="true">·</span>
@@ -236,9 +240,9 @@
 									<span class="dl-sr" id="{item.id}-note">{standing.note}</span>
 								{/if}
 
-								<!-- Active/pending: thin indeterminate bar fills the
-								     remaining inline space + a single cancel (X).
-								     Queued: a label in the bar's place, same cancel. -->
+								<!-- Active/pending: a thin indeterminate bar, then a
+								     single cancel (X). Queued: a label in the bar's place,
+								     same cancel. -->
 								{#if item.status === 'queued' || item.status === 'active' || item.status === 'pending'}
 									{#if item.status === 'queued'}
 										<!-- Waiting for one of the downloads running at once
@@ -481,10 +485,11 @@
 		display: flex;
 		flex-direction: column;
 	}
-	/* One row per item — horizontal layout, browser-style. Title
-	   shrinks via ellipsis; trailing icon-only buttons sit at the
-	   inline-end. Active rows fill the gap between text and buttons
-	   with a thin indeterminate progress bar. */
+	/* One row per item, one line, browser-style: the text first, then
+	   where the download stands (bar, Queued label or failure mark) and
+	   the icon-only actions at the inline-end. The title gives way, with
+	   an ellipsis, to everything after it. The row wraps only for an
+	   ended download's report, which takes a line of its own under it. */
 	.dl-row {
 		display: flex;
 		flex-wrap: wrap;
@@ -502,27 +507,30 @@
 	.dl-row + .dl-row {
 		border-block-start: 1px solid color-mix(in oklab, var(--ink-200) 50%, transparent);
 	}
+	/* The text takes the room the row's other parts leave, from a basis
+	   of zero: the row places its parts on lines by their basis before
+	   anything shrinks, so a text sized by its title made a long title
+	   wrap the row, and the bar or the actions went under it. From zero
+	   it never does, and the title is cut instead. Every row's text
+	   starts at the inline-start, and its state and actions end the line
+	   at the same place on every row. */
 	.dl-row-text {
 		display: inline-flex;
-		flex: 0 1 auto;
+		flex: 1 1 0;
 		min-inline-size: 0;
 		align-items: baseline;
 		gap: var(--space-2);
 		overflow: hidden;
-		/* Right-align the whole title-cluster: short titles leave
-		   whitespace on the LEFT instead of dangling space between
-		   the ep marker and the progress bar. */
-		margin-inline-start: auto;
 	}
 	.dl-row-title {
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
 		font-weight: 500;
 		color: var(--bone-100);
+		min-inline-size: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		max-inline-size: 14rem;
 	}
 	.dl-row-sep {
 		color: var(--bone-400);
@@ -548,9 +556,13 @@
 		white-space: nowrap;
 		border: 0;
 	}
+	/* At least the bar's width, so the label starts where a running
+	   row's bar does and a queued title is cut where a running one is;
+	   wider when a translation needs it, instead of overflowing. */
 	.dl-row-queued {
 		flex-shrink: 0;
-		inline-size: 5rem;
+		min-inline-size: 5rem;
+		white-space: nowrap;
 		font-family: var(--font-body);
 		font-size: var(--type-micro);
 		color: var(--bone-300);
@@ -562,9 +574,8 @@
 		/* Fixed width so every row's bar matches regardless of title
 		   length — previously this was `flex: 1 1 auto`, which made
 		   short-title rows show a wide sweep and truncated-title
-		   rows show a narrow sweep. The text cluster carries the
-		   `margin-inline-start: auto`; the bar sits naturally next
-		   to it on the right. */
+		   rows show a narrow sweep. The text takes the free room; the
+		   bar sits at the line's end, before the cancel. */
 		flex-shrink: 0;
 		inline-size: 5rem;
 		block-size: 2px;
@@ -609,7 +620,6 @@
 		overflow-wrap: anywhere;
 	}
 	.dl-row-error {
-		margin-inline-start: auto;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -623,11 +633,6 @@
 		font-weight: 700;
 		flex-shrink: 0;
 		cursor: help;
-	}
-	/* For done rows, push the icon buttons to the inline-end (no
-	   progress bar to fill the space). */
-	.dl-row-done .dl-row-text {
-		flex: 1 1 auto;
 	}
 	.dl-row-act {
 		display: inline-flex;
