@@ -345,21 +345,24 @@ describe('the watch order names a parent story apart from the main story', () =>
 });
 
 describe("Russian sets a show's name in guillemets", () => {
-	// The watch order names a show inside a sentence or a label, as the
-	// rest of the Russian app does: «{title}».
+	// A show's or a franchise's name inside a sentence or a label is
+	// «quoted», as in the Russian dialogs, notes and toasts that name one.
+	// A window title, a developer's log line and a file name template
+	// stay bare, so the rule lists the keys.
 	const TITLE_KEYS = [
+		'home.hero_pager_dot_label',
+		'home.error_resume_headline',
+		'home.delete_card_aria_label',
+		'play.progress_matched',
 		'watchorder.handoff_after',
 		'watchorder.handoff_aria',
 		'watchorder.strip_leads_into',
-		'watchorder.upnext_announce'
+		'watchorder.upnext_announce',
+		'watchorder.upnext_franchise_announce',
+		'watchorder.upnext_franchise_label'
 	];
-	it('every name in a watch order message is quoted', () => {
-		expect(
-			offenders(
-				'ru',
-				(s) => /(^|[^«])\{(title|finished)\}|\{(title|finished)\}([^»]|$)/.test(s),
-				TITLE_KEYS
-			)
-		).toEqual([]);
+	it('every listed name is quoted', () => {
+		const bare = /(^|[^«])\{(title|finished|name)\}|\{(title|finished|name)\}([^»]|$)/;
+		expect(offenders('ru', (s) => bare.test(s), TITLE_KEYS)).toEqual([]);
 	});
 });
