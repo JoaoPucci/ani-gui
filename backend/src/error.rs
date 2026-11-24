@@ -162,14 +162,15 @@ pub enum AniError {
     },
 
     /// A tracker (MyAnimeList, AniList) answered a request with a 4xx
-    /// other than a rate limit (429, [`Self::RateLimited`]) or, on its
-    /// authenticated API, a refused bearer (401, [`Self::InvalidToken`];
-    /// a token endpoint's 401 is a rejection like its other 4xx, which
-    /// the refresh grant reads as [`Self::RefreshRejected`]): it rejected the request,
-    /// or — 404/410 — does not have what was asked for. An answer, not
-    /// the tracker failing, so it is not a 5xx and the renderer does not
-    /// retry it. The upstream's own 5xx stays [`Self::Upstream`], as do a
-    /// 408 and a 425: the tracker not taking the request this time.
+    /// other than a rate limit (429, [`Self::RateLimited`]), a request
+    /// timeout (408) or too early (425) — the tracker not taking the
+    /// request this time, which stays [`Self::Upstream`] like its 5xx —
+    /// or, on its authenticated API, a refused bearer (401,
+    /// [`Self::InvalidToken`]; a token endpoint's 401 is a rejection like
+    /// its other 4xx, which the refresh grant reads as
+    /// [`Self::RefreshRejected`]): it rejected the request, or — 404/410 —
+    /// does not have what was asked for. An answer, not the tracker
+    /// failing, so it is not a 5xx and the renderer does not retry it.
     #[error("tracker rejected the request ({status})")]
     TrackerRejected {
         /// HTTP status code the tracker answered with.

@@ -14,11 +14,13 @@
 // the read.
 //
 // A permanent answer ends the read at once. The backend answers a
-// tracker's rejection of the request (a 4xx: `tracker_rejected`, HTTP
-// 422) and a refused bearer (401) with statuses that say asking again
-// gets the same answer, so any 4xx but a rate limit (429) or a timeout
-// (408) is not retried. A failure that can pass — a 5xx, the network, a
-// missing bearer — keeps the schedule.
+// tracker's rejection of the request (`tracker_rejected`, HTTP 422) and
+// a refused bearer (401) with statuses that say asking again gets the
+// same answer, so any 4xx the backend sends but a rate limit (429) or a
+// timeout (408) is not retried. A tracker that did not take the request
+// this time (its 5xx, 408 or 425) reaches the page as the backend's 502,
+// and that, like any failure that can pass — the network, a missing
+// bearer — keeps the schedule.
 
 import { AccountApiError } from './api';
 import { isRateLimit } from './set-entry-outcome';
