@@ -168,7 +168,8 @@ pub enum AniError {
     /// the refresh grant reads as [`Self::RefreshRejected`]): it rejected the request,
     /// or — 404/410 — does not have what was asked for. An answer, not
     /// the tracker failing, so it is not a 5xx and the renderer does not
-    /// retry it. The upstream's own 5xx stays [`Self::Upstream`].
+    /// retry it. The upstream's own 5xx stays [`Self::Upstream`], as do a
+    /// 408 and a 425: the tracker not taking the request this time.
     #[error("tracker rejected the request ({status})")]
     TrackerRejected {
         /// HTTP status code the tracker answered with.
@@ -371,12 +372,14 @@ impl AniError {
 
     /// The error for a tracker's non-success `status` once its rate limit
     /// (429) — and, on the authenticated API, its refused bearer (401) —
-    /// are read: a 4xx is the
-    /// tracker's rejection ([`Self::TrackerRejected`]), anything else the
-    /// upstream failing ([`Self::Upstream`]).
+    /// are read: a 4xx is the tracker's rejection
+    /// ([`Self::TrackerRejected`]), unless it says the tracker did not
+    /// take the request this time (`is_transient_4xx`); that, and
+    /// anything else, is the upstream failing ([`Self::Upstream`]),
+    /// which the renderer asks again.
     #[must_use]
     pub fn from_tracker_status(status: u16) -> Self {
-        if (400..500).contains(&status) {
+        if (400..500).contains(&status) && !is_transient_4xx(status) {
             Self::TrackerRejected { status }
         } else {
             Self::Upstream { status }
@@ -438,6 +441,13 @@ impl AniError {
             | Self::Scraper { .. } => 500,
         }
     }
+}
+
+/// The 4xx statuses that say the upstream did not take the request this
+/// time rather than answer it: a request timeout (408), too early (425)
+/// and a rate limit (429). Asking again can be answered.
+fn is_transient_4xx(status: u16) -> bool {
+    matches!(status, 408 | 425 | 429)
 }
 
 impl From<reqwest::Error> for AniError {
