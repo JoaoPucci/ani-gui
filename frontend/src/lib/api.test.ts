@@ -48,6 +48,8 @@ import {
 	kitsuTopRated,
 	kitsuByMalIds,
 	kitsuTrendingAnilist,
+	heroPick,
+	heroWalk,
 	markWatched,
 	metaCacheClear,
 	play,
@@ -76,6 +78,8 @@ import {
 	type CreateSessionResponse,
 	type DownloadProgress,
 	type DownloadResponse,
+	type HeroPick,
+	type HeroWalkView,
 	type KitsuAnimeRef,
 	type CardLine,
 	type LinkCandidate,
@@ -1978,6 +1982,39 @@ describe('kitsuTrendingAnilist', () => {
 	});
 });
 
+describe('heroPick', () => {
+	it('POSTs the trending shows to /api/home/hero and returns the pick', async () => {
+		const pick: HeroPick = {
+			hero: ['2'],
+			row: ['1'],
+			walk: { airing_first: false, count: 3, entries: 2, steps: [] }
+		};
+		const fetchMock = mockFetchOnce<HeroPick>(pick);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const signal = new AbortController().signal;
+		const shows = [{ id: '1', title: 'One', status: 'current', cover_image: null }];
+		expect(await heroPick({ shows }, { signal })).toEqual(pick);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/home/hero`);
+		expect(init?.method).toBe('POST');
+		expect(init?.signal).toBe(signal);
+		expect(JSON.parse(String(init?.body))).toEqual({ shows });
+	});
+});
+
+describe('heroWalk', () => {
+	it('GETs /api/home/hero/walk and returns the view', async () => {
+		const view: HeroWalkView = {
+			flag: { name: 'hero_airing_first', on: false, origin: 'defaults' },
+			walk: null
+		};
+		const fetchMock = mockFetchOnce<HeroWalkView>(view);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		expect(await heroWalk()).toEqual(view);
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/home/hero/walk`);
+	});
+});
+
 describe('kitsuByMalIds', () => {
 	it('POSTs the mal_ids batch + internal-secret header and returns the parsed list', async () => {
 		(globalThis as { window?: unknown }).window = {
@@ -2535,6 +2572,7 @@ describe('reads a page can cancel', () => {
 		['kitsuAnimeDetail', (signal) => kitsuAnimeDetail('7', { signal })],
 		['kitsuAnimeBySlug', (signal) => kitsuAnimeBySlug('frieren', { signal })],
 		['kitsuTrendingAnilist', (signal) => kitsuTrendingAnilist({ signal })],
+		['heroWalk', (signal) => heroWalk({ signal })],
 		['kitsuTopRated', (signal) => kitsuTopRated({ signal })],
 		['kitsuByMalIds', (signal) => kitsuByMalIds([1], { signal })],
 		['kitsuEpisodes', (signal) => kitsuEpisodes('7', 1, { signal })],

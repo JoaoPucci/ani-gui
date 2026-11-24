@@ -382,8 +382,9 @@ kind of request:
   Beside it, the same launch downloads the file's signature
   (`flags.json.minisig`), a second small request to the same server.
   The app switches a feature on only when that signature proves the
-  maintainer wrote the file; this version trusts no signing key yet,
-  and declares no such feature, so the file changes nothing yet.
+  maintainer wrote the file. This version declares one such feature,
+  which puts airing shows first in the home banner, but trusts no
+  signing key yet, so the file cannot switch it on.
   Like the update check, each request tells GitHub your IP address,
   when it was made, and that it comes from ani-gui.
   Nothing else is sent: no account

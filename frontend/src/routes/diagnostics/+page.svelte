@@ -7,7 +7,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { beginVisit } from '$lib/navigation/visit';
 	import { resolve } from '$app/paths';
-	import { appInfo, historyClear, historyList, metaCacheClear } from '$lib/api';
+	import { appInfo, heroWalk, historyClear, historyList, metaCacheClear } from '$lib/api';
 	import {
 		createDiagnosticsActions,
 		INITIAL_DIAGNOSTICS,
@@ -16,6 +16,14 @@
 	import { legacySweepView } from '$lib/diagnostics/legacy-sweep';
 	import { retiredSweepView } from '$lib/diagnostics/retired-sweep';
 	import { cacheReclaimView } from '$lib/diagnostics/cache-reclaim';
+	import {
+		artLabel,
+		originLabel,
+		outcomeLabel,
+		readHeroWalk,
+		statusLabel,
+		type HeroWalkState
+	} from '$lib/diagnostics/hero-walk';
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/prefs';
 	import { loadRowPrefs, saveRowPrefs } from '$lib/rows/prefs';
 	import { loadStartLook, saveStartLook, type StartLook } from '$lib/play/start-look';
@@ -76,7 +84,16 @@
 		saveStartLook(browserStorage(), look);
 	}
 
-	onMount(() => void actions.refresh());
+	// The home hero's last pick, as the backend made it — see
+	// $lib/diagnostics/hero-walk. Read once, when the page opens.
+	let heroWalkState = $state<HeroWalkState>({ kind: 'loading' });
+
+	onMount(() => {
+		void actions.refresh();
+		void readHeroWalk(() => heroWalk({ signal: reads.signal })).then((s) => {
+			if (!reads.signal.aborted) heroWalkState = s;
+		});
+	});
 </script>
 
 <main class="page">
@@ -226,6 +243,74 @@
 		</p>
 	</section>
 
+	<section data-testid="hero-walk">
+		<h2>{m.diagnostics_section_hero_walk()}</h2>
+		<p>{m.diagnostics_hero_walk_description()}</p>
+		{#if heroWalkState.kind === 'loading'}
+			<p>{m.diagnostics_hero_walk_loading()}</p>
+		{:else if heroWalkState.kind === 'failed'}
+			<p>{m.diagnostics_hero_walk_failed()}</p>
+		{:else}
+			{@const flag = heroWalkState.view.flag}
+			{@const walk = heroWalkState.view.walk}
+			<p data-testid="hero-walk-flag" data-on={String(flag.on)} data-origin={flag.origin}>
+				{m.diagnostics_hero_walk_flag({
+					name: flag.name,
+					state: flag.on ? m.diagnostics_hero_walk_flag_on() : m.diagnostics_hero_walk_flag_off()
+				})}
+				<br />
+				{m.diagnostics_hero_walk_origin({ origin: originLabel(flag.origin) })}
+			</p>
+			{#if flag.on}<p>{m.diagnostics_hero_walk_signed_note()}</p>{/if}
+			{#if walk === null}
+				<p>{m.diagnostics_hero_walk_none()}</p>
+			{:else}
+				<p>
+					{m.diagnostics_hero_walk_summary({
+						read: walk.steps.length,
+						entries: walk.entries,
+						preference: walk.airing_first
+							? m.diagnostics_hero_walk_flag_on()
+							: m.diagnostics_hero_walk_flag_off()
+					})}
+				</p>
+				<table class="hero-walk">
+					<thead>
+						<tr>
+							<th scope="col">{m.diagnostics_hero_walk_col_rank()}</th>
+							<th scope="col">{m.diagnostics_hero_walk_col_title()}</th>
+							<th scope="col">{m.diagnostics_hero_walk_col_art()}</th>
+							<th scope="col">{m.diagnostics_hero_walk_col_status()}</th>
+							<th scope="col">{m.diagnostics_hero_walk_col_preference()}</th>
+							<th scope="col">{m.diagnostics_hero_walk_col_outcome()}</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each walk.steps as step (step.rank)}
+							<tr
+								data-testid="hero-walk-step"
+								data-id={step.id}
+								data-verdict={step.verdict.kind}
+								data-slot={step.verdict.kind === 'taken' ? String(step.verdict.slot) : undefined}
+							>
+								<td>{step.rank}</td>
+								<td>{step.title}</td>
+								<td>{artLabel(step.art)}</td>
+								<td>{statusLabel(step)}</td>
+								<td>
+									{step.preference_applied
+										? m.diagnostics_hero_walk_yes()
+										: m.diagnostics_hero_walk_no()}
+								</td>
+								<td>{outcomeLabel(step.verdict)}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		{/if}
+	</section>
+
 	<section>
 		<h2>{m.diagnostics_section_start_look()}</h2>
 		<fieldset class="start-look">
@@ -298,5 +383,16 @@
 	}
 	.page section {
 		margin-block-start: var(--space-5);
+	}
+	/* The hero walk: a plain table, wide enough to read a row across. */
+	.hero-walk {
+		border-collapse: collapse;
+	}
+	.hero-walk th,
+	.hero-walk td {
+		padding-block: 0.2rem;
+		padding-inline: 0 var(--space-4);
+		text-align: start;
+		vertical-align: top;
 	}
 </style>

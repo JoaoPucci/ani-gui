@@ -13,8 +13,8 @@ use super::*;
 /// are entries Kitsu marks nsfw (`crate::meta::kitsu::is_nsfw`).
 /// Preserves the AniList ranking — order matters because the home
 /// hero takes the first three entries with art. Two entries Kitsu
-/// maps to the same show both stay; the home page keeps the first
-/// (`frontend/src/lib/hero/rotation.ts`). `FuturesOrdered` runs the
+/// maps to the same show both stay; the home hero's pick keeps the
+/// first (`crate::hero`). `FuturesOrdered` runs the
 /// lookups concurrently and yields results in the input order; the
 /// resulting Kitsu /mappings calls fan out at once. 25 lookups
 /// against a single endpoint is fine and the cache layer absorbs

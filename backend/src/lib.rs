@@ -34,6 +34,7 @@ pub mod flags;
 #[cfg(test)]
 #[path = "held_test.rs"]
 pub(crate) mod held;
+pub mod hero;
 pub mod history;
 pub mod i18n;
 pub mod kitsu_id;
