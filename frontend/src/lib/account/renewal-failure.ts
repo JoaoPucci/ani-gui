@@ -42,16 +42,21 @@ function envelopeOf(error: unknown): Envelope | null {
 	}
 }
 
-/** Whether an upstream's own status says the tracker failed or is busy. */
+/** The 4xx an upstream sends when it did not take the request this
+ *  time: a request timeout, too early, a rate limit. */
+const TRANSIENT_4XX: ReadonlySet<number> = new Set([408, 425, 429]);
+
+/** Whether an upstream's own status says the tracker failed, is busy,
+ *  or did not take the request this time. */
 function isOutageStatus(status: unknown): boolean {
-	return typeof status === 'number' && (status >= 500 || status === 429);
+	return typeof status === 'number' && (status >= 500 || TRANSIENT_4XX.has(status));
 }
 
 /**
  * Read a failed renewal call as one of the three, from the backend's
  * stable key alone (never the error's text): its refusal key is
  * `rejected`; a key saying the tracker was not reached, or an upstream
- * that answered with a 5xx or 429, is `unreachable`; anything else,
+ * that answered with a 5xx, a 408, a 425 or a 429, is `unreachable`; anything else,
  * including the local backend not answering at all, is `unknown`.
  */
 export function classifyRenewalError(error: unknown): RenewalFailure {

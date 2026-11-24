@@ -6,6 +6,7 @@
 //! string — the frontend owns user-facing copy.
 
 pub mod account;
+pub(crate) mod account_absent;
 pub mod account_edit;
 pub(crate) mod account_epoch;
 mod account_mapped;

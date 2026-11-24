@@ -35,7 +35,7 @@ use crate::app::AppState;
 #[cfg(test)]
 use crate::cache::ttl::TRACKER_MAP_TTL;
 use crate::cache::ttl::TRACKER_MAP_UNSETTLED_TTL;
-use crate::error::Result;
+use crate::error::{AniError, Result};
 
 #[path = "tracker_map_airdates.rs"]
 mod airdates;
