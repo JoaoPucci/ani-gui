@@ -73,7 +73,7 @@ const {
 } = require("./lib/backend-handshake.cjs");
 const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
 
-/** The environments what the app starts gets (lib/child-env.cjs userEnvs). */
+/** The environments a program the app starts gets (lib/child-env.cjs userEnvs). */
 const envs = childEnvs.userEnvs(process, LAUNCH_ENV);
 const { asUser } = envs;
 const openExternal = (url) => asUser(() => shell.openExternal(url));

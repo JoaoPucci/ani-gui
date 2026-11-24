@@ -228,7 +228,8 @@ function replaceAll(target, next) {
  * touches only the variables that differ, the same trade VS Code makes
  * around shell.openExternal.
  *
- * Off Linux `open` runs and `target` is never touched.
+ * Off Linux `open` runs and `target` is never touched. `execPath`,
+ * `realpath` and `accountHome` are childEnv's.
  */
 function withUserEnv({ platform, target, launch, execPath, open, realpath, accountHome }) {
   if (platform !== "linux") return open();
@@ -255,7 +256,9 @@ function withUserEnv({ platform, target, launch, execPath, open, realpath, accou
  *   process's own environment (openExternal, openPath, Electron's
  *   relaunch), with a program's in place for the call alone.
  *
- * `realpath` and `accountHome` are for tests.
+ * Each reads `proc.env` at the call, so what main.js exports after
+ * building them (ANI_GUI_DEV) is passed on. `realpath` and
+ * `accountHome` are for tests.
  */
 function userEnvs(proc, launch, { realpath, accountHome } = {}) {
   const base = { platform: proc.platform, launch, execPath: proc.execPath, realpath, accountHome };
