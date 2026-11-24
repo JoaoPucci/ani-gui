@@ -6,7 +6,7 @@
 /// ([`crate::account::episode_map_calendar::parse_date`]), `None` for
 /// anything else — a date short of a day, or one naming no real day,
 /// never carried into a neighbouring month.
-pub(super) fn days(date: Option<&str>) -> Option<i64> {
+pub(crate) fn days(date: Option<&str>) -> Option<i64> {
     let date = crate::account::episode_map_calendar::parse_date(date?)?;
     let (y, m, d) = (
         i64::from(date.year),
