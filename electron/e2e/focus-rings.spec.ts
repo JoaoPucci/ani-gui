@@ -68,9 +68,10 @@
  * toast and the update badge; the card's link dialog; a show's page
  * with a download in flight, which shows the download bar; the
  * player's page with the skip button up and the note on a guessed
- * session; and a show's page with its watch-order strip (its tiles and
- * the line for the entry being watched). Each requires the walk to
- * reach those controls.
+ * session; a show's page with its watch-order strip (its tiles and
+ * the line for the entry being watched); and the player at the end of
+ * a show's last episode, with the Up next card naming the entry after
+ * it. Each requires the walk to reach those controls.
  *
  * A forced-colours theme (a Windows contrast theme) drops every box
  * shadow, so there a ring must be an outline. With the theme emulated,
@@ -111,8 +112,8 @@
  *
  * Under the mouse: at the desktop size, the forward walks of the four
  * pages (and of the show's page with an episode typed), of the hero's
- * empty and failed states, of the player and of the watch-order strip
- * rest the mouse on every
+ * empty and failed states, of the player, of the watch-order strip and
+ * of the Up next card rest the mouse on every
  * stop that shows, and a hover style must neither replace its ring nor
  * add a second; the read must find the control under the mouse.
  * Whether a lifted, hovered control's ring stays whole is not checked,
@@ -1537,6 +1538,110 @@ async function walkPlayer(origin: string) {
 		await stopApp(app);
 	}
 }
+
+/** The Continue card's show with its sixth episode as its last, and a
+ *  franchise in which a second season follows it: the episode the card
+ *  plays is the show's finale, so its end brings up the Up next card. */
+const finaleShow = { ...continueKitsuMatch, episode_count: 6 };
+const finaleEntry = (id: string, title: string, start: string, episodes: number) => ({
+	id,
+	title,
+	subtype: 'TV',
+	start,
+	episodes,
+	status: 'finished',
+	poster: null,
+	cover: null
+});
+const finaleFranchise = {
+	anchor: finaleShow.id,
+	name: finaleShow.canonical_title,
+	name_from: finaleShow.id,
+	entries: [
+		finaleEntry(finaleShow.id, finaleShow.canonical_title, finaleShow.start_date, 6),
+		finaleEntry(`${finaleShow.id}-2`, `${finaleShow.canonical_title} Season 2`, '2025-01-10', 12)
+	],
+	links: [[finaleShow.id, `${finaleShow.id}-2`]],
+	versions: [],
+	films: [],
+	sides: [],
+	recaps: [],
+	parents: {},
+	complete: true
+};
+
+test("the rings on the player's Up next card are drawn once and whole", async () => {
+	test.setTimeout(180_000);
+	const media = await mediaServer();
+	const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ani-gui-focus-rings-up-next-'));
+	writeReplayConfig(profile, 'locale = "en"\n');
+	const app = await launchPackagedApp(
+		{
+			...process.env,
+			XDG_STATE_HOME: path.join(profile, 'state'),
+			XDG_CONFIG_HOME: path.join(profile, 'config'),
+			XDG_CACHE_HOME: path.join(profile, 'cache'),
+			XDG_DATA_HOME: path.join(profile, 'data'),
+			ANI_GUI_UNATTENDED: '1'
+		},
+		{ profile }
+	);
+	try {
+		const page = await appWindow(app);
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		const play = await routeRealPlay(page, {
+			profile,
+			settings: { locale: 'en', use_custom_player_controls: true },
+			stream: { upstreamUrl: `${media.origin}/master.m3u8`, mediaKind: 'hls' },
+			show: { match: finaleShow, episode: continueKitsuEpisode6 }
+		});
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p.startsWith('/api/kitsu/franchise/')) return j(finaleFranchise);
+			if (p === '/api/history/by-kitsu') {
+				const { ids } = r.request().postDataJSON() as { ids: string[] };
+				return j(Object.fromEntries(ids.map((i) => [i, null])));
+			}
+			return r.fallback();
+		});
+		await remount(page);
+		await sizeViewport(page, 1440, 900);
+		await playFromContinue(page, play);
+		// The end of the finale brings the card up.
+		await expect(page.locator('video')).toBeVisible({ timeout: 30_000 });
+		await expect
+			.poll(() => page.evaluate(() => document.querySelector('video')?.duration ?? 0), {
+				timeout: 30_000
+			})
+			.toBeGreaterThan(0);
+		await page.evaluate(() => {
+			const video = document.querySelector('video')!;
+			video.currentTime = video.duration;
+		});
+		await expect(page.locator('.up-next a.row').first()).toBeVisible({ timeout: 30_000 });
+		const needs = ['.up-next a.row', '.up-next .dismiss'];
+		for (const forced of [false, true]) {
+			await forcedColours(page, forced);
+			for (const key of ['Tab', 'Shift+Tab'] as const) {
+				const at = `the Up next card${forced ? ', forced colours' : ''}, ${key}`;
+				const hovered: Stop[] = [];
+				const underMouse = !forced && key === 'Tab';
+				const stops = await walk(page, key, {
+					selectors: needs,
+					hovered: underMouse ? hovered : undefined
+				});
+				if (forced) assertForced(stops, at, [], needs);
+				else assertStops(stops, at, [], needs);
+				if (underMouse) assertHovered(hovered, `${at}, under the mouse`);
+			}
+		}
+	} finally {
+		await stopApp(app);
+		media.close();
+	}
+});
 
 test('in a forced-colours theme every focused control draws an outline', async () => {
 	test.setTimeout(240_000);
