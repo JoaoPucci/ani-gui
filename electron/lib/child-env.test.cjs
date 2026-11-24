@@ -382,3 +382,21 @@ test("property: from the AppImage, whatever path lists the user set, a child get
     { numRuns: 60 },
   );
 });
+
+test("the AppRun fixture carries the exports the installed electron-builder writes", () => {
+  // The tests above build the launch from the fixture's exports; a
+  // builder that writes others makes them describe an image nobody ships.
+  const builder = path.dirname(require.resolve("electron-builder/package.json"));
+  const lib = path.dirname(require.resolve("app-builder-lib/package.json", { paths: [builder] }));
+  const template = fs.readFileSync(path.join(lib, "out", "targets", "appimage", "appImageUtil.js"), "utf8");
+  const written = template
+    .split("\n")
+    .filter((l) => l.startsWith("export "))
+    .map((l) => l.replaceAll("\\$", "$"));
+  const fixture = fs.readFileSync(path.join(__dirname, "fixtures", "AppRun.electron-builder-26"), "utf8");
+  assert.deepStrictEqual(
+    fixture.split("\n").filter((l) => l.startsWith("export ")),
+    written,
+  );
+  assert.strictEqual(written.length, 4);
+});
