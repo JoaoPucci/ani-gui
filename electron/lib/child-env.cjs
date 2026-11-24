@@ -57,7 +57,8 @@
 // dropped. A portable HOME is the account's again, and a portable
 // XDG_CONFIG_HOME is dropped, since the one it replaced is not known;
 // the app's own backend keeps both (`keepPortable`), because that is
-// where the person chose to keep the app's data.
+// where the person chose to keep the app's data, and the external
+// player and Syncplay it starts inherit them.
 // A process that does not run from the mount (another AppImage leaked
 // its variables into the terminal the app was started from) passes
 // them on as the user launched with them.
