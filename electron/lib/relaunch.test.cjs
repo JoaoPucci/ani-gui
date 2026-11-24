@@ -235,8 +235,12 @@ test("Restart in the AppImage starts the waiter from the user's environment, not
   // The launch snapshot is taken after Electron's early rewrite
   // (lib/child-env.cjs), so it already holds Unity; what main.js exports
   // after it (ANI_GUI_*) is in this process's alone.
+  // AppRun had already put the mount ahead of the user's PATH and set
+  // LD_LIBRARY_PATH to the image's libraries (lib/child-env.cjs).
   const launch = {
     ...appImageEnv,
+    PATH: `${appImageEnv.APPDIR}:${appImageEnv.APPDIR}/usr/sbin:/usr/bin:/bin`,
+    LD_LIBRARY_PATH: `${appImageEnv.APPDIR}/usr/lib`,
     XDG_CURRENT_DESKTOP: "Unity",
     ORIGINAL_XDG_CURRENT_DESKTOP: "ubuntu:GNOME",
     CHROME_DESKTOP: "ani-gui.desktop",
@@ -255,10 +259,13 @@ test("Restart in the AppImage starts the waiter from the user's environment, not
   assert.equal(spawned.length, 1);
   const [env] = spawned;
   assert.equal(env.XDG_CURRENT_DESKTOP, "ubuntu:GNOME");
-  for (const k of ["ORIGINAL_XDG_CURRENT_DESKTOP", "CHROME_DESKTOP", "GDK_BACKEND", "NO_AT_BRIDGE", "APPDIR"]) {
-    assert.ok(!(k in env), k);
-  }
-  assert.equal(env.APPIMAGE, appImageEnv.APPIMAGE);
+  const dropped = ["ORIGINAL_XDG_CURRENT_DESKTOP", "CHROME_DESKTOP", "GDK_BACKEND", "NO_AT_BRIDGE"];
+  // The runtime's own variables and the image's libraries are this
+  // image's: the new one's runtime and AppRun set their own.
+  dropped.push("APPDIR", "APPIMAGE", "OWD", "LD_LIBRARY_PATH");
+  for (const k of dropped) assert.ok(!(k in env), k);
+  assert.equal(env.PATH, "/usr/bin:/bin");
+  assert.equal(env.HOME, appImageEnv.HOME);
   assert.equal(env.ANI_GUI_BACKEND_PORT, "4100");
 });
 
@@ -266,7 +273,14 @@ test("Restart everywhere else asks for Electron's relaunch inside the user's env
   let inside = false;
   const calls = [];
   restart(
-    { platform: "linux", launch: { HOME: "/home/me" }, now: { HOME: "/home/me" }, execPath: "/opt/ani-gui/ani-gui", argv: ["/opt/ani-gui/ani-gui"], pid: 1 },
+    {
+      platform: "linux",
+      launch: { HOME: "/home/me" },
+      now: { HOME: "/home/me" },
+      execPath: "/opt/ani-gui/ani-gui",
+      argv: ["/opt/ani-gui/ani-gui"],
+      pid: 1,
+    },
     {
       app: { relaunch: () => calls.push(inside) },
       spawn: () => assert.fail(),

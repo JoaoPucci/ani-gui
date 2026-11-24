@@ -242,3 +242,140 @@ test("property: a Linux child holds only what the user launched with or the app 
     }),
   );
 });
+
+// The AppImage. Its runtime (type2-runtime, the one electron-builder 26
+// embeds) exports APPIMAGE, APPDIR, OWD and ARGV0 before AppRun runs,
+// and AppRun puts the mount ahead of PATH, XDG_DATA_DIRS, LD_LIBRARY_PATH
+// and GSETTINGS_SCHEMA_DIR, all before main.js takes its snapshot. A
+// browser started with that environment loads the image's old
+// libraries and searches its data first. The environment AppRun builds
+// is taken from the AppRun the image ships: electron-builder 26's,
+// prepared by the repack (lib/appimage-tree.cjs), its exports run in
+// bash.
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+const { prepareTree } = require("./appimage-tree.cjs");
+
+const MOUNT = "/tmp/.mount_ani-guAbC123";
+const IMAGE_EXEC = `${MOUNT}/ani-gui.bin`;
+const APPRUN_LISTS = ["PATH", "XDG_DATA_DIRS", "LD_LIBRARY_PATH", "GSETTINGS_SCHEMA_DIR"];
+
+/** The export lines of the AppRun the image ships. */
+const shippedExports = (() => {
+  const fixtures = path.join(__dirname, "fixtures");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ani-gui-child-env-"));
+  try {
+    fs.copyFileSync(path.join(fixtures, "AppRun.electron-builder-26"), path.join(dir, "AppRun"));
+    fs.copyFileSync(path.join(fixtures, "ani-gui.desktop"), path.join(dir, "ani-gui.desktop"));
+    prepareTree(dir);
+    const lines = fs
+      .readFileSync(path.join(dir, "AppRun"), "utf8")
+      .split("\n")
+      .filter((l) => l.startsWith("export "));
+    assert.strictEqual(lines.length, 4, "AppRun exports the four path lists");
+    return lines.join("\n");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+})();
+
+/** What the runtime and AppRun make of the user's environment `user`. */
+function launchedFromImage(user) {
+  const report =
+    `for v in ${APPRUN_LISTS.join(" ")}; do ` +
+    `if [ -n "\${!v+x}" ]; then printf '%s=%s\\0' "$v" "\${!v}"; fi; done`;
+  const runtime = {
+    APPIMAGE: "/home/me/Apps/ani-gui.AppImage",
+    APPDIR: MOUNT,
+    OWD: "/home/me",
+    ARGV0: "ani-gui.AppImage",
+  };
+  const out = spawnSync("/bin/bash", ["-c", `${shippedExports}\n${report}`], {
+    env: { ...user, ...runtime },
+    encoding: "utf8",
+  });
+  assert.strictEqual(out.status, 0, out.stderr);
+  const env = { ...user, ...runtime };
+  for (const entry of out.stdout.split("\0").filter(Boolean)) {
+    const at = entry.indexOf("=");
+    env[entry.slice(0, at)] = entry.slice(at + 1);
+  }
+  return env;
+}
+
+const fromImage = (launch, now = launch) =>
+  childEnv({ platform: "linux", launch, now, execPath: IMAGE_EXEC, realpath: (p) => p });
+
+test("from the AppImage, a child gets the user's path lists back, without the image's", () => {
+  const user = {
+    HOME: "/home/me",
+    PATH: "/home/me/bin:/usr/bin:/bin",
+    XDG_DATA_DIRS: "/usr/share/ubuntu:/usr/local/share/:/usr/share/",
+    LD_LIBRARY_PATH: "/opt/mine/lib",
+    GSETTINGS_SCHEMA_DIR: "/home/me/schemas",
+  };
+  const launch = launchedFromImage(user);
+  assert.ok(launch.LD_LIBRARY_PATH.startsWith(MOUNT), "the condition: AppRun put the mount first");
+  assert.deepStrictEqual(fromImage(launch, { ...launch, GDK_BACKEND: "wayland" }), user);
+});
+
+test("from the AppImage, a path list the user never set is not passed on", () => {
+  const user = { HOME: "/home/me", PATH: "/usr/bin:/bin" };
+  const launch = launchedFromImage(user);
+  for (const name of ["XDG_DATA_DIRS", "LD_LIBRARY_PATH", "GSETTINGS_SCHEMA_DIR"]) {
+    assert.ok(name in launch, `the condition: AppRun set ${name}`);
+  }
+  assert.deepStrictEqual(fromImage(launch), user);
+});
+
+test("from the AppImage, the runtime's own variables never reach a child", () => {
+  // An Electron app started from the app (an editor, through Open
+  // folder) would read $APPIMAGE as its own and update the wrong file.
+  const env = fromImage(launchedFromImage({ HOME: "/home/me", PATH: "/usr/bin" }));
+  for (const name of ["APPIMAGE", "APPDIR", "OWD", "ARGV0"]) assert.ok(!(name in env), name);
+});
+
+test("an AppImage's variables another program leaked in are passed on as the user launched with them", () => {
+  // Another AppImage (an editor's terminal) leaks its own mount; this
+  // process does not run from it, so nothing there is the app's to take out.
+  const leaked = launchedFromImage({ HOME: "/home/me", PATH: "/usr/bin" });
+  const execPath = "/opt/ani-gui/ani-gui.bin";
+  const env = childEnv({ platform: "linux", launch: leaked, now: leaked, execPath });
+  assert.deepStrictEqual(env, leaked);
+});
+
+test("property: from the AppImage, whatever path lists the user set, a child gets exactly them", () => {
+  const component = fc.constantFrom(
+    "/usr/bin",
+    "/bin",
+    "/opt/x/lib",
+    "/usr/share/",
+    "/usr/share/gnome",
+    "/usr/local/share/",
+    "",
+  );
+  // A list set but empty is one AppRun's ${VAR:+:...} cannot tell from
+  // unset, so it is not a case anyone could rebuild.
+  const joined = fc
+    .array(component, { minLength: 1, maxLength: 4 })
+    .map((c) => c.join(":"))
+    .filter((v) => v !== "");
+  const list = fc.option(joined, { nil: undefined });
+  fc.assert(
+    fc.property(list, list, list, list, (p, d, l, g) => {
+      const user = { HOME: "/home/me" };
+      for (const [name, value] of [
+        ["PATH", p],
+        ["XDG_DATA_DIRS", d],
+        ["LD_LIBRARY_PATH", l],
+        ["GSETTINGS_SCHEMA_DIR", g],
+      ]) {
+        if (value !== undefined) user[name] = value;
+      }
+      assert.deepStrictEqual(fromImage(launchedFromImage(user)), user);
+    }),
+    { numRuns: 60 },
+  );
+});
