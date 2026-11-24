@@ -212,9 +212,9 @@
 
 	// Hero cycles through the first N trending titles with art of their
 	// own, as the backend picks them ($lib/hero/rotation, which also says
-	// what the trending row lists). Rotation is slow (~9s) and pauses while the cursor is over
-	// the hero, so it never snatches a title out from under a user
-	// mid-read. Honors prefers-reduced-motion (cycle disabled, first item
+	// what the trending row lists). Rotation is slow (~9s) and pauses
+	// while the cursor is over the hero, so it never snatches a title out
+	// from under a user mid-read. Honors prefers-reduced-motion (cycle disabled, first item
 	// shown statically). Not a carousel — there's no scroll, no
 	// auto-advance faster than read-time, and every item is one click
 	// away on the pager. AGENTS.md §7 anti-pattern is "auto-rotating
