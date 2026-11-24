@@ -54,7 +54,8 @@
 // those lists without what AppRun added, and a list left empty is not
 // passed on at all (AppRun cannot tell a list set empty from one
 // never set, and neither can this); the runtime's variables are
-// dropped. A portable HOME is the account's again, and a portable
+// dropped. A portable HOME is the account's again (or stays, with its
+// config, when the account has no home on record), and a portable
 // XDG_CONFIG_HOME is dropped, since the one it replaced is not known;
 // the app's own backend keeps both (`keepPortable`), because that is
 // where the person chose to keep the app's data, and the external

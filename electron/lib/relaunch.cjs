@@ -88,7 +88,12 @@ const EXTRACT_AND_RUN = "--appimage-extract-and-run";
 const WAIT_EXTRACTION_THEN_EXEC =
   'pid=$1; dir=$2; ticks=$3; shift 3; while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done; ' +
   'n=0; while [ -e "$dir" ] && [ "$n" -lt "$ticks" ]; do sleep 0.1; n=$((n + 1)); done; exec "$@"';
-/** Ten seconds: the runtime's removal of an extraction takes well under one. */
+/** Ten seconds. The removal starts once the runtime's own child has
+ *  exited: at once off a terminal, and up to about two seconds after the
+ *  app from one (the launcher outlives it, lib/linux-launcher.cjs); the
+ *  removal itself takes well under a second. A restart that still meets
+ *  it running can start without files the removal takes; a later launch
+ *  extracts them again. */
 const EXTRACTION_WAIT_TICKS = 100;
 
 /** The waiter: `$1` is the process to outlive, the rest the command to
