@@ -519,7 +519,10 @@ and two records hold what they answer:
   answers and assert on what the renderer draws; `scenarios_test.rs`
   checks every answer against the backend, and the `scenario_*_test.rs`
   files assert the decisions the scenarios used to assert in the
-  renderer. A scenario's new inputs are written by running it with
+  renderer. The Electron focus-ring walks
+  (`electron/e2e/focus-rings.spec.ts`) also serve some of these answers,
+  looked up by the case's name: a case renamed or dropped fails those
+  walks. A scenario's new inputs are written by running it with
   `WATCH_ORDER_RECORD=1`, then
   `cargo test --lib write_the_scenario_answers -- --ignored`
   (`WATCH_ORDER_SUITE=<suite>` for one suite) fills in their answers.

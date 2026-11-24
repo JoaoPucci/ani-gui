@@ -1596,7 +1596,10 @@ function upNextAnswer(name: string): { answer: unknown; hrefs: string[] } {
 }
 /** The card's forms, as the backend answers them: one entry after the
  *  show, a fork of two, one that has not aired, whose row links
- *  nowhere, and the end of a chain, which links to the franchise page. */
+ *  nowhere, and the end of a chain, which links to the franchise page.
+ *  The answers were recorded for another show (Kitsu id 42), so the
+ *  chain's end links to that show's franchise page, not the played
+ *  one's: the card draws what the backend answers, whichever show. */
 const upNextForms = [
 	{
 		label: 'one entry',

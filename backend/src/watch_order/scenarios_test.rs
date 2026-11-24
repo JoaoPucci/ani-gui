@@ -6,7 +6,8 @@
 //! draws from it. This module holds every recorded answer to what the
 //! backend decides from those inputs, as the routes do
 //! (`commands::watch_order`), and asserts the scenarios' decisions by
-//! name.
+//! name. The Electron focus-ring walks (`electron/e2e/focus-rings.spec.ts`)
+//! serve some of the answers too, looked up by the case's name.
 //!
 //! `write_the_scenario_answers` (ignored) fills in the answers after a
 //! recording run of the scenarios; `WATCH_ORDER_SUITE=<file name>`
