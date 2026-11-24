@@ -47,6 +47,7 @@ const withBinary =
  *  fails there until it has an entry here and a message per locale. */
 const MESSAGE_BY_KEY: Readonly<Record<string, KeyedMessage>> = {
 	'error.account.refresh_rejected': m.backend_error_account_refresh_rejected,
+	'error.account.tracker_rejected': withStatus(m.backend_error_account_tracker_rejected),
 	'error.account.unsupported_pkce': m.backend_error_account_unsupported_pkce,
 	'error.cache.generic': m.backend_error_cache_generic,
 	'error.config.parse': m.backend_error_config_parse,
@@ -75,6 +76,7 @@ const REASON_BY_KIND: Readonly<Record<string, () => string>> = {
 	network: m.errors_reason_network,
 	gate_refused: m.errors_reason_network,
 	upstream: m.errors_reason_answered_error,
+	tracker_rejected: m.errors_reason_answered_error,
 	http: m.errors_reason_answered_error,
 	no_results: m.errors_reason_not_found,
 	timeout: m.errors_reason_timeout,

@@ -1,5 +1,6 @@
 [
   "error.account.refresh_rejected",
+  "error.account.tracker_rejected",
   "error.account.unsupported_pkce",
   "error.cache.generic",
   "error.config.parse",

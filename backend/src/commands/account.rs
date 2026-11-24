@@ -1038,7 +1038,10 @@ pub(crate) async fn push_progress_from(
     if update.progress_episodes.is_none() {
         return write_through(state, kind, provider, tokens, native, update, began).await;
     }
-    let media = provider.tracked_media(tokens, native).await?;
+    // A tracker that no longer has the entry is sent nothing.
+    let Some(media) = AniError::unless_absent(provider.tracked_media(tokens, native).await)? else {
+        return Ok(None);
+    };
     push_progress_read(state, kind, provider, tokens, native, update, media, began).await
 }
 
@@ -1066,7 +1069,8 @@ pub(crate) async fn push_progress_read(
 }
 
 /// Write `update` to `native` and the cache through, or nothing when
-/// the update is empty ([`EntryUpdate::is_empty`]) — a no-op, `None`.
+/// the update is empty ([`EntryUpdate::is_empty`]) — a no-op, `None` —
+/// or when the tracker answers that it no longer has `native`, `None`.
 ///
 /// The cache is written HERE, under the per-show lock — not in the
 /// route afterwards. Deferring it released the lock first, so a stale
@@ -1091,7 +1095,13 @@ pub(crate) async fn write_through(
         return Ok(None);
     }
     let owner = super::account_owner::before_write(state, kind, provider, tokens).await?;
-    let entry = provider.update_entry(tokens, native, update).await?;
+    // A tracker that no longer has the entry wrote nothing, and nothing
+    // is cached as written.
+    let Some(entry) =
+        super::account_absent::update_unless_absent(provider, tokens, native, update).await?
+    else {
+        return Ok(None);
+    };
     let owner = super::account_owner::after_write(state, kind, provider, tokens, owner).await;
     super::account_owner::cache_row(state, kind, began, native.0, owner.as_deref(), |owner| {
         upsert_cached_entry(state, kind, owner, &entry)

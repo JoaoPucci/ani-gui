@@ -37,7 +37,15 @@ describe('classifyRenewalError', () => {
 			'no connection to the tracker',
 			answered(503, { kind: 'network', key: 'error.network.unreachable' })
 		],
-		['the tracker timing out', answered(504, { kind: 'timeout', key: 'error.scraper.timeout' })]
+		['the tracker timing out', answered(504, { kind: 'timeout', key: 'error.scraper.timeout' })],
+		[
+			'the tracker timing the request out',
+			answered(502, { kind: 'upstream', key: 'error.network.upstream', status: 408 })
+		],
+		[
+			'the tracker refusing the request as too early',
+			answered(502, { kind: 'upstream', key: 'error.network.upstream', status: 425 })
+		]
 	])('reads %s as unreachable', (_name, error) => {
 		expect(classifyRenewalError(error)).toBe('unreachable');
 	});
@@ -71,13 +79,16 @@ describe('classifyRenewalError', () => {
 		);
 	});
 
-	it('reads an upstream status as unreachable only when it is a 5xx or a 429', () => {
+	it('reads an upstream status as unreachable only when it is a 5xx, a 408, a 425 or a 429', () => {
+		// The transient 4xx are a handful among five hundred statuses; draw
+		// them often enough that every run asks about each.
+		const statuses = fc.oneof(fc.integer({ min: 100, max: 599 }), fc.constantFrom(408, 425, 429));
 		fc.assert(
-			fc.property(fc.integer({ min: 100, max: 599 }), (status) => {
+			fc.property(statuses, (status) => {
 				const out = classifyRenewalError(
 					answered(502, { kind: 'upstream', key: 'error.network.upstream', status })
 				);
-				const outage = status >= 500 || status === 429;
+				const outage = status >= 500 || [408, 425, 429].includes(status);
 				return out === (outage ? 'unreachable' : 'unknown');
 			})
 		);

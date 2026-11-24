@@ -159,3 +159,62 @@ describe('planReadRetry properties', () => {
 		);
 	});
 });
+
+// A permanent answer is not retried. The backend answers a tracker's
+// rejection (a 4xx: `error.account.tracker_rejected`, HTTP 422) and a
+// refused bearer (401) with statuses that say asking again gets the same
+// answer; only a failure that can pass — a 5xx, the network, a timeout —
+// is worth the schedule, besides the rate limit's own plan.
+describe('a permanent failure ends the read', () => {
+	const rejected = (status: number) =>
+		new AccountApiError(
+			status,
+			wire<AniErrorPayload>({
+				kind: 'tracker_rejected',
+				status: 403,
+				key: 'error.account.tracker_rejected'
+			})
+		);
+
+	it('reads a 4xx other than a rate limit or a timeout as permanent', () => {
+		for (const status of [400, 401, 403, 404, 410, 422]) {
+			expect(classifyReadFailure(rejected(status)), String(status)).toMatchObject({
+				permanent: true
+			});
+		}
+	});
+
+	it('reads a 5xx, a timeout, a transport failure and a missing bearer as passing', () => {
+		for (const e of [
+			rejected(502),
+			rejected(503),
+			rejected(504),
+			rejected(408),
+			new TypeError('fetch failed'),
+			new Error('no bearer for mal')
+		]) {
+			expect(classifyReadFailure(e), String(e)).not.toMatchObject({ permanent: true });
+		}
+	});
+
+	it('plans no retry after a permanent failure, wherever it falls', () => {
+		const permanent = classifyReadFailure(rejected(422));
+		expect(planReadRetry([permanent])).toBeNull();
+		expect(planReadRetry([plain, plain, permanent])).toBeNull();
+	});
+
+	it('still retries a 5xx on the schedule', () => {
+		expect(planReadRetry([classifyReadFailure(rejected(502))])).toBe(1000);
+	});
+
+	it('ends on any 4xx but 408 and 429, and retries any 5xx', () => {
+		fc.assert(
+			fc.property(fc.integer({ min: 400, max: 599 }), (status) => {
+				const plan = planReadRetry([classifyReadFailure(rejected(status))]);
+				if (status === 429) return; // the rate limit's own plan
+				if (status >= 500 || status === 408) expect(plan).toBe(1000);
+				else expect(plan).toBeNull();
+			})
+		);
+	});
+});

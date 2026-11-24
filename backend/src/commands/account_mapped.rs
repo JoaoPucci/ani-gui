@@ -7,7 +7,7 @@
 use crate::account::episode_map::{EarlierSegment, MappedWrite, Target};
 use crate::account::provider::{CurrentEntry, EntryUpdate, ListEntry, ProviderMediaId};
 use crate::account::status::ListStatus;
-use crate::error::Result;
+use crate::error::{AniError, Result};
 
 use super::account::{push_progress_from, push_progress_read, reconcile_for, write_through};
 use super::tracker_map::{episode_map_for, episode_map_for_unresolved, MapAsk};
@@ -20,8 +20,9 @@ use super::tracker_map::{episode_map_for, episode_map_for_unresolved, MapAsk};
 /// resolved entry as it always has. A watched episode is read through
 /// the map: where no segment covers it the write is the identity one,
 /// fitted to the resolved entry's total; where one does it goes to that
-/// segment's entry ([`write_mapped`]). A show Kitsu resolves to nothing
-/// writes only where the map files it under another entry.
+/// segment's entry ([`write_mapped`]). A show Kitsu resolves to nothing,
+/// or to an entry the tracker no longer has, writes only where the map
+/// files it under another entry.
 #[cfg(test)]
 pub(crate) async fn push_progress_mapped(
     ask: &MapAsk<'_>,
@@ -61,19 +62,20 @@ pub(crate) async fn push_progress_mapped_at(
         };
     };
     let Some(native) = native else {
-        return match episode_map_for_unresolved(ask, kitsu_id)
-            .await?
-            .target(episode)
-        {
-            Target::Mapped(write) => write_mapped(ask, &write, &update, began).await,
-            Target::Identity => Ok(None),
-        };
+        return write_unresolved(ask, kitsu_id, episode, &update, began).await;
     };
     // The resolved entry's read — whose total the map is checked against
     // — and an identity write on it are one read-then-write, under the
     // entry's lock.
     let guard = hold_entry(ask, native.0).await;
-    let media = ask.provider.tracked_media(ask.tokens, native).await?;
+    // A tracker that no longer has the resolved entry serves nothing
+    // Kitsu resolves the show to: it is written as such a show is.
+    let Some(media) =
+        AniError::unless_absent(ask.provider.tracked_media(ask.tokens, native).await)?
+    else {
+        drop(guard);
+        return write_unresolved(ask, kitsu_id, episode, &update, began).await;
+    };
     match episode_map_for(ask, kitsu_id, native, media.episodes)
         .await?
         .target(episode)
@@ -103,6 +105,24 @@ pub(crate) async fn push_progress_mapped_at(
     }
 }
 
+/// The write of `episode` for a show Kitsu resolves to nothing the
+/// tracker serves: only where the map files it under another entry.
+async fn write_unresolved(
+    ask: &MapAsk<'_>,
+    kitsu_id: &str,
+    episode: u32,
+    update: &EntryUpdate,
+    began: u64,
+) -> Result<Option<ListEntry>> {
+    match episode_map_for_unresolved(ask, kitsu_id)
+        .await?
+        .target(episode)
+    {
+        Target::Mapped(write) => write_mapped(ask, &write, update, began).await,
+        Target::Identity => Ok(None),
+    }
+}
+
 /// Wait for, and hold, the lock guarding read-then-write on tracker
 /// entry `entry`.
 async fn hold_entry(ask: &MapAsk<'_>, entry: u32) -> tokio::sync::OwnedMutexGuard<()> {
@@ -112,13 +132,15 @@ async fn hold_entry(ask: &MapAsk<'_>, entry: u32) -> tokio::sync::OwnedMutexGuar
         .await
 }
 
-/// The user's row on tracker entry `entry`.
-async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<CurrentEntry>> {
-    Ok(ask
+/// The user's row on tracker entry `entry` (`Some(None)` when it is not
+/// on their list), or `None` when the tracker no longer has the entry:
+/// a cached map can name one it has since removed.
+async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<Option<CurrentEntry>>> {
+    let media = ask
         .provider
         .tracked_media(ask.tokens, ProviderMediaId(entry))
-        .await?
-        .entry)
+        .await;
+    Ok(AniError::unless_absent(media)?.map(|media| media.entry))
 }
 
 /// Bring an earlier segment's entry to its total — completed where the
@@ -126,10 +148,13 @@ async fn row_on(ask: &MapAsk<'_>, entry: u32) -> Result<Option<CurrentEntry>> {
 /// and writing it under its own lock. The reconcile ([`reconcile_for`])
 /// keeps it from lowering a row and keeps an AniList rewatch; a MAL one
 /// is a Watching row there, so it is closed — back at Completed, its
-/// rewatch counted.
+/// rewatch counted. An entry the tracker no longer has holds nothing to
+/// bring up.
 async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment, began: u64) -> Result<()> {
     let _guard = hold_entry(ask, earlier.entry).await;
-    let row = row_on(ask, earlier.entry).await?;
+    let Some(row) = row_on(ask, earlier.entry).await? else {
+        return Ok(());
+    };
     if row.is_some_and(|r| r.stands_at(ask.kind, earlier.total)) {
         return Ok(());
     }
@@ -158,7 +183,8 @@ async fn bring_to_total(ask: &MapAsk<'_>, earlier: &EarlierSegment, began: u64) 
 /// absent or at 0), then the episode's own number on its own entry.
 /// Each entry is read and written under its own lock, one at a time:
 /// the episode's entry is read, released while the earlier entries are
-/// brought up, and read again before its write.
+/// brought up, and read again before its write. An entry the tracker no
+/// longer has is sent nothing.
 async fn write_mapped(
     ask: &MapAsk<'_>,
     write: &MappedWrite,
@@ -166,7 +192,9 @@ async fn write_mapped(
     began: u64,
 ) -> Result<Option<ListEntry>> {
     let mut guard = hold_entry(ask, write.entry).await;
-    let mut row = row_on(ask, write.entry).await?;
+    let Some(mut row) = row_on(ask, write.entry).await? else {
+        return Ok(None);
+    };
     let starts_segment = row.is_none_or(|r| r.progress_episodes == 0);
     if starts_segment && !write.earlier.is_empty() {
         drop(guard);
@@ -174,7 +202,10 @@ async fn write_mapped(
             bring_to_total(ask, earlier, began).await?;
         }
         guard = hold_entry(ask, write.entry).await;
-        row = row_on(ask, write.entry).await?;
+        let Some(again) = row_on(ask, write.entry).await? else {
+            return Ok(None);
+        };
+        row = again;
     }
     let written = write_episode(ask, write, update, row, began).await;
     drop(guard);

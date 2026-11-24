@@ -12,8 +12,17 @@
 // budget to be told the same thing, so a rate-limited failure gets one
 // more attempt after the advertised wait, and a second rate limit ends
 // the read.
+//
+// A permanent answer ends the read at once. The backend answers a
+// tracker's rejection of the request (`tracker_rejected`, HTTP 422) and
+// a refused bearer (401) with statuses that say asking again gets the
+// same answer, so any 4xx the backend sends but a rate limit (429) or a
+// timeout (408) is not retried. A tracker failing (its 5xx) or not
+// taking the request this time (its 408 or 425) reaches the page as the
+// backend's 502, and that, like any failure that can pass — the
+// network, a missing bearer — keeps the schedule.
 
-import type { AccountApiError } from './api';
+import { AccountApiError } from './api';
 import { isRateLimit } from './set-entry-outcome';
 
 const MAX_READ_RETRIES = 4;
@@ -34,6 +43,15 @@ export interface ReadFailure {
 	retryAfterSecs: number | null;
 	/** The backend's error envelope, when the body was one. */
 	envelope: Record<string, unknown> | null;
+	/** Present when the answer will not change on asking again: a 4xx
+	 *  other than 408 or 429. */
+	permanent?: true;
+}
+
+/** Whether `e` is an answer asking again would get again. */
+function isPermanent(e: unknown): boolean {
+	if (!(e instanceof AccountApiError)) return false;
+	return e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429;
 }
 
 /** The body of an account error as the backend's envelope, or null
@@ -49,10 +67,15 @@ function envelopeOf(detail: string): Record<string, unknown> | null {
 	}
 }
 
-/** Read a failed attempt: a 429 with whatever wait its envelope
- *  carries; anything else — a transport failure, a missing bearer,
- *  another status — as a plain failure. */
+/** Read a failed attempt: a permanent answer (see {@link isPermanent})
+ *  with its envelope; a 429 with whatever wait its envelope carries;
+ *  anything else — a transport failure, a missing bearer, a 5xx — as a
+ *  plain failure. */
 export function classifyReadFailure(e: unknown): ReadFailure {
+	if (isPermanent(e)) {
+		const envelope = envelopeOf((e as AccountApiError).detail);
+		return { rateLimited: false, retryAfterSecs: null, envelope, permanent: true };
+	}
 	if (!isRateLimit(e)) return { rateLimited: false, retryAfterSecs: null, envelope: null };
 	const envelope = envelopeOf((e as AccountApiError).detail);
 	const secs = envelope?.retry_after_secs;
@@ -65,7 +88,8 @@ export function classifyReadFailure(e: unknown): ReadFailure {
 
 /**
  * Delay (ms) before the next attempt given every failure so far, the
- * latest last, or `null` once the read should give up.
+ * latest last, or `null` once the read should give up — at once after a
+ * permanent answer.
  *
  * A plain failure follows the schedule over the plain failures so far:
  * 1 s, 2 s, 4 s, 8 s, then stop. A rate-limited failure waits what the
@@ -75,6 +99,7 @@ export function classifyReadFailure(e: unknown): ReadFailure {
  */
 export function planReadRetry(failures: readonly ReadFailure[]): number | null {
 	const last = failures.at(-1);
+	if (last?.permanent) return null;
 	if (last?.rateLimited) {
 		if (failures.slice(0, -1).some((f) => f.rateLimited)) return null;
 		const advertised =

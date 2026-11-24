@@ -218,10 +218,10 @@ async fn exchange_code_falls_back_to_one_year_sentinel_when_jwt_decode_fails() {
 }
 
 #[tokio::test]
-async fn exchange_code_surfaces_upstream_4xx_as_upstream_error() {
+async fn exchange_code_surfaces_4xx_as_a_tracker_rejection() {
     // AniList returns 400 on a stale / replayed code with a JSON
-    // error body; the trait surface collapses that to Upstream so
-    // the route layer can map it to a re-auth prompt.
+    // error body: the tracker rejecting the request, which the route
+    // layer answers as a 4xx, not as the tracker failing.
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
@@ -234,10 +234,9 @@ async fn exchange_code_surfaces_upstream_4xx_as_upstream_error() {
         .exchange_code("stale-code", &Pkce::new_plain())
         .await
         .expect_err("400 must surface as Err");
-    assert!(
-        matches!(err, AniError::Upstream { status: 400 }),
-        "expected Upstream {{ status: 400 }}, got {err:?}"
-    );
+    assert_eq!(err.key(), "error.account.tracker_rejected", "{err:?}");
+    assert_eq!(err.http_status_code(), 422);
+    assert_eq!(serde_json::to_value(&err).expect("envelope")["status"], 400);
     // Suppress dead-code warnings until later pairs land.
     let _ = dummy_tokens();
 }
@@ -894,7 +893,10 @@ async fn current_entry_keeps_anilists_not_found_reply_an_error() {
         .current_entry(&dummy_tokens(), ProviderMediaId(999_999_999))
         .await
         .unwrap_err();
-    assert!(matches!(err, AniError::Upstream { status: 404 }));
+    assert!(err.is_not_found_shaped(), "{err:?}");
+    assert_eq!(err.key(), "error.account.tracker_rejected", "{err:?}");
+    assert_eq!(err.http_status_code(), 422);
+    assert_eq!(serde_json::to_value(&err).expect("envelope")["status"], 404);
 }
 
 // --- 429 from the authenticated endpoint ------------------------------
