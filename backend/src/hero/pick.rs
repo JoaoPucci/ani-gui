@@ -1,4 +1,4 @@
-//! The pick itself: [`pick`] reads the list once ([`Entries`]) and
+//! The pick itself: [`pick`] reads the list once (`Entries`) and
 //! returns the hero, the row and the walk together, so the walk is
 //! what made the pick. The rule is the module's (`super`).
 
