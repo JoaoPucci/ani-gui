@@ -41,6 +41,7 @@ import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { playerVideo, playerVideoInSlot } from './player-video';
 import { readPosition, savePosition } from '../../src/lib/play/watch-position';
 import { m } from '../../src/lib/paraglide/messages';
+import { externalOpenLabel } from '../../src/lib/play/external-label';
 
 import type {
 	AiringStatus,
@@ -351,7 +352,7 @@ describe('play route — a stream on its way is never offered Play', () => {
 	});
 
 	for (const [what, itemLabel] of [
-		['the external player', () => m.play_external_label()],
+		['the external player', () => externalOpenLabel('mpv')],
 		['Syncplay', () => m.play_hamburger_syncplay_label()]
 	] as const) {
 		it(`handing a start to ${what} stops it, so nothing starts or shows loading behind the other player`, async () => {
@@ -423,7 +424,7 @@ describe('play route — a stream on its way is never offered Play', () => {
 		).click();
 		const item = () =>
 			Array.from(target.querySelectorAll('button[role="menuitem"]')).find((b) =>
-				(b.textContent ?? '').includes(m.play_external_label())
+				(b.textContent ?? '').includes(externalOpenLabel('mpv'))
 			) as HTMLButtonElement | undefined;
 		await until(() => item() !== undefined, 'the external player menu item');
 		item()!.click();

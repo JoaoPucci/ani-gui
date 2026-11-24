@@ -20,6 +20,7 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideo, playerVideoInSlot } from './player-video';
 import { setLocale } from '../../src/lib/paraglide/runtime';
 import { m } from '../../src/lib/paraglide/messages';
+import { externalOpenLabel } from '../../src/lib/play/external-label';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 
 import type {
@@ -623,7 +624,7 @@ describe('the captions picked before a handoff, after the return', () => {
 			.click();
 		const item = () =>
 			Array.from(document.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')).find(
-				(b) => (b.textContent ?? '').includes(m.play_external_label())
+				(b) => (b.textContent ?? '').includes(externalOpenLabel('mpv'))
 			);
 		await until(() => item() !== undefined, 'the external player menu item');
 		item()!.click();

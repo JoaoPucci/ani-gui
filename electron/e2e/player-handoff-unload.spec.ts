@@ -182,7 +182,7 @@ test("an mp4 handed to the external player is let go of, and comes back where it
 
     // Hand it to the external player.
     await page.locator(`button[aria-label="More actions"]`).click();
-    await page.getByRole("menuitem", { name: /Open in external/ }).click();
+    await page.getByRole("menuitem", { name: /Open in mpv/ }).click();
     await expect.poll(async () => (await video(page))?.src).toBeNull();
     const left = await page.evaluate((episode) => {
       const raw = localStorage.getItem("ani-gui.watch-positions") ?? "[]";

@@ -11,6 +11,8 @@
 	import { resolve } from '$app/paths';
 	import {
 		appInfo,
+		externalPlayerCommandAfterKindChange,
+		externalPlayerStandard,
 		historyClear,
 		imageCacheClear,
 		settingsGet,
@@ -20,9 +22,17 @@
 		type ExternalPlayerKind
 	} from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
+	import { externalOpenLabel } from '$lib/play/external-label';
 	import { failed, landed, type ErrorBlock } from '$lib/settings/error-block';
 	import { describeError } from '$lib/play/error-copy';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
+	import { createKindChange } from '$lib/settings/kind-change';
+	import {
+		createStandardLookup,
+		standardHint,
+		standardPlaceholder,
+		type Found
+	} from '$lib/settings/standard-program';
 	import { DOWNLOAD_QUALITIES, downloadQuality } from '$lib/download/download-quality';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
@@ -56,6 +66,14 @@
 	let cleared = $state(false);
 	let clearingImages = $state(false);
 	let imagesCleared = $state(false);
+
+	// The audio toggle's labels, called at render like the quality
+	// labels below. Portuguese and Spanish spell the audio out, and
+	// English and Russian show SUB and DUB.
+	const AUDIO_LABELS: Record<string, () => string> = {
+		sub: m.app_audio_sub,
+		dub: m.app_audio_dub
+	};
 
 	// Each locale is named in its own language (an autonym), the same
 	// in every UI locale, so these labels are not translated.
@@ -156,9 +174,30 @@
 		{ key: 'iina' },
 		{ key: 'custom' }
 	];
+	// Where the type's standard program is installed here, asked once
+	// per type, and the hint and placeholder that follow from it
+	// ($lib/settings/standard-program.ts).
+	let found = $state<Found | null>(null);
+	const lookup = createStandardLookup(externalPlayerStandard, (answer) => (found = answer));
+	const playerKind = $derived(cfg?.external_player_kind);
+	$effect(() => lookup(playerKind));
+	const hint = $derived(cfg ? standardHint(cfg.external_player_kind, found) : null);
+	const PROGRAM_LABELS: Record<ExternalPlayerKind, () => string> = {
+		mpv: m.settings_external_player_kind_mpv,
+		vlc: m.settings_external_player_kind_vlc,
+		iina: m.settings_external_player_kind_iina,
+		custom: m.settings_external_player_kind_custom
+	};
+	// What the command becomes is the backend's to say
+	// ($lib/settings/kind-change.ts).
+	const changeKind = createKindChange(
+		externalPlayerCommandAfterKindChange,
+		() => cfg,
+		persist,
+		(e) => (errorBlock = failed(errorBlock, 'save', describeSettingsFailure(e)))
+	);
 	function setExternalPlayerKind(kind: ExternalPlayerKind) {
-		if (!cfg) return;
-		void persist({ ...cfg, external_player_kind: kind });
+		void changeKind(kind);
 	}
 	function setExternalPlayerCustomArgs(value: string) {
 		if (!cfg) return;
@@ -345,7 +384,7 @@
 							aria-pressed={cfg.mode === mode}
 							onclick={() => setMode(mode as 'sub' | 'dub')}
 						>
-							{mode.toUpperCase()}
+							{AUDIO_LABELS[mode]()}
 						</button>
 					{/each}
 				</div>
@@ -379,9 +418,29 @@
 				<div class="field-label">
 					<span class="field-key">{m.settings_field_external_player_key()}</span>
 					<span class="field-hint">
-						{m.settings_field_external_player_hint_prefix()}<code
-							>{m.settings_field_external_player_default()}</code
-						>{m.settings_field_external_player_hint_suffix()}
+						{#if hint?.variant === 'unsupported'}
+							{m.settings_field_external_player_hint_unsupported({
+								button: externalOpenLabel(cfg.external_player_kind)
+							})}
+						{:else if hint?.variant === 'found'}
+							{m.settings_field_external_player_hint_found({
+								button: externalOpenLabel(cfg.external_player_kind),
+								program: PROGRAM_LABELS[cfg.external_player_kind]()
+							})}<code>{hint.path}</code>{m.settings_field_external_player_hint_suffix()}
+						{:else if hint?.variant === 'missing'}
+							{m.settings_field_external_player_hint_missing({
+								button: externalOpenLabel(cfg.external_player_kind),
+								program: PROGRAM_LABELS[cfg.external_player_kind]()
+							})}
+						{:else if hint?.variant === 'unknown'}
+							{m.settings_field_external_player_hint_prefix({
+								button: externalOpenLabel(cfg.external_player_kind)
+							})}<code>{hint.program}</code>{m.settings_field_external_player_hint_suffix()}
+						{:else}
+							{m.settings_field_external_player_hint_custom({
+								button: externalOpenLabel(cfg.external_player_kind)
+							})}
+						{/if}
 					</span>
 				</div>
 				<div class="player-binary-row">
@@ -390,7 +449,7 @@
 						type="text"
 						value={cfg.external_player}
 						oninput={(e) => setExternalPlayer((e.currentTarget as HTMLInputElement).value)}
-						placeholder={m.settings_field_external_player_default()}
+						placeholder={standardPlaceholder(cfg.external_player_kind, found)}
 						spellcheck="false"
 						autocomplete="off"
 						aria-label={m.settings_field_external_player_key()}

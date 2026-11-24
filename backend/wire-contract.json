@@ -2497,6 +2497,18 @@
         "start_time": 90.5
       }
     },
+    "StandardProgram": {
+      "full": {
+        "name": "vlc",
+        "path": "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe",
+        "supported": true
+      },
+      "min": {
+        "name": null,
+        "path": null,
+        "supported": false
+      }
+    },
     "StripCaption.alone": {
       "full": {
         "kind": "alone"

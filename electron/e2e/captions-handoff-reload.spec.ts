@@ -216,7 +216,7 @@ async function handOffAndComeBack(
 	const before = media.masters();
 	const time = async () => (await sidecars(page))?.time ?? 0;
 	await page.locator('button[aria-label="More actions"]').click();
-	await page.getByRole('menuitem', { name: /Open in external/ }).click();
+	await page.getByRole('menuitem', { name: /Open in mpv/ }).click();
 	const dialog = page.getByRole('alertdialog');
 	await dialog.waitFor({ timeout: 15_000 });
 	await page.keyboard.press('Escape');
