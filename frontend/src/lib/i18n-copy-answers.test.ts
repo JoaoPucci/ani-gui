@@ -241,13 +241,21 @@ describe('Russian headings end without a full stop', () => {
 		'settings.section_library_title',
 		'settings.section_about_title',
 		'update.dialog_title',
-		// The franchise page's sections and the watch order strip.
+		// The franchise page's eyebrow, sections and group headings, and
+		// the watch order strip's and Up next's eyebrows.
+		'watchorder.franchise_eyebrow',
 		'watchorder.franchise_main',
 		'watchorder.franchise_versions',
 		'watchorder.franchise_films',
 		'watchorder.franchise_sides',
 		'watchorder.franchise_recaps',
-		'watchorder.strip_eyebrow'
+		'watchorder.franchise_unplaced',
+		'watchorder.franchise_loop_group',
+		'watchorder.franchise_loop_group_partial',
+		'watchorder.strip_ways',
+		'watchorder.strip_eyebrow',
+		'watchorder.upnext_choices',
+		'watchorder.upnext_eyebrow'
 	];
 	it('no ru heading ends with "."', () => {
 		expect(offenders('ru', (s) => s.endsWith('.'), HEADING_KEYS)).toEqual([]);
@@ -317,11 +325,21 @@ describe('the watch order names a parent story apart from the main story', () =>
 	// for the show a side story comes from are different things: the
 	// parent can itself be a side story. One word for both reads as if
 	// the strip pointed at the main line.
+	/** The main story's name made plural, which the plural key must not be. */
+	const MAIN_STORIES: Record<string, string> = {
+		en: 'Main stories',
+		'pt-BR': 'Histórias principais',
+		'es-419': 'Historias principales',
+		ru: 'Основные истории'
+	};
 	for (const locale of ['en', 'pt-BR', 'es-419', 'ru']) {
 		it(`${locale} uses different words`, () => {
 			const main = message('watchorder_franchise_main')?.({}, { locale });
 			expect(main).toBeDefined();
 			expect(message('watchorder_strip_word_parent')?.({}, { locale })).not.toBe(main);
+			expect(message('watchorder_strip_word_parents')?.({}, { locale })).not.toBe(
+				MAIN_STORIES[locale]
+			);
 		});
 	}
 });
