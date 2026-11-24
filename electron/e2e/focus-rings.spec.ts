@@ -73,7 +73,7 @@
  * franchise page it links to (its rows and its play button); the
  * player at the end of a show's last episode, with the Up next card
  * naming what follows it in each of its forms (one entry, a fork of
- * two, one not aired); and Home with a Continue Watching card that
+ * two, one not aired, the franchise page at a chain's end); and Home with a Continue Watching card that
  * moved on from a finale to the entry after it. Each requires the walk
  * to reach those controls.
  *
@@ -1585,7 +1585,7 @@ const finaleEntry = (id: string, title: string, start: string, episodes: number)
 	cover: null
 });
 /** The show's franchise with `after` following it. */
-const finaleFranchise = (after: ReturnType<typeof finaleEntry>[]) => ({
+const finaleFranchise = (after: ReturnType<typeof finaleEntry>[]): Record<string, unknown> => ({
 	anchor: finaleShow.id,
 	name: finaleShow.canonical_title,
 	name_from: finaleShow.id,
@@ -1607,8 +1607,31 @@ const season2 = finaleEntry(
 	'2025-01-10',
 	12
 );
-/** The card's three forms: one entry after the show, a fork of two,
- *  and one that has not aired, whose row links nowhere. */
+/** The show alone on a chain outside a main story of two seasons. */
+function chainEndFranchise(): Record<string, unknown> {
+	const own = finaleEntry(finaleShow.id, finaleShow.canonical_title, finaleShow.start_date, 6);
+	const main = [
+		finaleEntry('main-1', 'Main Story', '2020-01-10', 12),
+		finaleEntry('main-2', 'Main Story Season 2', '2021-01-10', 12)
+	];
+	return {
+		anchor: finaleShow.id,
+		name: 'Main Story',
+		name_from: 'main-1',
+		entries: main,
+		links: [['main-1', 'main-2']],
+		versions: [],
+		films: [],
+		sides: [own],
+		recaps: [],
+		parents: {},
+		complete: true,
+		chain: { entries: [own], links: [], seams: [] }
+	};
+}
+/** The card's forms: one entry after the show, a fork of two, one
+ *  that has not aired, whose row links nowhere, and the end of a chain,
+ *  which links to the franchise page. */
 const upNextForms = [
 	{
 		label: 'one entry',
@@ -1635,6 +1658,16 @@ const upNextForms = [
 		after: [{ ...season2, start: '2999-01-01', status: 'upcoming', episodes: null }],
 		needs: ['.up-next .dismiss'],
 		rows: 0
+	},
+	{
+		// The show on a chain of its own outside the main story, with
+		// nothing after it: the card offers the franchise page.
+		label: 'the end of a chain',
+		after: [],
+		franchise: chainEndFranchise(),
+		needs: ['.up-next a.row.franchise', '.up-next .dismiss'],
+		rows: 1,
+		href: `/anime/${finaleShow.id}/franchise`
 	}
 ];
 
@@ -1663,7 +1696,7 @@ async function walkUpNext(origin: string, form: (typeof upNextForms)[number]) {
 			stream: { upstreamUrl: `${origin}/master.m3u8`, mediaKind: 'hls' },
 			show: { match: finaleShow, episode: continueKitsuEpisode6 }
 		});
-		const franchise = finaleFranchise(form.after);
+		const franchise = 'franchise' in form ? form.franchise : finaleFranchise(form.after);
 		await page.route('**/api/**', async (r) => {
 			const p = new URL(r.request().url()).pathname;
 			const j = (body: unknown) =>
@@ -1697,8 +1730,10 @@ async function walkUpNext(origin: string, form: (typeof upNextForms)[number]) {
 		// The card names what follows: each row links to its entry.
 		const rows = card.locator('a.row');
 		await expect(rows).toHaveCount(form.rows);
-		for (const [i, e] of form.after.slice(0, form.rows).entries()) {
-			await expect(rows.nth(i)).toHaveAttribute('href', new RegExp(`/anime/${e.id}$`));
+		const hrefs =
+			'href' in form ? [form.href] : form.after.slice(0, form.rows).map((e) => `/anime/${e.id}`);
+		for (const [i, href] of hrefs.entries()) {
+			await expect(rows.nth(i)).toHaveAttribute('href', new RegExp(`${href}$`));
 		}
 		for (const forced of [false, true]) {
 			await forcedColours(page, forced);
