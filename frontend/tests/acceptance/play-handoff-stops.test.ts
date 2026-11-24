@@ -23,6 +23,7 @@ import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { HOLD_DELAYS_MS } from '../../src/lib/play/stall-machine';
 import { heldRetries, heldRetriesSettled } from './held-retries';
 import { m } from '../../src/lib/paraglide/messages';
+import { externalOpenLabel } from '../../src/lib/play/external-label';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -353,11 +354,11 @@ async function handTo(label: string) {
 	item()!.click();
 	await until(() => engine.stopLoadCalls > stopsBefore, `the handoff to ${label}`);
 }
-const handToExternal = () => handTo(m.play_external_label());
+const handToExternal = () => handTo(externalOpenLabel('mpv'));
 
 describe('play route — an episode handed to another player stays stopped here', () => {
 	for (const [what, label] of [
-		['the external player', () => m.play_external_label()],
+		['the external player', () => externalOpenLabel('mpv')],
 		['Syncplay', () => m.play_hamburger_syncplay_label()]
 	] as const) {
 		it(`handing it to ${what} stops the engine loading and the element's autoplay`, async () => {

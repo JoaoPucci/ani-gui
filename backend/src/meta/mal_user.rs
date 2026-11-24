@@ -266,3 +266,7 @@ mod refresh_refusal_tests;
 #[cfg(test)]
 #[path = "mal_user_evidence_test.rs"]
 mod evidence_tests;
+
+#[cfg(test)]
+#[path = "tracker_rejected_test.rs"]
+mod tracker_rejected_tests;

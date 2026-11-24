@@ -143,6 +143,7 @@ import {
 	type SearchOrder,
 	type SessionSubtitle,
 	type SkipInterval,
+	type StandardProgram,
 	type TitleMatchBody,
 	type UnsettledReason,
 	type UpcomingEpisode,
@@ -490,6 +491,11 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		episode: 'number',
 		airing_at: 'number'
 	} satisfies Spec<UpcomingEpisode>,
+	StandardProgram: {
+		name: 'string|null',
+		path: 'string|null',
+		supported: 'boolean'
+	} satisfies Spec<StandardProgram>,
 	Franchise: {
 		anchor: 'string',
 		name: 'string',

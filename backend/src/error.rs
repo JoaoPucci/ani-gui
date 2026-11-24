@@ -161,6 +161,22 @@ pub enum AniError {
         status: u16,
     },
 
+    /// A tracker (MyAnimeList, AniList) answered a request with a 4xx
+    /// other than a rate limit (429, [`Self::RateLimited`]), a request
+    /// timeout (408) or too early (425) — the tracker not taking the
+    /// request this time, which stays [`Self::Upstream`] like its 5xx —
+    /// or, on its authenticated API, a refused bearer (401,
+    /// [`Self::InvalidToken`]; a token endpoint's 401 is a rejection like
+    /// its other 4xx, which the refresh grant reads as
+    /// [`Self::RefreshRejected`]): it rejected the request, or — 404/410 —
+    /// does not have what was asked for. An answer, not the tracker
+    /// failing, so it is not a 5xx and the renderer does not retry it.
+    #[error("tracker rejected the request ({status})")]
+    TrackerRejected {
+        /// HTTP status code the tracker answered with.
+        status: u16,
+    },
+
     /// A network-layer failure (connection refused, DNS, TLS).
     #[error("network error")]
     Network,
@@ -174,15 +190,19 @@ pub enum AniError {
     #[error("scraper gate refused")]
     GateRefused,
 
-    /// External-player binary couldn't be spawned (not on PATH, or
-    /// the configured path doesn't point at an executable). The
-    /// `binary` field carries the configured player name so the UI
-    /// can name the failed command in the error toast.
+    /// External-player program couldn't be spawned (not found where
+    /// it is installed, or the path doesn't point at an executable).
+    /// The `binary` field carries the program that was tried, a found
+    /// full path included, so the UI can name it in the error toast.
     #[error("player spawn failed: {binary}")]
     PlayerSpawnFailed {
-        /// The player command the user configured (e.g. `"vlc"`,
-        /// `"/usr/bin/mpv"`). Surfaced verbatim in the localized
-        /// error message via the `{binary}` placeholder.
+        /// The program that was tried (e.g. `"vlc"`, `"/usr/bin/mpv"`):
+        /// the configured command, or the type's standard program (where
+        /// it was found installed) when the command is blank or only its
+        /// name. Blank for a blank Custom command, which
+        /// the UI answers with "set a program in Settings". Surfaced
+        /// verbatim in the localized error message via the `{binary}`
+        /// placeholder.
         binary: String,
     },
 
@@ -304,6 +324,7 @@ impl AniError {
             Self::PlayerSpawnFailed { .. } => "error.player.spawn_failed",
             Self::SyncplaySpawnFailed { .. } => "error.syncplay.spawn_failed",
             Self::Upstream { .. } => "error.network.upstream",
+            Self::TrackerRejected { .. } => crate::i18n::keys::ACCOUNT_TRACKER_REJECTED,
             Self::RateLimited { .. } => "error.network.rate_limited",
             Self::Network => "error.network.unreachable",
             // The user-facing story is the same transient
@@ -341,12 +362,49 @@ impl AniError {
     /// Whether this error is the upstream answering that the resource
     /// asked for is absent — a 404 or 410 — as opposed to refusing
     /// this client ([`Self::is_provider_block`]) or rejecting this
-    /// request, which a 400 or 401 does. Only absence is an answer
+    /// request, which a 400 or 401 does. A tracker's 404/410
+    /// ([`Self::TrackerRejected`]) is absence too. Only absence is an answer
     /// about the one thing asked for; the episode step reads it as
     /// the episode's own verdict, and nothing else as one.
     #[must_use]
     pub fn is_not_found_shaped(&self) -> bool {
-        matches!(self, Self::Upstream { status } if *status == 404 || *status == 410)
+        matches!(
+            self,
+            Self::Upstream { status } | Self::TrackerRejected { status }
+                if *status == 404 || *status == 410
+        )
+    }
+
+    /// The error for a tracker's non-success `status` once its rate limit
+    /// (429) — and, on the authenticated API, its refused bearer (401) —
+    /// are read: a 4xx is the tracker's rejection
+    /// ([`Self::TrackerRejected`]), unless it says the tracker did not
+    /// take the request this time (`is_transient_4xx`); that, and
+    /// anything else, is the upstream failing ([`Self::Upstream`]),
+    /// which the renderer asks again.
+    #[must_use]
+    pub fn from_tracker_status(status: u16) -> Self {
+        if (400..500).contains(&status) && !is_transient_4xx(status) {
+            Self::TrackerRejected { status }
+        } else {
+            Self::Upstream { status }
+        }
+    }
+
+    /// `result` with the upstream's answer that the thing asked for is
+    /// absent ([`Self::is_not_found_shaped`]) read as `Ok(None)`; any
+    /// other answer as `Ok(Some(_))`, and any other error as it came.
+    /// For a request about one tracker entry, where the tracker no
+    /// longer having it is an answer about the entry, not a failure.
+    ///
+    /// # Errors
+    /// Every error of `result` that is not absence.
+    pub fn unless_absent<T>(result: Result<T>) -> Result<Option<T>> {
+        match result {
+            Ok(value) => Ok(Some(value)),
+            Err(err) if err.is_not_found_shaped() => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 
     /// HTTP status code the route layer surfaces for this variant.
@@ -367,6 +425,9 @@ impl AniError {
             // The stream server is the gateway's upstream too: it was
             // asked and did not serve.
             Self::Upstream { .. } | Self::StreamServerFailed { .. } => 502,
+            // The tracker answered: the request cannot be carried out,
+            // and asking again gets the same answer.
+            Self::TrackerRejected { .. } => 422,
             Self::Network => 503,
             Self::GateRefused => 503,
             Self::Timeout => 504,
@@ -385,6 +446,13 @@ impl AniError {
             | Self::Scraper { .. } => 500,
         }
     }
+}
+
+/// The 4xx statuses that say the upstream did not take the request this
+/// time rather than answer it: a request timeout (408), too early (425)
+/// and a rate limit (429). Asking again can be answered.
+pub(crate) fn is_transient_4xx(status: u16) -> bool {
+    matches!(status, 408 | 425 | 429)
 }
 
 impl From<reqwest::Error> for AniError {

@@ -124,6 +124,14 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             post(post_history_guess_ruled_out),
         )
         .route("/api/history/:id", delete(delete_history_entry))
+        .route(
+            "/api/external-player/standard",
+            get(get_external_player_standard),
+        )
+        .route(
+            "/api/external-player/after-kind-change",
+            get(get_external_player_after_kind_change),
+        )
         .route("/api/kitsu/search", post(post_kitsu_search))
         .route("/api/kitsu/search/page", post(post_kitsu_search_page))
         .route(
@@ -327,6 +335,46 @@ async fn post_history_link(
 ) -> Result<Json<crate::commands::history_link::LinkOutcome>, AniError> {
     Ok(Json(
         crate::commands::history_link::link(&state, &args).await?,
+    ))
+}
+
+/// `?kind=` of the standard-program question.
+#[derive(Debug, Deserialize)]
+struct StandardProgramQuery {
+    kind: crate::commands::external_player::ExternalPlayerKind,
+}
+
+/// What a blank External player command runs for a type on this
+/// computer, and where it is installed (Settings' hint).
+async fn get_external_player_standard(
+    Query(q): Query<StandardProgramQuery>,
+) -> Json<crate::commands::external_player::StandardProgram> {
+    Json(
+        tokio::task::spawn_blocking(move || {
+            crate::commands::external_player::standard_program_found(
+                q.kind,
+                &crate::commands::player_locate::locate_installed,
+            )
+        })
+        .await
+        .unwrap_or_else(|_| crate::commands::external_player::standard_program_unknown(q.kind)),
+    )
+}
+
+/// `?command=&from=&to=` of the type-change question.
+#[derive(Debug, Deserialize)]
+struct KindChangeQuery {
+    command: String,
+    from: crate::commands::external_player::ExternalPlayerKind,
+    to: crate::commands::external_player::ExternalPlayerKind,
+}
+
+/// What the External player command becomes when Settings changes the
+/// player's type
+/// ([`crate::commands::external_player::command_after_kind_change`]).
+async fn get_external_player_after_kind_change(Query(q): Query<KindChangeQuery>) -> Json<String> {
+    Json(crate::commands::external_player::command_after_kind_change(
+        &q.command, q.from, q.to,
     ))
 }
 
@@ -969,6 +1017,14 @@ mod flags_tests;
 #[cfg(test)]
 #[path = "hero_test.rs"]
 mod hero_tests;
+
+#[cfg(test)]
+#[path = "external_standard_test.rs"]
+mod external_standard_tests;
+
+#[cfg(test)]
+#[path = "external_kind_change_test.rs"]
+mod external_kind_change_tests;
 
 #[cfg(test)]
 #[path = "wire_probe_test.rs"]

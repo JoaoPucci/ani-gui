@@ -455,7 +455,7 @@ async fn exchange_code_sends_form_body_with_pkce_verifier_and_no_client_secret()
 }
 
 #[tokio::test]
-async fn exchange_code_surfaces_4xx_as_oauth_exchange_failed_or_upstream() {
+async fn exchange_code_surfaces_4xx_as_a_tracker_rejection() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
@@ -468,10 +468,9 @@ async fn exchange_code_surfaces_4xx_as_oauth_exchange_failed_or_upstream() {
         .exchange_code("bad-code", &Pkce::new_plain())
         .await
         .expect_err("4xx must surface as error");
-    match err {
-        crate::error::AniError::Upstream { status } => assert_eq!(status, 400),
-        other => panic!("expected Upstream {{ status: 400 }}, got {other:?}"),
-    }
+    assert_eq!(err.key(), "error.account.tracker_rejected", "{err:?}");
+    assert_eq!(err.http_status_code(), 422);
+    assert_eq!(serde_json::to_value(&err).expect("envelope")["status"], 400);
 }
 
 /// Canonical `/v2/users/@me?fields=anime_statistics` response.
@@ -776,10 +775,11 @@ async fn refresh_rotates_tokens_with_form_body_carrying_refresh_token() {
 }
 
 #[tokio::test]
-async fn refresh_surfaces_4xx_as_upstream() {
+async fn refresh_surfaces_4xx_as_a_tracker_rejection() {
     // 400 and 401 read as a refused token
     // (mal_user_refresh_refusal_test.rs); any other 4xx says nothing
-    // about the token and keeps the endpoint's status.
+    // about the token and keeps the endpoint's status, as the tracker
+    // rejecting the request rather than failing.
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(wiremock::ResponseTemplate::new(403))
@@ -790,10 +790,9 @@ async fn refresh_surfaces_4xx_as_upstream() {
         .refresh("revoked")
         .await
         .expect_err("4xx must surface");
-    match err {
-        crate::error::AniError::Upstream { status } => assert_eq!(status, 403),
-        other => panic!("expected Upstream {{ status: 403 }}, got {other:?}"),
-    }
+    assert_eq!(err.key(), "error.account.tracker_rejected", "{err:?}");
+    assert_eq!(err.http_status_code(), 422);
+    assert_eq!(serde_json::to_value(&err).expect("envelope")["status"], 403);
 }
 
 #[tokio::test]
@@ -1146,7 +1145,7 @@ async fn delete_entry_sends_delete_request_to_list_status_path() {
 }
 
 #[tokio::test]
-async fn delete_entry_surfaces_404_as_upstream_so_partial_double_delete_is_visible() {
+async fn delete_entry_surfaces_404_as_absence_so_partial_double_delete_is_visible() {
     // MAL returns 404 when the entry doesn't exist. The retry layer
     // upstream of the trait will swallow this — but the provider must
     // surface it so a retry budget can see the result, not assume
@@ -1168,10 +1167,10 @@ async fn delete_entry_surfaces_404_as_upstream_so_partial_double_delete_is_visib
         .delete_entry(&tokens, ProviderMediaId(21))
         .await
         .expect_err("404 must surface");
-    match err {
-        crate::error::AniError::Upstream { status } => assert_eq!(status, 404),
-        other => panic!("expected Upstream 404, got {other:?}"),
-    }
+    assert!(err.is_not_found_shaped(), "{err:?}");
+    assert_eq!(err.key(), "error.account.tracker_rejected", "{err:?}");
+    assert_eq!(err.http_status_code(), 422);
+    assert_eq!(serde_json::to_value(&err).expect("envelope")["status"], 404);
 }
 
 #[test]

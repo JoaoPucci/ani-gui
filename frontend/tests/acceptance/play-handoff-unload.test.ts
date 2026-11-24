@@ -36,6 +36,7 @@ import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { playerVideo, playerVideoInSlot } from './player-video';
 import { readPosition, savePosition } from '../../src/lib/play/watch-position';
 import { m } from '../../src/lib/paraglide/messages';
+import { externalOpenLabel } from '../../src/lib/play/external-label';
 
 import type {
 	AiringStatus,
@@ -240,7 +241,7 @@ async function handToExternal() {
 	).click();
 	const item = () =>
 		Array.from(target.querySelectorAll('button[role="menuitem"]')).find((b) =>
-			(b.textContent ?? '').includes(m.play_external_label())
+			(b.textContent ?? '').includes(externalOpenLabel('mpv'))
 		) as HTMLButtonElement | undefined;
 	await until(() => item() !== undefined, 'the external player menu item');
 	item()!.click();

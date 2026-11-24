@@ -69,6 +69,8 @@ export const API_BASE = 'http://127.0.0.1:31337';
  * - the availability reads and warms the home and list rows send, and
  *   the warm of the Continue strip's stills and banners Home sends;
  * - a signed-in tracker list a list row reads;
+ * - where Settings finds the External player type's standard program,
+ *   which the hint then names without a location;
  * - the background warm of an episode the user has not asked for:
  *   with no EventSource installed it is a plain `/api/play` POST
  *   marked `prefetch`. A play the user asked for carries no
@@ -99,6 +101,7 @@ const incidental = [
 	http.post(`${API_BASE}/api/availability/warm`, absentBackend),
 	http.post(`${API_BASE}/api/continue/warm`, absentBackend),
 	http.post(`${API_BASE}/api/account/list/:provider`, absentBackend),
+	http.get(`${API_BASE}/api/external-player/standard`, absentBackend),
 	http.post(`${API_BASE}/api/play`, async ({ request, requestId }) => {
 		const body = (await request
 			.clone()

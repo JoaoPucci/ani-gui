@@ -28,7 +28,8 @@ async function getJson<T>(path: string, bearer: string, signal?: AbortSignal): P
 /**
  * Read the user's live current list entry for a show so the detail-page
  * editor opens on the real tracker state (the deviation safety). `null`
- * when the show isn't on the list or isn't mapped to the provider.
+ * when the show isn't on the list or isn't mapped to the provider,
+ * including when the tracker no longer has the entry it maps to.
  */
 export function getEntry(
 	provider: Provider,
@@ -54,7 +55,8 @@ export interface SetEntryBody {
  * Write an explicit list edit (status and/or progress) — the detail-page
  * editor. The backend writes it verbatim (no monotonic guard), so a
  * downward episode correction goes through. Returns the upserted entry,
- * or `null` when the show couldn't be mapped to the provider.
+ * or `null` when nothing was written: the show couldn't be mapped to the
+ * provider, or the tracker no longer has the entry it maps to.
  */
 export function setEntry(
 	provider: Provider,
@@ -67,7 +69,9 @@ export function setEntry(
 /**
  * Remove a show from the user's tracker list (editor "Remove"). The
  * backend is idempotent — an already-removed title still resolves
- * successfully.
+ * successfully, as does a show mapped to an entry the tracker no longer
+ * has. A show the provider does not map rejects with a 404: nothing was
+ * removed.
  */
 export function removeEntry(provider: Provider, bearer: string, kitsuId: string): Promise<void> {
 	return deleteEndpoint(

@@ -6,6 +6,7 @@
 //! string — the frontend owns user-facing copy.
 
 pub mod account;
+pub(crate) mod account_absent;
 pub mod account_edit;
 pub(crate) mod account_epoch;
 mod account_mapped;
@@ -147,6 +148,7 @@ mod play_native_wide_listing;
 pub mod play_native_year;
 pub mod play_resolution_cache;
 pub mod play_syncplay;
+pub mod player_locate;
 pub mod progress;
 pub mod providers;
 pub mod proxy_url;

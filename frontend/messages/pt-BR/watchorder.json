@@ -2,14 +2,15 @@
 	"franchise_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
+			"selectors": ["count", "countPlural"],
 			"match": {
-				"countPlural=one": "{count} anime",
-				"countPlural=*": "{count} animes"
+				"count=0, countPlural=*": "{count} animes",
+				"count=*, countPlural=one": "{count} anime",
+				"count=*, countPlural=*": "{count} animes"
 			}
 		}
 	],
-	"franchise_cycle_hint": "Todos estes estão vinculados entre si, então não há uma ordem clara para assistir. Eles aparecem na ordem dos vínculos.",
+	"franchise_cycle_hint": "Estes animes estão todos vinculados entre si, então não há uma ordem clara para assistir. Eles aparecem na ordem dos vínculos.",
 	"franchise_eyebrow": "Franquia",
 	"franchise_failed": "Não foi possível carregar esta franquia.",
 	"franchise_films": "Filmes",
@@ -17,10 +18,11 @@
 	"franchise_loop_group": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
+			"selectors": ["count", "countPlural"],
 			"match": {
-				"countPlural=one": "{count} anime vinculado, ordem incerta",
-				"countPlural=*": "{count} animes vinculados, ordem incerta"
+				"count=0, countPlural=*": "{count} animes vinculados, ordem incerta",
+				"count=*, countPlural=one": "{count} anime vinculado, ordem incerta",
+				"count=*, countPlural=*": "{count} animes vinculados, ordem incerta"
 			}
 		}
 	],
@@ -56,10 +58,11 @@
 	"strip_franchise_stack_films": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
+			"selectors": ["count", "countPlural"],
 			"match": {
-				"countPlural=one": "{count} filme ou versão",
-				"countPlural=*": "{count} filmes e versões"
+				"count=0, countPlural=*": "{count} filmes e versões",
+				"count=*, countPlural=one": "{count} filme ou versão",
+				"count=*, countPlural=*": "{count} filmes e versões"
 			}
 		}
 	],
@@ -67,20 +70,22 @@
 	"strip_franchise_stack_recaps": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
+			"selectors": ["count", "countPlural"],
 			"match": {
-				"countPlural=one": "{count} recapitulação",
-				"countPlural=*": "{count} recapitulações"
+				"count=0, countPlural=*": "{count} recapitulações",
+				"count=*, countPlural=one": "{count} recapitulação",
+				"count=*, countPlural=*": "{count} recapitulações"
 			}
 		}
 	],
 	"strip_franchise_stack_sides": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
+			"selectors": ["count", "countPlural"],
 			"match": {
-				"countPlural=one": "{count} história paralela",
-				"countPlural=*": "{count} histórias paralelas"
+				"count=0, countPlural=*": "{count} histórias paralelas",
+				"count=*, countPlural=one": "{count} história paralela",
+				"count=*, countPlural=*": "{count} histórias paralelas"
 			}
 		}
 	],
@@ -100,10 +105,11 @@
 	"strip_unnumbered_cycle": [
 		{
 			"declarations": ["input others", "local countPlural = others: plural"],
-			"selectors": ["countPlural"],
+			"selectors": ["others", "countPlural"],
 			"match": {
-				"countPlural=one": "Vinculado a {others} outro, ordem incerta",
-				"countPlural=*": "Vinculado a {others} outros, ordem incerta"
+				"others=0, countPlural=*": "Vinculado a {others} outros, ordem incerta",
+				"others=*, countPlural=one": "Vinculado a {others} outro, ordem incerta",
+				"others=*, countPlural=*": "Vinculado a {others} outros, ordem incerta"
 			}
 		}
 	],
@@ -111,10 +117,11 @@
 	"strip_ways": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
+			"selectors": ["count", "countPlural"],
 			"match": {
-				"countPlural=one": "{count} caminho para continuar",
-				"countPlural=*": "{count} caminhos para continuar"
+				"count=0, countPlural=*": "{count} caminhos para continuar",
+				"count=*, countPlural=one": "{count} caminho para continuar",
+				"count=*, countPlural=*": "{count} caminhos para continuar"
 			}
 		}
 	],

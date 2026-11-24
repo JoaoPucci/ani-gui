@@ -211,6 +211,11 @@
       "kind": "refresh_rejected"
     },
     {
+      "key": "error.account.tracker_rejected",
+      "kind": "tracker_rejected",
+      "status": 403
+    },
+    {
       "host": null,
       "key": "error.play.stream_server_failed",
       "kind": "stream_server_failed",
@@ -2706,6 +2711,18 @@
         "end_time": 180.5,
         "skip_type": "op",
         "start_time": 90.5
+      }
+    },
+    "StandardProgram": {
+      "full": {
+        "name": "vlc",
+        "path": "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe",
+        "supported": true
+      },
+      "min": {
+        "name": null,
+        "path": null,
+        "supported": false
       }
     },
     "StripCaption.alone": {

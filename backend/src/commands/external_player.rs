@@ -9,10 +9,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AniError, Result};
 
+#[path = "external_player_kind_change.rs"]
+mod kind_change;
+#[path = "external_player_program.rs"]
+mod program;
 #[path = "external_player_template.rs"]
 mod template;
 #[path = "external_player_tokens.rs"]
 mod tokens;
+pub use kind_change::command_after_kind_change;
+pub use program::{
+    launch_program_with, player_program, standard_program_found, standard_program_found_on,
+    standard_program_unknown, syncplay_player_with, StandardProgram,
+};
 use template::{build_argv_custom, build_argv_with_template};
 
 /// Player flavor — controls which flag syntax `build_argv` emits.
@@ -42,7 +51,7 @@ pub enum ExternalPlayerKind {
 /// [`crate::commands::play_cache::cached_launch_args`]). Never decoded
 /// from a request, so no caller names the program the backend runs or
 /// the arguments it is given.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LaunchArgs {
     /// The resolved stream URL (mp4 or m3u8). Must be an http(s) URL
     /// ([`is_stream_url`]); it goes on the command line bare.
@@ -52,6 +61,7 @@ pub struct LaunchArgs {
     /// Title shown in the player window's titlebar.
     pub title: Option<String>,
     /// Player command, e.g. `"mpv"`, from the user's settings.
+    /// Blank runs the type's standard program ([`player_program`]).
     pub player_command: String,
     /// Which player flag syntax to use, from the user's settings.
     pub player_kind: ExternalPlayerKind,
@@ -156,26 +166,64 @@ enum SubFlag {
 /// # Errors
 /// - [`AniError::ParseFailed`] if the stream is not an http(s) URL
 ///   ([`is_stream_url`]); nothing is spawned.
-/// - [`AniError::PlayerSpawnFailed`] if the configured player command
-///   can't be spawned (usually means it's not on PATH or the path
-///   doesn't point at an executable). Carries the configured binary
-///   name so the UI can name it in the error toast.
+/// - [`AniError::PlayerSpawnFailed`] if the program can't be spawned
+///   (it was not found where it is installed, or the path doesn't
+///   point at an executable). Carries the program that was
+///   tried: the full path when the standard program was found
+///   installed, its bare name when it was not, the command as written
+///   otherwise. The UI names it in the error toast. A blank Custom command carries the
+///   blank: there is no program to name.
 pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
     ensure_stream_url(&args.stream_url)?;
-    if args.player_command.trim().is_empty() {
+    let Some(program) = launch_program_with(
+        &args.player_command,
+        args.player_kind,
+        &crate::commands::player_locate::locate_installed,
+    ) else {
         return Err(AniError::PlayerSpawnFailed {
             binary: args.player_command.clone(),
         });
-    }
-    let argv = build_argv(args);
-    let mut cmd = std::process::Command::new(&args.player_command);
+    };
+    // The argv is fitted to the program that launches.
+    let launching = LaunchArgs {
+        player_command: program.clone(),
+        ..args.clone()
+    };
+    let argv = build_argv(&launching);
+    // std's Command, not tokio's (AGENTS.md §5), on purpose: the media
+    // player is detached and outlives the backend, so it must not be
+    // killed on drop, and it gets the user's own environment, where
+    // TERM and colour settings are the player's business.
+    let mut cmd = std::process::Command::new(&program);
     cmd.args(&argv)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    spawn_detached(&mut cmd).map_err(|_| AniError::PlayerSpawnFailed {
-        binary: args.player_command.clone(),
-    })
+    spawn_detached(&mut cmd).map_err(|_| AniError::PlayerSpawnFailed { binary: program })
+}
+
+/// [`open_external_player`] off the async workers: the lookup it runs
+/// may start reg.exe on Windows, and the spawn itself blocks briefly.
+///
+/// # Errors
+/// As [`open_external_player`]. A launch task that dies reads as a
+/// spawn failure for the program the launch meant
+/// ([`launch_task_failure`]).
+pub async fn open_external_player_off_workers(args: LaunchArgs) -> Result<()> {
+    let failure = launch_task_failure(&args);
+    tokio::task::spawn_blocking(move || open_external_player(&args))
+        .await
+        .unwrap_or(Err(failure))
+}
+
+/// What a launch reports when its task dies before answering.
+#[must_use]
+pub fn launch_task_failure(args: &LaunchArgs) -> AniError {
+    AniError::PlayerSpawnFailed {
+        binary: player_program(&args.player_command, args.player_kind)
+            .unwrap_or_default()
+            .to_string(),
+    }
 }
 
 /// Spawn with a short retry on ETXTBSY: exec of a freshly written
@@ -183,6 +231,11 @@ pub fn open_external_player(args: &LaunchArgs) -> Result<()> {
 /// write descriptor (the fds are close-on-exec, so the window is
 /// microseconds). Real for just-staged binaries; every other error
 /// surfaces immediately.
+///
+/// The one place the backend spawns with std's Command rather than
+/// tokio's with `kill_on_drop(true)` (AGENTS.md §5): the media player
+/// and Syncplay are the user's programs, detached on purpose, and must
+/// outlive the request that started them.
 pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<()> {
     for _ in 0..5 {
         match cmd.spawn() {
@@ -211,3 +264,7 @@ mod tests;
 #[cfg(test)]
 #[path = "external_player_subtitles_test.rs"]
 mod subtitle_tests;
+
+#[cfg(test)]
+#[path = "external_player_prop_test.rs"]
+mod prop_tests;
