@@ -577,7 +577,6 @@ const splash = splashController({
         execPath: process.execPath,
         argv: process.argv,
         pid: process.pid,
-        ppid: process.ppid,
       },
       { app, spawn, logError: console.error, asUser },
     ),

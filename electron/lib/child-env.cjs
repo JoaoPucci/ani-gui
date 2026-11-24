@@ -128,15 +128,17 @@ function homeOf(accountHome) {
 
 /** Take out of `env` what the AppImage's runtime and AppRun added for
  *  `mount`, the image file `image` being where its portable directories
- *  sit. A portable home and config are put back to the account's
- *  (`accountHome`) unless `keepPortable`, or the account's home is not
- *  known. */
+ *  sit. Unless `keepPortable`, a portable home becomes the account's
+ *  (`accountHome`) and a portable config is dropped; when the account's
+ *  home is not known the portable home stays, and its config with it. */
 function withoutImage(env, { mount, image, accountHome, keepPortable }) {
-  const portable = env.HOME === `${image}.home` || env.XDG_CONFIG_HOME === `${image}.config`;
-  const home = portable && !keepPortable ? homeOf(accountHome) : null;
-  if (home !== null) {
-    if (env.HOME === `${image}.home`) put(env, "HOME", home);
-    if (env.XDG_CONFIG_HOME === `${image}.config`) delete env.XDG_CONFIG_HOME;
+  if (!keepPortable) {
+    if (env.HOME === `${image}.home`) {
+      const home = homeOf(accountHome);
+      if (home !== null) put(env, "HOME", home);
+    }
+    // A config is dropped unless the portable home it goes with stays.
+    if (env.XDG_CONFIG_HOME === `${image}.config` && env.HOME !== `${image}.home`) delete env.XDG_CONFIG_HOME;
   }
   const rooted = (p) => p === mount || p.startsWith(`${mount}/`);
   for (const name of APPRUN_LISTS) {
