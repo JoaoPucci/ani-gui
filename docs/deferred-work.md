@@ -545,8 +545,15 @@ starting it, and delete it when you find it done.
   credits as a hint, or no length where the sources disagree. That
   work is finding the causes, counting the occurrences across the
   catalogue, and choosing a source the list can trust.
+- **A franchise is found only from one of its shows.** The franchise
+  page (`/anime/<id>/franchise`) is reached from a show page (the
+  watch-order strip's link, or that link alone where the show has no
+  strip), so a viewer has to find one show of the franchise first.
+  The watch-order plan also named search results as a way in; the maintainer
+  dropped it in favour of a study of how to make franchises
+  findable gracefully, such as a franchise search or a similar
+  mechanic.
 - **Localised content fetch** — synopsis and episode titles.
-- **Franchise and season grouping** across surfaces.
 - **Search has no sort *direction* control.** Sorting by relevance,
   year and rating ships, as do subtype filter chips; only
   ascending/descending is absent. Kitsu does the sorting, and it takes
@@ -736,8 +743,12 @@ starting it, and delete it when you find it done.
   scroll it.
   (An entry the matcher could not place renders as a link to search
   instead, and has no show to route to; one whose match came back
-  without a title renders as a card whose click does nothing. This
-  entry is about the matched, titled cards.) The
+  without a title renders as a card whose click does nothing. One
+  whose show was played through to its finale, with one aired show
+  after it in the series that has not been started, becomes a card
+  for that next show and opens the next show's page, not its own.
+  This entry is about the matched, titled cards that still offer an
+  episode.) The
   route that exists runs through playback: the play page's poster,
   title and breadcrumb link to the show's page, so a user who wants
   the show itself — its episode list, its synopsis, its list entry —
@@ -1333,8 +1344,10 @@ for when AniList's listing is the show's.
 - **Relations.** AniList `relations` names prequels, sequels, side
   stories, adaptations and looser links by `relationType`, and includes
   manga and novel entries, so grouping anime filters on the related
-  node's `type`; a base for the franchise and season grouping listed
-  under Interface.
+  node's `type`. The franchise walk's design compared it with Kitsu's relations
+  and chose Kitsu's
+  ([`title-resolution.md`](./title-resolution.md#what-the-links-say-and-what-they-do-not)),
+  so this stays unused.
 - **Spoiler-safe tags.** AniList `tags` carry a relevance rank and two
   spoiler flags: `isMediaSpoiler` (spoils this show) and
   `isGeneralSpoiler` (spoils any show it is on). Showing tags without

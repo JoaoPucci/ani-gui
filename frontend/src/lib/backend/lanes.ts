@@ -12,16 +12,31 @@
  * connection budget of its own:
  *
  *   - `api`      — everything not named below: short calls, and one
- *                  long-lived request — the renderer's single wait on
+ *                  long-lived request. The renderer's single wait on
  *                  held-back fills (`$lib/refill/refill`), open up to
- *                  20 s at a time while a page waits on one. It holds
- *                  one of the six, never more.
+ *                  20 s at a time while a page waits on one, holds one
+ *                  of the six, never more.
  *   - `stream`   — the stream proxy; what the player waits on.
  *   - `image`    — `/api/image`, an upstream fetch on a cold cache.
  *   - `probe`    — availability probes, a provider walk each.
  *   - `resolve`  — play resolutions, the user's own and the warms.
  *   - `download` — downloads' progress streams, open for the whole
  *                  download.
+ *   - `franchise` — the watch-order reads that walk the franchise and
+ *                  the walk's first hop (`watchOrderShow`, `…Franchise`,
+ *                  `…UpNext`, `…Handoff`, `kitsuFranchiseFirstHop`), each
+ *                  open while the backend walks the franchise, several
+ *                  rounds of Kitsu reads when Kitsu is slow; the page
+ *                  that asked cancels it when the viewer leaves. The
+ *                  show page holds at most two, its read and the first
+ *                  hop, cancelled with the visit
+ *                  (`$lib/watch-order/loader`). The player and the
+ *                  franchise page hold at most one each, a superseded
+ *                  read cancelled (`$lib/watch-order/latest-read`). Home
+ *                  walks the series of its Continue rows at their finale
+ *                  six at a time, the lane's budget, and the rest in
+ *                  turn; two at a time when the lane falls back to the
+ *                  API's origin (`$lib/watch-order/handoff-reads`).
  *
  * Every lane serves every route, so a lane nobody announced falls
  * back to the API's origin and still answers — it just shares the
@@ -35,7 +50,15 @@
  */
 
 /** Every lane the backend announces. */
-export const LANES = ['api', 'stream', 'image', 'probe', 'resolve', 'download'] as const;
+export const LANES = [
+	'api',
+	'stream',
+	'image',
+	'probe',
+	'resolve',
+	'download',
+	'franchise'
+] as const;
 
 export type Lane = (typeof LANES)[number];
 
@@ -50,4 +73,14 @@ export function laneBase(
 ): string {
 	const own = lane === 'api' ? undefined : lanes?.[lane];
 	return trim(typeof own === 'string' && own.length > 0 ? own : apiBase);
+}
+
+/** Whether `lane` reaches an origin of its own, and so a connection
+ *  budget of its own, rather than falling back to the API's. */
+export function laneIsOwn(
+	lanes: Partial<Record<string, string>> | undefined,
+	lane: Lane,
+	apiBase: string
+): boolean {
+	return lane !== 'api' && laneBase(lanes, lane, apiBase) !== trim(apiBase);
 }

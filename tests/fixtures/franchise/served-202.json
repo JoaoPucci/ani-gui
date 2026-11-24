@@ -1,0 +1,85 @@
+{
+  "anchor": "202",
+  "name": "FLCL",
+  "name_from": "202",
+  "entries": [
+    {
+      "id": "202",
+      "title": "FLCL",
+      "subtype": "OVA",
+      "start": "2000-04-26",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11962",
+      "title": "FLCL Alternative",
+      "subtype": "TV",
+      "start": "2018-03-31",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "11961",
+      "title": "FLCL Progressive",
+      "subtype": "TV",
+      "start": "2018-06-02",
+      "episodes": 6,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45975",
+      "title": "FLCL: Grunge",
+      "subtype": "TV",
+      "start": "2023-09-09",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    },
+    {
+      "id": "45976",
+      "title": "FLCL: Shoegaze",
+      "subtype": "TV",
+      "start": "2023-10-01",
+      "episodes": 3,
+      "status": "finished",
+      "poster": null,
+      "cover": null
+    }
+  ],
+  "links": [
+    [
+      "202",
+      "11961"
+    ],
+    [
+      "11961",
+      "11962"
+    ],
+    [
+      "11962",
+      "45975"
+    ],
+    [
+      "11962",
+      "45976"
+    ],
+    [
+      "45975",
+      "45976"
+    ]
+  ],
+  "versions": [],
+  "films": [],
+  "sides": [],
+  "recaps": [],
+  "parents": {},
+  "complete": true
+}
