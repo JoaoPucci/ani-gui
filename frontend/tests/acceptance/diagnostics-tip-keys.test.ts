@@ -57,11 +57,13 @@ const STRIP: OnboardingDebugTip = {
 };
 const PLAYER: OnboardingDebugTip = {
 	...STRIP,
-	id: 'in-the-player',
+	id: 'player-up-next',
 	surface: 'play',
 	moment: 'stream-load',
 	places: ['player-frame']
 };
+/** A tip the renderer has no words for: nothing to preview. */
+const WORDLESS: OnboardingDebugTip = { ...STRIP, id: 'no-words-yet' };
 const GUIDE: OnboardingDebugTip = {
 	...STRIP,
 	id: 'a-guide',
@@ -86,7 +88,7 @@ function useTips(fail = false, putFails = false, putHeld?: Promise<void>) {
 	server.use(
 		http.get(`${API_BASE}/api/onboarding/debug`, () => {
 			if (fail) return errorAnswer(503);
-			const tips = [STRIP, GUIDE, PLAYER].map((t) => {
+			const tips = [STRIP, GUIDE, PLAYER, WORDLESS].map((t) => {
 				const seen = seenSet.get(t.id) ?? t.seen;
 				return { ...t, seen, pending: t.offered && !seen };
 			});
@@ -223,26 +225,24 @@ describe('the Debug page’s feature tips', () => {
 		await until(() => seenBox('watch-order')!.disabled, 'held');
 		// Every other toggle waits too, so no two changes and their
 		// re-reads cross.
-		expect(seenBox('in-the-player')!.disabled).toBe(true);
+		expect(seenBox('player-up-next')!.disabled).toBe(true);
 		release();
 		await until(() => !seenBox('watch-order')!.disabled, 'released');
-		expect(seenBox('in-the-player')!.disabled).toBe(false);
+		expect(seenBox('player-up-next')!.disabled).toBe(false);
 		expect(puts).toHaveLength(1);
 	});
 
-	it('offers no Show it for a tip that loads in the player, and a wait can be called off', async () => {
+	it('offers Show it for a tip that loads in the player, none for a tip with no words, and a wait can be called off', async () => {
 		useTips();
 		app = mount(DiagnosticsPage, { target });
-		await until(() => row('in-the-player') !== null, 'the list');
+		await until(() => row('player-up-next') !== null, 'the list');
 		const buttons = (id: string) => [...row(id)!.querySelectorAll('button')];
-		expect(
-			buttons('in-the-player').some((b) => b.textContent?.trim() === m.diagnostics_tips_show())
-		).toBe(false);
-		buttons('watch-order')
-			.find((b) => b.textContent?.trim() === m.diagnostics_tips_show())!
-			.click();
-		await until(() => onboarding.armed !== null, 'armed');
-		buttons('watch-order')
+		const show = (id: string) =>
+			buttons(id).find((b) => b.textContent?.trim() === m.diagnostics_tips_show());
+		expect(show('no-words-yet')).toBeUndefined();
+		show('player-up-next')!.click();
+		await until(() => onboarding.armed?.id === 'player-up-next', 'armed');
+		buttons('player-up-next')
 			.find((b) => b.textContent?.trim() === m.diagnostics_tips_cancel())!
 			.click();
 		await until(() => onboarding.armed === null, 'called off');
