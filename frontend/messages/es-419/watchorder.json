@@ -118,8 +118,8 @@
 			}
 		}
 	],
-	"strip_word_parent": "Historia de origen",
-	"strip_word_parents": "Historias de origen",
+	"strip_word_parent": "Historia principal",
+	"strip_word_parents": "Historias principales",
 	"strip_word_prequel": "Precuela",
 	"strip_word_prequels": "Precuelas",
 	"strip_word_released_after": "Estrenado después",
