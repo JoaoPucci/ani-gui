@@ -40,9 +40,9 @@
 import { nextInCycle, tabbablesIn } from './focus-cycle';
 import { holdOutside } from './page-inert';
 import { modalsChanged as changed } from './modal-watch';
+import { leaveHidingFullscreen, stepAside, stepBack } from './top-layer';
 
 export { watchModals } from './modal-watch';
-import { leaveHidingFullscreen, stepAside, stepBack } from './top-layer';
 
 export interface ModalOptions {
 	/** What Escape does while this is the topmost modal. Without it,
