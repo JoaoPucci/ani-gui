@@ -145,4 +145,14 @@ describe('OnboardingTips', () => {
 		expect(store.armed?.id).toBe('a');
 		expect(store.armedAs).toBe('preview');
 	});
+
+	it('a walkthrough asked for on its own page keeps to that page', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.showGuide({ id: 'g', surface: 'franchise', places: ['x'] }, '/anime/1/franchise');
+		store.pageChanged('franchise', '/anime/2/franchise');
+		expect(store.armed).toBeNull();
+	});
 });
