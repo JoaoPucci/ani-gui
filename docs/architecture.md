@@ -847,9 +847,12 @@ inert except the place itself and the window's own buttons, which a
 press still reaches. "Got it", Escape, a press on the place (which also
 does what the place does) or a press outside (which goes no further)
 close it, and the renderer tells `POST /api/onboarding/seen`. A press
-in its first 400 ms was aimed at the page and does nothing. A dialog
-opening over it, fullscreen, or leaving the page closes it without
-marking it seen. The About page lists the tips offered in the running
+in its first 400 ms after the balloon takes the page was aimed at the
+page: outside it does nothing, and on the place it does what the place
+does and leaves the tip up. A dialog
+opening over it, fullscreen, leaving the page or the place leaving it
+closes it without marking it seen, and focus stays where the page put
+it. A place that changes size is followed. The About page lists the tips offered in the running
 version, seen or not. Each step's words are the renderer's
 (`$lib/onboarding/words.ts`), and `tests/arch/onboarding_places.sh`
 holds every declared place to exactly one `data-onboard` mark in the
