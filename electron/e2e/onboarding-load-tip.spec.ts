@@ -1,8 +1,9 @@
 /**
  * The player's load tip, on the packaged app: a stream played through
  * the backend's play route and stream proxy (real-play.ts) from a local
- * server that holds every fragment back as a slow host does. The tip is the on-demand `player-up-next`, started from the
- * Debug page's "Show it", as the maintainer starts it.
+ * server that holds every fragment back as a slow host does. The tip is
+ * the on-demand `player-up-next`, started from the Debug page's "Show
+ * it", as the maintainer starts it.
  *
  * A start that lasts a second shows it over the start veil. It never
  * takes focus, and when the first frame comes it stays, folded to a
@@ -146,7 +147,7 @@ test("a slow start shows the tip without taking focus, and it stays as a plate u
             ?.contains(document.activeElement) ?? false,
       ),
     ).toBe(false);
-    await expect(page.locator('[role="status"]', { hasText: /0\.19\.0/ })).toContainText(
+    await expect(page.locator('.load-tip-said')).toContainText(
       /0\.19\.0/,
     );
 
