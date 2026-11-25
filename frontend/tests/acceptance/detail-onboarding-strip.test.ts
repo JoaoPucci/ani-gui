@@ -34,7 +34,7 @@ vi.mock('$app/navigation', () => ({
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import OnboardHost from '../../src/lib/onboarding/OnboardHost.svelte';
 import { __resetOnboardingForTests } from '../../src/lib/onboarding/tips.svelte';
-import { isModalOpen } from '../../src/lib/components/modal-layer';
+import { isModalOpen, openModal } from '../../src/lib/components/modal-layer';
 import {
 	__resetApiBaseForTests,
 	type AiringStatus,
@@ -296,5 +296,23 @@ describe('detail route — the strip’s feature tip', () => {
 		await new Promise((r) => setTimeout(r, 900));
 		expect(balloon()).toBeNull();
 		expect(isModalOpen()).toBe(false);
+	});
+
+	it('waits for a dialog already open when the page mounts, and shows once it closes', async () => {
+		useShow(true);
+		const dialog = document.createElement('div');
+		dialog.innerHTML = '<button>ok</button>';
+		document.body.appendChild(dialog);
+		const held = openModal(dialog);
+		try {
+			mountPage();
+			await until(() => strip() !== null, 'the strip');
+			await new Promise((r) => setTimeout(r, 900));
+			expect(balloon()).toBeNull();
+		} finally {
+			held.close();
+			dialog.remove();
+		}
+		await until(() => balloon()?.style.visibility === 'visible', 'the balloon after the dialog');
 	});
 });
