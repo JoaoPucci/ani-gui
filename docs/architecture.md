@@ -783,10 +783,10 @@ plausible one. A rate-limited answer is a failed fetch like any other.
 
 ## Feature tips
 
-Feature tips point out what an update brought, once per install. The
-backend keeps the registry of tips, decides which ones an install is
-offered, and records the ones closed. It sends ids and places, never
-words. The code is in `backend/src/onboarding/`.
+The backend keeps a registry of feature tips, short notes about what an
+update brought, each meant to be shown once per install. It decides
+which ones an install is offered and records the ones closed. It sends
+ids and places, never words. The code is in `backend/src/onboarding/`.
 
 **The registry.** Each tip is declared in
 `backend/src/onboarding/tips.json`: its id (the key its seen state is
@@ -802,10 +802,12 @@ and is never offered. The backend's tests hold the file to these rules
 
 **Windows.** A tip is offered for two minor releases from the one that
 shipped it, unless it declares its own end: shipped in 0.19.0, it is
-offered in 0.19.x and 0.20.x and gone from 0.21.0. A tip whose feature is
-behind a flag is offered only while the flag is on, and its two releases
-count from the first launch on which that install had the flag on, with
-its declared end, which a flagged tip must have, as a hard limit. A tip
+offered in 0.19.x and 0.20.x and gone from 0.21.0. The count stays within
+one major number, so a major release closes every window the one before
+it opened. A tip whose feature is behind a flag is offered only while the
+flag is on, and its two releases count from the first read of the tips
+with the flag on, with its declared end, which a flagged tip must have,
+as a hard limit. A tip
 offered and not yet seen is pending. Seen is per tip and forever: any way
 of closing a tip marks it.
 
@@ -813,27 +815,28 @@ of closing a tip marks it.
 watch history (`config::paths::state_dir`, so on Linux
 `$XDG_STATE_HOME/ani-gui/` and on Windows the app's folder under
 `%LOCALAPPDATA%`). It holds the tips seen, the release a first-ever
-install started on, and per flag a tip names the release it was first on
-in. A file that cannot be read reads as an update's empty record, and the
-next write replaces it; writes go through a temporary file renamed over
-it.
+install started on, and per flag a tip names the release of the first
+read with it on. A file that cannot be read reads as an update's empty
+record, and the next write replaces it. Writes go through a temporary
+file, synced to disk and renamed over it.
 
 **First-ever installs.** A new install has nothing new to be shown.
 0.19.0 is the first release with the record, so "no record" cannot mean
 "new install": every earlier install has none either. The launch asks,
 before it creates anything in the profile, whether a watch history, a
 metadata cache or a settings file is there; if none is, it records a
-first-ever install, and the first read after the launch's flags settle
-marks seen every tip offered then. A flagged tip whose flag is off then
-is left pending for the day the flag comes on.
+first-ever install, and the first read of the tips marks seen every tip
+offered then, under that launch's flags. A flagged tip whose flag is off
+then is not marked seen, so it is new to that install when the flag comes
+on. A profile whose cache was deleted, with no history and no settings
+ever saved, reads as new.
 
 **Routes.** `GET /api/onboarding` answers the release counted at and the
 tips offered, each with its tool, page, moment, places and whether it is
 pending; `POST /api/onboarding/seen {id}` records a tip closed.
 `GET /api/onboarding/debug` answers every declared tip with its window
 and state, and `PUT /api/onboarding/debug/seen {id, seen}` sets seen
-either way, for a list of tip keys on the Debug page. No route sends
-words: each
+either way. No route sends words: each
 step's title and body are the renderer's messages, named after the tip
 and the step (`onboarding_<id>_<step>_title` and `_body`).
 
