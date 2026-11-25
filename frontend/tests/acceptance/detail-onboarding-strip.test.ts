@@ -341,4 +341,38 @@ describe('detail route — the strip’s feature tip', () => {
 		expect(balloon()).toBeNull();
 		expect(seen).toEqual([]);
 	});
+
+	it('the entry point offers Show me how, which closes it and asks for the walkthrough where the feature lives', async () => {
+		useShow(false);
+		onboarding.showNow({
+			id: 'franchise-entry',
+			kind: 'entry',
+			surface: 'show',
+			moment: 'arrive',
+			since: '0.19.0',
+			places: ['watch-order-franchise'],
+			how_to: {
+				id: 'franchise-tour',
+				surface: 'franchise',
+				places: ['franchise-masthead', 'franchise-order', 'franchise-rows']
+			},
+			pending: true
+		});
+		mountPage();
+		await until(() => balloon()?.style.visibility === 'visible', 'the entry balloon');
+		expect(balloon()!.textContent).toContain(m.onboarding_franchise_entry_1_title());
+		const buttons = [...balloon()!.querySelectorAll('button')].map((b) => b.textContent?.trim());
+		expect(buttons).toEqual([m.onboarding_show_how(), m.onboarding_got_it()]);
+		const link = target.querySelector<HTMLAnchorElement>('[data-onboard="watch-order-franchise"]')!;
+		const pressed = vi.fn((e: Event) => e.preventDefault());
+		link.addEventListener('click', pressed);
+		[...balloon()!.querySelectorAll('button')]
+			.find((b) => b.textContent?.trim() === m.onboarding_show_how())!
+			.click();
+		await until(() => balloon() === null, 'closed');
+		expect(pressed).toHaveBeenCalledTimes(1);
+		expect(onboarding.armed?.id).toBe('franchise-tour');
+		expect(onboarding.armedAs).toBe('guide');
+		expect(seen).toEqual([]);
+	});
 });

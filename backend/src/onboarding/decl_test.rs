@@ -217,3 +217,20 @@ fn a_field_the_registry_does_not_know_is_refused() {
     }]);
     assert!(serde_json::from_value::<Vec<TipDecl>>(raw).is_err());
 }
+
+#[test]
+fn the_tools_ship_as_on_demand_demonstrations_of_an_entry_and_its_walkthrough() {
+    let entry = find(&TIPS, "franchise-entry").expect("declared");
+    assert!(entry.on_demand, "a demonstration is never offered");
+    assert_eq!(entry.kind, Kind::Entry);
+    assert_eq!(entry.places, ["watch-order-franchise"]);
+    assert_eq!(entry.how_to.as_deref(), Some("franchise-tour"));
+    let tour = find(&TIPS, "franchise-tour").expect("declared");
+    assert!(tour.on_demand);
+    assert_eq!(tour.kind, Kind::Sequence);
+    assert_eq!(tour.surface, Surface::Franchise);
+    assert_eq!(
+        tour.places,
+        ["franchise-masthead", "franchise-order", "franchise-rows"]
+    );
+}

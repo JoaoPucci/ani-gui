@@ -33,7 +33,7 @@ const inert = (id: string) => document.getElementById(id)!.closest('[inert]') !=
 
 function start() {
 	const place = document.getElementById('place')!;
-	const s = new SpotlightSession(TIP, place, {
+	const s = new SpotlightSession(TIP, [place], {
 		doc: document,
 		now: () => clock,
 		markSeen: (id) => seen.push(id),
@@ -168,7 +168,7 @@ describe('SpotlightSession', () => {
 
 	it('counts the first moments from when the balloon holds the page, not from when the tip was chosen', () => {
 		const place = document.getElementById('place')!;
-		const s = new SpotlightSession(TIP, place, {
+		const s = new SpotlightSession(TIP, [place], {
 			doc: document,
 			now: () => clock,
 			markSeen: (id) => seen.push(id),
@@ -197,7 +197,7 @@ describe('SpotlightSession', () => {
 	it('a yield before the balloon is placed closes nothing it never opened', () => {
 		const place = document.getElementById('place')!;
 		const onClosed = vi.fn();
-		const s = new SpotlightSession(TIP, place, {
+		const s = new SpotlightSession(TIP, [place], {
 			doc: document,
 			now: () => clock,
 			markSeen: () => {},
@@ -210,7 +210,7 @@ describe('SpotlightSession', () => {
 
 	it('scrolls a place with no room beside it into room once, then holds the page', () => {
 		const place = document.getElementById('place')!;
-		const s = new SpotlightSession(TIP, place, {
+		const s = new SpotlightSession(TIP, [place], {
 			doc: document,
 			now: () => clock,
 			markSeen: () => {},
@@ -237,7 +237,7 @@ describe('SpotlightSession', () => {
 
 	it('holds the page at once when the balloon fits beside its place', () => {
 		const place = document.getElementById('place')!;
-		const s = new SpotlightSession(TIP, place, {
+		const s = new SpotlightSession(TIP, [place], {
 			doc: document,
 			now: () => clock,
 			markSeen: () => {},
@@ -275,5 +275,54 @@ describe('SpotlightSession', () => {
 		s.placed(none, { h: 180 }, document.getElementById('balloon')!, null, scroll);
 		expect(scroll).not.toHaveBeenCalled();
 		expect(isModalOpen()).toBe(false);
+	});
+
+	it('a sequence moves its spotlight and what a press must reach from step to step, and Done closes it seen', () => {
+		document
+			.querySelector('main')!
+			.insertAdjacentHTML('beforeend', '<div id="second"><button id="second-btn">b</button></div>');
+		const first = document.getElementById('place')!;
+		const second = document.getElementById('second')!;
+		const s = new SpotlightSession(
+			{ ...TIP, kind: 'sequence', places: ['a', 'b'] },
+			[first, second],
+			{
+				doc: document,
+				now: () => clock,
+				markSeen: (id) => seen.push(id),
+				onClosed: (wasSeen) => closed.push(wasSeen)
+			}
+		);
+		sessions.push(s);
+		s.hold(document.getElementById('balloon')!);
+		expect(inert('second-btn')).toBe(true);
+		s.step('next');
+		expect(s.place).toBe(second);
+		expect(s.steps.travelling).toBe(true);
+		expect(inert('second-btn')).toBe(false);
+		expect(inert('link')).toBe(true);
+		s.step('back');
+		expect(s.place).toBe(first);
+		s.step('next');
+		s.step('next');
+		expect(seen).toEqual(['watch-order']);
+		expect(closed).toEqual([true]);
+		expect(document.activeElement?.id).toBe('second-btn');
+	});
+
+	it('Skip closes a sequence seen, and gives focus back', () => {
+		const s = start();
+		s.close('skip');
+		expect(seen).toEqual(['watch-order']);
+		expect(document.activeElement?.id).toBe('opener');
+	});
+
+	it('Show me how closes an entry seen and moves focus nowhere itself', () => {
+		const s = start();
+		s.close('show-how');
+		expect(seen).toEqual(['watch-order']);
+		// The modal layer gives focus back; the tip does not send it to the
+		// place, since the press that follows opens the feature's page.
+		expect(document.activeElement?.id).toBe('opener');
 	});
 });

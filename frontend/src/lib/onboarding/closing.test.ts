@@ -5,7 +5,15 @@ import { PRESS_GRACE_MS } from './gate';
 
 describe('closing', () => {
 	it('every way a person closes a tip counts it seen', () => {
-		for (const route of ['got-it', 'escape', 'outside', 'place'] as const) {
+		for (const route of [
+			'got-it',
+			'done',
+			'skip',
+			'show-how',
+			'escape',
+			'outside',
+			'place'
+		] as const) {
 			expect(closing(route, 0, 10_000)?.seen, route).toBe(true);
 		}
 	});
@@ -32,5 +40,10 @@ describe('closing', () => {
 	it('a press on the place within the grace was aimed before the tip showed: the press works, the tip stays', () => {
 		expect(closing('place', 0, PRESS_GRACE_MS - 1)).toBeNull();
 		expect(closing('place', 0, PRESS_GRACE_MS)?.seen).toBe(true);
+	});
+	it('a sequence’s Done sends focus to its last place, Skip back, and Show me how leaves it to the page it opens', () => {
+		expect(closing('done', 0, 1)?.focus).toBe('place');
+		expect(closing('skip', 0, 1)?.focus).toBe('back');
+		expect(closing('show-how', 0, 1)?.focus).toBe('none');
 	});
 });

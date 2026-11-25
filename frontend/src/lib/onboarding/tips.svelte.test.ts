@@ -83,4 +83,22 @@ describe('OnboardingTips', () => {
 		await onboarding.load();
 		expect(read).toHaveBeenCalledTimes(2);
 	});
+
+	it('arms a feature’s walkthrough as a guide, on its own page', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.showGuide({ id: 'a-guide', surface: 'franchise', places: ['one', 'two'] });
+		expect(store.armedAs).toBe('guide');
+		expect(store.armed).toMatchObject({
+			id: 'a-guide',
+			kind: 'sequence',
+			surface: 'franchise',
+			moment: 'arrive',
+			places: ['one', 'two']
+		});
+		store.showNow(tip('a', false));
+		expect(store.armedAs).toBe('preview');
+	});
 });
