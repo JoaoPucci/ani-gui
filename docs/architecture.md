@@ -868,9 +868,12 @@ whose place is not on the page is left out. An entry tip lights a
 feature's entry point with "Show me how" beside "Got it": "Show me how"
 closes it as seen, asks for the feature's walkthrough (an on-demand
 sequence on the feature's own page) and presses the entry point. A
-walkthrough asked for, by that or by the feature's own "Show me how"
-link (`$lib/onboarding/ShowMeHow.svelte`), says "How it works", names no
-version and marks nothing seen. 0.19.0 declares both tools only as
+walkthrough asked for, by that or by a "Show me how" link a feature with
+a walkthrough may place on its page (`$lib/onboarding/ShowMeHow.svelte`),
+says "How it works", names no version and marks nothing seen. One not
+shown before a page that is not its own comes up is dropped. Each step
+after the first is announced, and a step's place off screen is brought
+into room as the step comes up. 0.19.0 declares both tools only as
 on-demand demonstrations on the franchise link and the franchise page,
 which the Debug page's "Show it" starts. No tip offered to users uses
 them.
