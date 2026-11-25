@@ -2395,7 +2395,7 @@
 				  in:settle, with a stagger via per-index delay so episodes
 				  land left-to-right, top-to-bottom.
 				-->
-						<ul class="ep-grid">
+						<ul class="ep-grid" aria-busy={episodes === null ? 'true' : undefined}>
 							{#if episodes === null}
 								<!-- Skeleton while fetch is in flight -->
 								{#each Array.from({ length: 6 }, (_, k) => k) as i (i)}

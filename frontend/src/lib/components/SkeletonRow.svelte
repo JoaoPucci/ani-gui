@@ -5,7 +5,8 @@
   strip is as tall as its tallest card, which in a row of twenty almost
   always has a wrapped title) and the meta line, on the same line boxes
   as PosterCard's. So a row is the same height loading and loaded, and
-  filling it in moves nothing below it.
+  filling it in moves nothing below it. The cards are hidden from
+  screen readers; the row's region says it is busy instead.
 -->
 <script lang="ts">
 	import Strip from '$lib/components/Strip.svelte';
@@ -20,7 +21,7 @@
 	let { eyebrow, caption, surface = 'plain' }: Props = $props();
 </script>
 
-<Strip {eyebrow} {caption} {surface}>
+<Strip {eyebrow} {caption} {surface} busy>
 	{#each Array.from({ length: 8 }, (_, k) => k) as i (i)}
 		<div class="skel-card" aria-hidden="true">
 			<div class="skel-poster"></div>
