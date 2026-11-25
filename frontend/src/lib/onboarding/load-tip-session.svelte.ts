@@ -55,8 +55,7 @@ export class LoadTipSession {
 	feed(input: Omit<LoadTipInput, 'now' | 'fresh'>): void {
 		this.#last = input;
 		const fresh = !this.#played;
-		if (input.veil === 'start') this.#sawStart = true;
-		else if (input.veil === 'off' && this.#sawStart) this.#played = true;
+		this.observe(input.veil);
 		this.#step(loadTipStep(this.state, { ...input, fresh, now: this.#deps.now() }));
 		this.#arm();
 	}
@@ -64,6 +63,13 @@ export class LoadTipSession {
 	/** Got it, or Escape. */
 	close(): void {
 		this.#step(loadTipClose(this.state));
+	}
+
+	/** The veil changed, whether or not a tip is chosen: a start that
+	 *  ends marks the source played. */
+	observe(veil: LoadTipInput['veil']): void {
+		if (veil === 'start') this.#sawStart = true;
+		else if (veil === 'off' && this.#sawStart) this.#played = true;
 	}
 
 	/** Another episode's stream: a tip that went unseen waits for its
@@ -75,6 +81,8 @@ export class LoadTipSession {
 			this.#clear();
 			this.state = LOAD_TIP_IDLE;
 		}
+		// Its start may be up already: look again.
+		this.feed(this.#last);
 	}
 
 	stop(): void {

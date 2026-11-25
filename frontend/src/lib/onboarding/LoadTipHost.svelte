@@ -79,6 +79,11 @@
 		session.newSource();
 	});
 
+	// The veil is watched from the start, so a source that played before
+	// a tip was chosen is known to have played.
+	$effect(() => {
+		session.observe(veil);
+	});
 	$effect(() => {
 		if (!shown) return;
 		session.feed({ veil, blocked: blocked || modalOpen });
