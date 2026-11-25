@@ -4047,4 +4047,18 @@
 			box-shadow: none;
 		}
 	}
+	/* A forced-colours theme (a Windows contrast theme) paints every
+	   fill in its canvas colour, and a placeholder drawn by fills alone
+	   would leave the page looking empty while it loads. There each
+	   part draws its outline in the theme's grey text colour instead. */
+	@media (forced-colors: active) {
+		.hero-skeleton-img,
+		.poster-skeleton,
+		.line-skeleton,
+		.action-skel,
+		.ep-thumb-skel,
+		.ep-foot-skel {
+			border: 1px solid GrayText;
+		}
+	}
 </style>

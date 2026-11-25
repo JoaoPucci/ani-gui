@@ -403,4 +403,25 @@
 			transform: none;
 		}
 	}
+	/* A forced-colours theme (a Windows contrast theme) paints every
+	   fill in its canvas colour and drops every shadow, which is all a
+	   film strip frame is drawn with. There each frame draws a border
+	   in the theme's text colour, and where motion is allowed the lit
+	   frame's border takes the highlight as it travels. */
+	@media (forced-colors: active) {
+		.cell {
+			border: 1.5px solid CanvasText;
+			animation-name: frame-lit-forced;
+		}
+		@keyframes frame-lit-forced {
+			0%,
+			55%,
+			100% {
+				border-color: CanvasText;
+			}
+			18% {
+				border-color: Highlight;
+			}
+		}
+	}
 </style>
