@@ -10,7 +10,8 @@
  *   never reaches the page. A press in the first PRESS_GRACE_MS was
  *   aimed at the page before the balloon appeared, and does nothing.
  * - A press on the lit place works, and closes it, seen; focus is the
- *   press's to move.
+ *   press's to move. In the first PRESS_GRACE_MS the press still works
+ *   but leaves the tip up.
  * - A tip yields, unseen and still pending, when the page changes
  *   under it, its place goes, one of the app's dialogs opens over it,
  *   or the window goes fullscreen.
@@ -22,8 +23,9 @@ export type CloseRoute = 'got-it' | 'escape' | 'outside' | 'place' | 'yield';
 export interface Closing {
 	seen: boolean;
 	/** `place`: the place, else where focus was; `back`: where focus was,
-	 *  else the place; `none`: leave it. */
-	focus: 'place' | 'back' | 'none';
+	 *  else the place; `none`: the press moves it; `leave`: where the
+	 *  page put it (a yield, often to a page change). */
+	focus: 'place' | 'back' | 'none' | 'leave';
 }
 
 /** How the tip shown at `shownAt` closes by `route` at `now`, or null
@@ -37,8 +39,8 @@ export function closing(route: CloseRoute, shownAt: number, now: number): Closin
 		case 'outside':
 			return now - shownAt < PRESS_GRACE_MS ? null : { seen: true, focus: 'back' };
 		case 'place':
-			return { seen: true, focus: 'none' };
+			return now - shownAt < PRESS_GRACE_MS ? null : { seen: true, focus: 'none' };
 		case 'yield':
-			return { seen: false, focus: 'back' };
+			return { seen: false, focus: 'leave' };
 	}
 }

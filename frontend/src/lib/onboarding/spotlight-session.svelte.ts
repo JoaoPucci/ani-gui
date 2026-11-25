@@ -49,18 +49,26 @@ export class SpotlightSession {
 	closed = $state(false);
 
 	readonly #deps: SessionDeps;
-	readonly #shownAt: number;
+	/** When the balloon took the page: the press grace counts from here. */
+	#shownAt = Number.POSITIVE_INFINITY;
 	#modal: ModalHandle | null = null;
 	#root: HTMLElement | null = null;
+	#resize: ResizeObserver | null = null;
+	#leave: MutationObserver | null = null;
 
 	constructor(tip: OnboardingTip, place: HTMLElement, deps: SessionDeps) {
 		this.tip = tip;
 		this.place = place;
 		this.#deps = deps;
-		this.#shownAt = deps.now();
 		const a = deps.doc.defaultView?.getComputedStyle(place).getPropertyValue('--accent').trim();
 		if (a) this.accent = a;
-		this.read();
+		this.#measure();
+		// The place may grow, shrink or leave with no scroll to say so:
+		// read it again whenever it does.
+		this.#resize = new ResizeObserver(() => this.read());
+		this.#resize.observe(place);
+		this.#leave = new MutationObserver(() => this.read());
+		this.#leave.observe(deps.doc.body, { childList: true, subtree: true });
 	}
 
 	/** Read where the place, the window and its buttons are now. The
@@ -71,6 +79,10 @@ export class SpotlightSession {
 			this.close('yield');
 			return;
 		}
+		this.#measure();
+	}
+
+	#measure(): void {
 		const doc = this.#deps.doc;
 		const win = doc.defaultView;
 		const top = doc.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0;
@@ -97,6 +109,7 @@ export class SpotlightSession {
 	hold(root: HTMLElement, scrim: HTMLElement | null = null): void {
 		if (this.closed || this.#modal) return;
 		this.#root = root;
+		this.#shownAt = this.#deps.now();
 		const live = [
 			this.place,
 			...this.#deps.doc.querySelectorAll(WINDOW_BUTTONS),
@@ -121,6 +134,8 @@ export class SpotlightSession {
 		const how = closing(route, this.#shownAt, this.#deps.now());
 		if (!how) return;
 		this.closed = true;
+		this.#resize?.disconnect();
+		this.#leave?.disconnect();
 		if (how.seen) this.#deps.markSeen(this.tip.id);
 		const covered = this.#root !== null && !isTopModal(this.#root);
 		// Closing the modal gives focus back to what held it when it opened.
@@ -130,10 +145,13 @@ export class SpotlightSession {
 		this.#deps.onClosed(how.seen);
 	}
 
-	#focus(to: 'place' | 'back' | 'none'): void {
-		if (to === 'none') return;
+	#focus(to: 'place' | 'back' | 'none' | 'leave'): void {
+		if (to === 'none' || to === 'leave') return;
 		const active = this.#deps.doc.activeElement;
-		const nowhere = !active || active === this.#deps.doc.body;
+		// Focus left on the balloon (it held focus, and the modal had
+		// nowhere to give it back to) is nowhere: the balloon is going.
+		const nowhere =
+			!active || active === this.#deps.doc.body || (this.#root?.contains(active) ?? false);
 		if (to === 'back' && !nowhere) return;
 		const target = this.place.matches(FOCUSABLE)
 			? this.place

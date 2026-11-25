@@ -20,6 +20,15 @@ let clock: number;
 let seen: string[];
 let closed: boolean[];
 let sessions: SpotlightSession[];
+let resized: ResizeObserverCallback[];
+
+class FakeRO {
+	constructor(cb: ResizeObserverCallback) {
+		resized.push(cb);
+	}
+	observe() {}
+	disconnect() {}
+}
 const inert = (id: string) => document.getElementById(id)!.closest('[inert]') !== null;
 
 function start() {
@@ -49,11 +58,14 @@ beforeEach(() => {
 	seen = [];
 	closed = [];
 	sessions = [];
+	resized = [];
+	vi.stubGlobal('ResizeObserver', FakeRO);
 });
 
 afterEach(() => {
 	for (const s of sessions) s.close('yield');
 	document.body.innerHTML = '';
+	vi.unstubAllGlobals();
 });
 
 describe('SpotlightSession', () => {
@@ -100,6 +112,7 @@ describe('SpotlightSession', () => {
 
 	it('a press on the place closes it seen; a press elsewhere is not the place', () => {
 		const s = start();
+		clock += PRESS_GRACE_MS;
 		s.pressed(document.getElementById('other'));
 		expect(closed).toEqual([]);
 		s.pressed(document.getElementById('link'));
@@ -121,12 +134,51 @@ describe('SpotlightSession', () => {
 		h.close();
 	});
 
-	it('yields when its place leaves the page', () => {
-		const s = start();
+	it('yields when its place leaves the page, with no scroll to tell it', async () => {
+		start();
 		document.getElementById('place')!.remove();
-		s.read();
+		await new Promise((r) => setTimeout(r, 0));
 		expect(closed).toEqual([false]);
 		expect(isModalOpen()).toBe(false);
+	});
+
+	it('reads its place again when the place changes size, with no scroll', async () => {
+		const s = start();
+		const place = document.getElementById('place')!;
+		place.getBoundingClientRect = () => ({ left: 10, top: 20, width: 300, height: 90 }) as DOMRect;
+		resized.forEach((cb) => cb([], {} as ResizeObserver));
+		expect(s.rect).toEqual({ x: 10, y: 20, w: 300, h: 90 });
+	});
+
+	it('with nothing focused when it opened, Escape sends focus to the place', () => {
+		(document.activeElement as HTMLElement | null)?.blur();
+		start();
+		document.activeElement!.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		expect(document.activeElement?.id).toBe('link');
+	});
+
+	it('a yield leaves focus where the page put it, never on the place', () => {
+		(document.activeElement as HTMLElement | null)?.blur();
+		const s = start();
+		s.close('yield');
+		expect(document.activeElement?.id).not.toBe('link');
+	});
+
+	it('counts the first moments from when the balloon holds the page, not from when the tip was chosen', () => {
+		const place = document.getElementById('place')!;
+		const s = new SpotlightSession(TIP, place, {
+			doc: document,
+			now: () => clock,
+			markSeen: (id) => seen.push(id),
+			onClosed: (wasSeen) => closed.push(wasSeen)
+		});
+		sessions.push(s);
+		clock += 1000;
+		s.hold(document.getElementById('balloon')!);
+		s.close('outside');
+		expect(closed).toEqual([]);
 	});
 
 	it('closes once', () => {

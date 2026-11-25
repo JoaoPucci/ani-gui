@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { placeBalloon } from './place';
+import { placeBalloon, roomAbove } from './place';
+import { PAD, litArea } from './spotlight';
 
 const view = { w: 1280, h: 800, top: 0 };
 const size = { w: 340, h: 180 };
@@ -53,6 +54,23 @@ describe('placeBalloon', () => {
 						p.y >= 16 &&
 						p.y + size.h <= Math.max(vh - 16, 16 + size.h)
 					);
+				}
+			)
+		);
+	});
+	it('a place scrolled to roomAbove under the top bar gets its balloon above it, fitting', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 0, max: 120 }),
+				fc.integer({ min: 80, max: 260 }),
+				fc.integer({ min: 200, max: 900 }),
+				(top, h, placeH) => {
+					const v = { w: 1280, h: 2400, top };
+					const balloon = { w: 340, h };
+					const y = roomAbove(v.top, balloon);
+					const lit = litArea({ x: 300, y, w: 600, h: placeH }, v);
+					const p = placeBalloon(lit, balloon, { ...v, h: y + placeH + 40 });
+					return p.fits && p.side === 'above' && lit.y - PAD >= 0;
 				}
 			)
 		);

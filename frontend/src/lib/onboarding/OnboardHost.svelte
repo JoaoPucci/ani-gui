@@ -17,7 +17,7 @@
 	import Balloon from './Balloon.svelte';
 	import Scrim from './Scrim.svelte';
 	import { armedNow, arrivingNow, surfaceOf, watchedHere } from './gate';
-	import { placeBalloon } from './place';
+	import { placeBalloon, roomAbove } from './place';
 	import { litArea, passHoles } from './spotlight';
 	import { SpotlightSession } from './spotlight-session.svelte';
 	import { onboarding } from './tips.svelte';
@@ -47,8 +47,12 @@
 
 	onMount(() => {
 		void onboarding.load();
+		// A dialog or fullscreen already up when the host mounts holds
+		// the tips back too.
+		modalOpen = isModalOpen();
+		fullscreen = Boolean(document.fullscreenElement);
 		const onFs = () => {
-			fullscreen = document.fullscreenElement !== null;
+			fullscreen = Boolean(document.fullscreenElement);
 			if (fullscreen) session?.close('yield');
 		};
 		const stopModals = watchModals(() => {
@@ -136,7 +140,7 @@
 		if (!s || !p || !balloon || !size) return;
 		if (!p.fits && scrolledFor !== s) {
 			scrolledFor = s;
-			s.place.style.scrollMarginTop = `${s.view.top + 28 + size.h}px`;
+			s.place.style.scrollMarginTop = `${roomAbove(s.view.top, size)}px`;
 			s.place.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
 			s.place.style.scrollMarginTop = '';
 			void tick().then(() => s.read());
