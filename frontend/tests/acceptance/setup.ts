@@ -71,6 +71,8 @@ export const API_BASE = 'http://127.0.0.1:31337';
  * - a signed-in tracker list a list row reads;
  * - where Settings finds the External player type's standard program,
  *   which the hint then names without a location;
+ * - the feature tips the layout asks for once at launch, which a
+ *   failed read answers with none;
  * - the background warm of an episode the user has not asked for:
  *   with no EventSource installed it is a plain `/api/play` POST
  *   marked `prefetch`. A play the user asked for carries no
@@ -102,6 +104,7 @@ const incidental = [
 	http.post(`${API_BASE}/api/continue/warm`, absentBackend),
 	http.post(`${API_BASE}/api/account/list/:provider`, absentBackend),
 	http.get(`${API_BASE}/api/external-player/standard`, absentBackend),
+	http.get(`${API_BASE}/api/onboarding`, absentBackend),
 	http.post(`${API_BASE}/api/play`, async ({ request, requestId }) => {
 		const body = (await request
 			.clone()
