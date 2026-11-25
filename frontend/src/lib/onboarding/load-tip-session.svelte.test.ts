@@ -25,7 +25,7 @@ afterEach(() => {
 
 describe('LoadTipSession', () => {
 	it('shows once a start has lasted SHOW_AFTER_MS, with nothing more fed', () => {
-		s.feed({ veil: 'start', blocked: false });
+		s.feed({ veil: 'start', blocked: false, fresh: true });
 		vi.advanceTimersByTime(SHOW_AFTER_MS - 1);
 		expect(s.up).toBe(false);
 		vi.advanceTimersByTime(1);
@@ -33,17 +33,17 @@ describe('LoadTipSession', () => {
 	});
 
 	it('a load that lands sooner shows nothing', () => {
-		s.feed({ veil: 'start', blocked: false });
+		s.feed({ veil: 'start', blocked: false, fresh: true });
 		vi.advanceTimersByTime(400);
-		s.feed({ veil: 'off', blocked: false });
+		s.feed({ veil: 'off', blocked: false, fresh: true });
 		vi.advanceTimersByTime(SHOW_AFTER_MS * 2);
 		expect(s.up).toBe(false);
 	});
 
 	it('stays folded once playback starts, and a close is seen once', () => {
-		s.feed({ veil: 'start', blocked: false });
+		s.feed({ veil: 'start', blocked: false, fresh: true });
 		vi.advanceTimersByTime(SHOW_AFTER_MS);
-		s.feed({ veil: 'off', blocked: false });
+		s.feed({ veil: 'off', blocked: false, fresh: true });
 		expect(s.state.phase).toBe('playing');
 		s.close();
 		s.close();
@@ -52,16 +52,16 @@ describe('LoadTipSession', () => {
 	});
 
 	it('an error while up takes it away unseen', () => {
-		s.feed({ veil: 'start', blocked: false });
+		s.feed({ veil: 'start', blocked: false, fresh: true });
 		vi.advanceTimersByTime(SHOW_AFTER_MS);
-		s.feed({ veil: 'start', blocked: true });
+		s.feed({ veil: 'start', blocked: true, fresh: true });
 		expect(s.state).toMatchObject({ phase: 'gone', seen: false });
 		expect(seen).toBe(0);
 		expect(gone).toBe(1);
 	});
 
 	it('a stop ends the wait', () => {
-		s.feed({ veil: 'start', blocked: false });
+		s.feed({ veil: 'start', blocked: false, fresh: true });
 		s.stop();
 		vi.advanceTimersByTime(SHOW_AFTER_MS * 2);
 		expect(s.up).toBe(false);
@@ -80,7 +80,7 @@ describe('LoadTipSession', () => {
 			onSeen: () => {},
 			onGone: () => {}
 		});
-		early.feed({ veil: 'start', blocked: false });
+		early.feed({ veil: 'start', blocked: false, fresh: true });
 		clock = SHOW_AFTER_MS - 1;
 		timers.shift()!.fn();
 		expect(early.state.phase).toBe('waiting');
@@ -88,5 +88,18 @@ describe('LoadTipSession', () => {
 		clock = SHOW_AFTER_MS;
 		timers.shift()!.fn();
 		expect(early.state.phase).toBe('loading');
+	});
+
+	it('a new source brings a tip that went unseen back to waiting, and leaves a seen one gone', () => {
+		s.feed({ veil: 'start', blocked: false, fresh: true });
+		vi.advanceTimersByTime(SHOW_AFTER_MS);
+		s.feed({ veil: 'start', blocked: true, fresh: true });
+		s.newSource();
+		expect(s.state.phase).toBe('idle');
+		s.feed({ veil: 'start', blocked: false, fresh: true });
+		vi.advanceTimersByTime(SHOW_AFTER_MS);
+		s.close();
+		s.newSource();
+		expect(s.state).toMatchObject({ phase: 'gone', seen: true });
 	});
 });

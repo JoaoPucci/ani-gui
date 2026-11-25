@@ -42,6 +42,15 @@ describe('escapeIsTips', () => {
 		expect(escapeIsTips(new KeyboardEvent('keydown', { key: 'k' }), false, document)).toBe(false);
 	});
 
+	it('leaves it to a text field the Escape was typed in', () => {
+		document.body.innerHTML = '<input id="q"><div id="e" contenteditable="true"></div>';
+		for (const id of ['q', 'e']) {
+			const ev = esc();
+			Object.defineProperty(ev, 'target', { value: document.getElementById(id) });
+			expect(escapeIsTips(ev, false, document), id).toBe(false);
+		}
+	});
+
 	it('leaves it to an open menu or popover, a dialog, or whatever took it first', () => {
 		expect(escapeIsTips(esc(), true, document)).toBe(false);
 		document.body.innerHTML = '<button aria-expanded="true"></button>';
@@ -60,6 +69,13 @@ describe('escapeIsTips', () => {
 });
 
 describe('focusPlayer', () => {
+	it('in fullscreen focuses the frame, never a control, so the chrome can still hide', () => {
+		document.body.innerHTML = `<section id="f"><div class="pc-buttons-row"><button class="pc-btn">b</button></div></section>`;
+		const frame = document.getElementById('f')!;
+		focusPlayer(frame, { fullscreen: true });
+		expect(document.activeElement).toBe(frame);
+	});
+
 	it('focuses the error panel’s action, else a control, else the frame', () => {
 		document.body.innerHTML = `<section id="f">
 			<div class="pc-buttons-row"><button class="pc-btn" disabled>a</button><button class="pc-btn" id="b">b</button></div>

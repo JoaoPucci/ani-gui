@@ -12,9 +12,15 @@ import {
 
 const run = (inputs: LoadTipInput[], from: LoadTipState = LOAD_TIP_IDLE) =>
 	inputs.reduce(loadTipStep, from);
-const at = (now: number, veil: LoadTipInput['veil'] = 'start', blocked = false): LoadTipInput => ({
+const at = (
+	now: number,
+	veil: LoadTipInput['veil'] = 'start',
+	blocked = false,
+	fresh = true
+): LoadTipInput => ({
 	veil,
 	blocked,
+	fresh,
 	now
 });
 
@@ -28,6 +34,10 @@ describe('loadTipStep', () => {
 		const fast = run([at(0), at(400, 'off')]);
 		expect(fast).toEqual(LOAD_TIP_IDLE);
 		expect(run([at(2000), at(2000 + SHOW_AFTER_MS)], fast).phase).toBe('loading');
+	});
+
+	it('never starts on a start that is not the source’s first, such as play after a pause', () => {
+		expect(run([at(0, 'start', false, false), at(5000, 'start', false, false)]).phase).toBe('idle');
 	});
 
 	it('never starts in a stall, in fullscreen, over an error or a dialog', () => {
@@ -67,6 +77,7 @@ describe('loadTipStep', () => {
 		const input = fc.record({
 			veil: fc.constantFrom<LoadTipInput['veil']>('off', 'start', 'stall'),
 			blocked: fc.boolean(),
+			fresh: fc.boolean(),
 			dt: fc.integer({ min: 0, max: 800 })
 		});
 		fc.assert(
@@ -74,10 +85,11 @@ describe('loadTipStep', () => {
 				let s = LOAD_TIP_IDLE;
 				let now = 0;
 				let run: number | null = null;
-				for (const { veil, blocked, dt } of steps) {
+				for (const { veil, blocked, fresh, dt } of steps) {
 					now += dt;
 					const was = s;
-					s = loadTipStep(s, { veil, blocked, now });
+					s = loadTipStep(s, { veil, blocked, fresh, now });
+					if (was.phase === 'idle' && s.phase !== 'idle' && !fresh) return false;
 					if (was.phase === 'gone' && s !== was) return false;
 					if (s.seen) return false;
 					if (loadTipUp(s) && blocked) return false;

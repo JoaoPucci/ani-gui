@@ -35,7 +35,7 @@ import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { playerVideo, playerVideoInSlot } from './player-video';
 import { readPosition } from '../../src/lib/play/watch-position';
 import { m } from '../../src/lib/paraglide/messages';
-import { __resetOnboardingForTests } from '../../src/lib/onboarding/tips.svelte';
+import { onboarding, __resetOnboardingForTests } from '../../src/lib/onboarding/tips.svelte';
 
 import type {
 	OnboardingView,
@@ -259,7 +259,9 @@ function useTip(pending = true) {
 const loadTip = () => target.querySelector('[data-testid="onboarding-load-tip"]');
 const phase = () => loadTip()?.querySelector('.note')?.getAttribute('data-phase') ?? null;
 const said = () =>
-	target.querySelector('.load-tip-host [role="status"]')?.textContent?.trim() ?? '';
+	[...target.querySelectorAll('[role="status"]')]
+		.map((el) => el.textContent?.trim() ?? '')
+		.find((t) => t.includes('0.19.0')) ?? '';
 const gotIt = () =>
 	[...(loadTip()?.querySelectorAll('button') ?? [])].find(
 		(b) => b.textContent?.trim() === m.onboarding_got_it()
@@ -335,5 +337,79 @@ describe('play route — the load tip', () => {
 		await openEpisode();
 		await wait(1600);
 		expect(loadTip()).toBeNull();
+	});
+
+	it('a start after a pause is not a load: it never shows the tip', async () => {
+		const media = await openEpisode();
+		media.firstFrame();
+		await wait(200);
+		media.set({ paused: true });
+		media.fire('pause');
+		await wait(50);
+		media.set({ paused: false, readyState: 2 });
+		media.fire('play');
+		await wait(1600);
+		expect(loadTip()).toBeNull();
+	});
+
+	it('the error panel takes it away, unseen', async () => {
+		await openEpisode();
+		await until(() => loadTip() !== null, 'the load tip', 3000);
+		playerVideo().dispatchEvent(new Event('error'));
+		await until(() => loadTip() === null, 'gone with the error', 3000);
+		expect(seen).toEqual([]);
+	});
+
+	it('fullscreen takes it away, unseen', async () => {
+		await openEpisode();
+		await until(() => loadTip() !== null, 'the load tip', 3000);
+		Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: frame() });
+		document.dispatchEvent(new Event('fullscreenchange'));
+		await until(() => loadTip() === null, 'gone with fullscreen', 3000);
+		Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null });
+		document.dispatchEvent(new Event('fullscreenchange'));
+		expect(seen).toEqual([]);
+	});
+
+	it('the player’s own menu takes Escape first', async () => {
+		await openEpisode();
+		await until(() => loadTip() !== null, 'the load tip', 3000);
+		const opener = target.querySelector<HTMLButtonElement>('.pc-btn[aria-haspopup="menu"]')!;
+		opener.click();
+		await until(() => opener.getAttribute('aria-expanded') === 'true', 'the menu open');
+		escape();
+		await wait(50);
+		expect(loadTip()).not.toBeNull();
+	});
+
+	it('a tip asked for from the Debug page shows, is used up, and marks nothing seen', async () => {
+		useTip(false);
+		onboarding.showNow({
+			id: 'player-up-next',
+			kind: 'single',
+			surface: 'play',
+			moment: 'stream-load',
+			since: '0.19.0',
+			places: ['player-frame'],
+			how_to: null,
+			pending: true
+		});
+		await openEpisode();
+		await until(() => loadTip() !== null, 'the load tip', 3000);
+		expect(onboarding.armed).toBeNull();
+		gotIt()!.click();
+		await until(() => loadTip() === null, 'closed');
+		await wait(50);
+		expect(seen).toEqual([]);
+	});
+
+	it('is announced from outside the busy frame', async () => {
+		await openEpisode();
+		await until(() => loadTip() !== null, 'the load tip', 3000);
+		const status = [...target.querySelectorAll('[role="status"]')].find((el) =>
+			el.textContent?.includes(m.onboarding_player_up_next_1_title())
+		);
+		expect(status).toBeDefined();
+		expect(frame().contains(status!)).toBe(false);
 	});
 });
