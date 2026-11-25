@@ -25,17 +25,28 @@ export function playerTip(
  *  first. */
 export function escapeIsTips(e: KeyboardEvent, playerMenuOpen: boolean, doc: Document): boolean {
 	if (e.key !== 'Escape' || e.defaultPrevented || playerMenuOpen || isModalOpen()) return false;
+	if (typingIn(e.target)) return false;
 	return doc.querySelector('[aria-expanded="true"]') === null;
 }
 
+/** A text field: its Escape is its own (the search box clears with it). */
+function typingIn(target: EventTarget | null): boolean {
+	const el = target as HTMLElement | null;
+	return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+}
+
 /** Focus the player's first control that can take it: the error
- *  panel's action, else a control button, else the frame itself. */
-export function focusPlayer(frame: HTMLElement): void {
-	const candidates = [
-		...frame.querySelectorAll<HTMLElement>(
-			'.player-error-action, .pc-buttons-row .pc-btn:not([disabled])'
-		)
-	].filter((el) => !el.closest('[inert]'));
+ *  panel's action, else a control button, else the frame itself. In
+ *  fullscreen, the frame: focus on a control would pin the chrome that
+ *  hides when the pointer rests. */
+export function focusPlayer(frame: HTMLElement, opts: { fullscreen?: boolean } = {}): void {
+	const candidates = opts.fullscreen
+		? []
+		: [
+				...frame.querySelectorAll<HTMLElement>(
+					'.player-error-action, .pc-buttons-row .pc-btn:not([disabled])'
+				)
+			].filter((el) => !el.closest('[inert]'));
 	for (const el of candidates) {
 		el.focus({ preventScroll: true });
 		if (frame.ownerDocument.activeElement === el) return;

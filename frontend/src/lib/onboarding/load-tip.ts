@@ -7,6 +7,9 @@
  * - It shows only once a start has lasted SHOW_AFTER_MS, past the
  *   loader's own beat, so a load that lands sooner never flashes it,
  *   and the tip waits, pending, for a later, slower one.
+ * - It starts only on the first start of a source (an episode's
+ *   stream): a start after a pause, a replay or a recovery is
+ *   mid-playback, not a load.
  * - It never starts in a stall (that is mid-playback), in fullscreen,
  *   over the error panel or over one of the app's dialogs. Any of those
  *   while it is up takes it away, still pending.
@@ -32,6 +35,8 @@ export interface LoadTipInput {
 	veil: 'off' | 'start' | 'stall';
 	/** Fullscreen, the error panel, or one of the app's dialogs. */
 	blocked: boolean;
+	/** No frame of this source has played yet. */
+	fresh: boolean;
 	now: number;
 }
 
@@ -40,12 +45,12 @@ export const LOAD_TIP_IDLE: LoadTipState = { phase: 'idle', startedAt: null, see
 const gone = (s: LoadTipState): LoadTipState => ({ ...s, phase: 'gone', seen: false });
 
 export function loadTipStep(s: LoadTipState, input: LoadTipInput): LoadTipState {
-	const { veil, blocked, now } = input;
+	const { veil, blocked, fresh, now } = input;
 	switch (s.phase) {
 		case 'gone':
 			return s;
 		case 'idle':
-			return veil === 'start' && !blocked ? { ...s, phase: 'waiting', startedAt: now } : s;
+			return veil === 'start' && !blocked && fresh ? { ...s, phase: 'waiting', startedAt: now } : s;
 		case 'waiting':
 			if (blocked || veil !== 'start') return LOAD_TIP_IDLE;
 			return now - (s.startedAt ?? now) >= SHOW_AFTER_MS ? { ...s, phase: 'loading' } : s;

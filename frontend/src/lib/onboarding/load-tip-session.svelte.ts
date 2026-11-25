@@ -6,6 +6,8 @@
  * - It is fed the start veil and what blocks the tip whenever they
  *   change, and keeps a timer so a start that lasts SHOW_AFTER_MS shows
  *   it with no further change to feed.
+ * - It tells a source's first load from a later start: once a start of
+ *   the source has ended, the source has played, until `newSource`.
  * - Closed by the person, it says so once (`onSeen`); gone by any
  *   route, it says whether focus was in it (`onGone`), so focus can
  *   move to the player rather than drop to the page.
@@ -33,7 +35,10 @@ export interface LoadTipDeps {
 export class LoadTipSession {
 	state = $state<LoadTipState>(LOAD_TIP_IDLE);
 	readonly #deps: LoadTipDeps;
-	#last: Omit<LoadTipInput, 'now'> = { veil: 'off', blocked: false };
+	#last: Omit<LoadTipInput, 'now' | 'fresh'> = { veil: 'off', blocked: false };
+	/** This source has been seen starting, and then playing. */
+	#sawStart = false;
+	#played = false;
 	#timer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(deps: LoadTipDeps) {
@@ -45,16 +50,31 @@ export class LoadTipSession {
 		return loadTipUp(this.state);
 	}
 
-	/** The veil, or what blocks the tip, changed. */
-	feed(input: Omit<LoadTipInput, 'now'>): void {
+	/** The veil, or what blocks the tip, changed. A start that ends
+	 *  marks the source played: a start after that is mid-playback. */
+	feed(input: Omit<LoadTipInput, 'now' | 'fresh'>): void {
 		this.#last = input;
-		this.#step(loadTipStep(this.state, { ...input, now: this.#deps.now() }));
+		const fresh = !this.#played;
+		if (input.veil === 'start') this.#sawStart = true;
+		else if (input.veil === 'off' && this.#sawStart) this.#played = true;
+		this.#step(loadTipStep(this.state, { ...input, fresh, now: this.#deps.now() }));
 		this.#arm();
 	}
 
 	/** Got it, or Escape. */
 	close(): void {
 		this.#step(loadTipClose(this.state));
+	}
+
+	/** Another episode's stream: a tip that went unseen waits for its
+	 *  load; one seen stays gone. */
+	newSource(): void {
+		this.#sawStart = false;
+		this.#played = false;
+		if (this.state.phase === 'gone' && !this.state.seen) {
+			this.#clear();
+			this.state = LOAD_TIP_IDLE;
+		}
 	}
 
 	stop(): void {

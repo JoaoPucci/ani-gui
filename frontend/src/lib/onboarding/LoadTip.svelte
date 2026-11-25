@@ -14,13 +14,15 @@
   named by `closeAria`.
 
   It is a note, not a dialog: it never takes focus, so Space and K keep
-  driving the player, and Tab reaches its control in document order.
+  driving the player while focus is elsewhere, and Tab reaches its
+  control in document order.
   Nothing here closes it on a timer.
 
   It sits in the player frame after the controls, so Tab reaches it
   there; it fills the frame and takes pointer events only on the note.
   Playing, the plate fades with the player's own chrome: out when the
-  pointer leaves the frame, back on activity or when focus is in it.
+  pointer leaves the frame, back while it is over the frame or focus is
+  in the plate.
   Focus rings are the app's own (`--ring`), never the show's colour.
 -->
 <script lang="ts">
