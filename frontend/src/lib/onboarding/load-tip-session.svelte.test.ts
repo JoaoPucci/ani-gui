@@ -132,4 +132,14 @@ describe('LoadTipSession', () => {
 		vi.advanceTimersByTime(SHOW_AFTER_MS);
 		expect(s.up).toBe(true);
 	});
+
+	it('a new source starts its wait afresh, so it does not inherit the last one’s time', () => {
+		s.feed({ veil: 'start', blocked: false });
+		vi.advanceTimersByTime(900);
+		s.newSource();
+		vi.advanceTimersByTime(200);
+		expect(s.up).toBe(false);
+		vi.advanceTimersByTime(SHOW_AFTER_MS - 200);
+		expect(s.up).toBe(true);
+	});
 });
