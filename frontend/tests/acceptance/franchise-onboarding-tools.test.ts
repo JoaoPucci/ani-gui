@@ -197,11 +197,18 @@ describe('the short sequence, as a walkthrough asked for', () => {
 			'step 2'
 		);
 		expect(document.activeElement).toBe(action(m.onboarding_next()));
+		// Each step is announced: the button that keeps focus from step to
+		// step says nothing new by itself.
+		const said = () => balloon()?.querySelector('[aria-live="polite"]')?.textContent ?? '';
+		await until(() => said().includes(m.onboarding_franchise_tour_2_title()), 'step 2 announced');
+		expect(said()).toContain(m.onboarding_step_aria({ n: '2', total: '3' }));
 		action(m.onboarding_back())!.click();
 		await until(
 			() => balloon()?.textContent?.includes(m.onboarding_franchise_tour_1_title()) ?? false,
 			'step 1 again'
 		);
+		// Back is gone on the first step: focus lands on Next.
+		await until(() => document.activeElement === action(m.onboarding_next()), 'focus on Next');
 		action(m.onboarding_next())!.click();
 		await until(() => action(m.onboarding_back()) !== null, 'step 2 again');
 		action(m.onboarding_next())!.click();

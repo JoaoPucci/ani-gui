@@ -325,4 +325,38 @@ describe('SpotlightSession', () => {
 		// place, since the press that follows opens the feature's page.
 		expect(document.activeElement?.id).toBe('opener');
 	});
+
+	it('a step whose place is off screen is scrolled into room as the step comes up', () => {
+		document.querySelector('main')!.insertAdjacentHTML('beforeend', '<div id="far"></div>');
+		const first = document.getElementById('place')!;
+		const far = document.getElementById('far')!;
+		first.getBoundingClientRect = () => ({ left: 0, top: 200, width: 300, height: 50 }) as DOMRect;
+		far.getBoundingClientRect = () => ({ left: 0, top: 5000, width: 300, height: 50 }) as DOMRect;
+		const s = new SpotlightSession({ ...TIP, kind: 'sequence', places: ['a', 'b'] }, [first, far], {
+			doc: document,
+			now: () => clock,
+			markSeen: () => {},
+			onClosed: () => {}
+		});
+		sessions.push(s);
+		const scrolled: HTMLElement[] = [];
+		const fits = {
+			mode: 'anchored',
+			side: 'below',
+			x: 0,
+			y: 0,
+			width: 300,
+			fits: true,
+			arrow: 0
+		} as const;
+		s.placed(fits, { h: 180 }, document.getElementById('balloon')!, null, (el) =>
+			scrolled.push(el)
+		);
+		expect(scrolled).toEqual([]);
+		s.step('next');
+		expect(scrolled).toEqual([far]);
+		s.step('back');
+		// The first place is on screen: no scroll back to it.
+		expect(scrolled).toEqual([far]);
+	});
 });

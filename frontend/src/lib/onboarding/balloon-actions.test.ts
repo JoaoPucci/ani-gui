@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { OnboardingTip } from '$lib/api';
 import { m } from '$lib/paraglide/messages';
-import { balloonActions } from './balloon-actions';
+import { balloonActions, runAction } from './balloon-actions';
+import { vi } from 'vitest';
 import { MAX_STEPS, startSequence, stepSequence } from './sequence';
 
 const tip = (over: Partial<OnboardingTip> = {}): OnboardingTip => ({
@@ -67,5 +68,38 @@ describe('balloonActions', () => {
 				}
 			)
 		);
+	});
+});
+
+describe('runAction', () => {
+	const session = (how_to: OnboardingTip['how_to'] = null) => {
+		const calls: string[] = [];
+		const place = { click: () => calls.push('click') } as unknown as HTMLElement;
+		return {
+			calls,
+			s: {
+				tip: tip({ kind: 'entry', how_to }),
+				place,
+				close: (route: string) => calls.push(`close:${route}`),
+				step: (to: string) => calls.push(`step:${to}`)
+			}
+		};
+	};
+
+	it('routes Got it, Skip, Next and Back', () => {
+		const { calls, s } = session();
+		const store = { showGuide: vi.fn() };
+		for (const id of ['got-it', 'skip', 'next', 'back'] as const) runAction(id, s, store);
+		expect(calls).toEqual(['close:got-it', 'close:skip', 'step:next', 'step:back']);
+		expect(store.showGuide).not.toHaveBeenCalled();
+	});
+
+	it('Show me how closes the entry, asks for the walkthrough, then presses the entry point', () => {
+		const howTo = { id: 'g', surface: 'franchise' as const, places: ['x'] };
+		const { calls, s } = session(howTo);
+		const store = { showGuide: vi.fn(() => calls.push('guide')) };
+		runAction('show-how', s, store);
+		expect(calls).toEqual(['close:show-how', 'guide', 'click']);
+		expect(store.showGuide).toHaveBeenCalledWith(howTo);
 	});
 });

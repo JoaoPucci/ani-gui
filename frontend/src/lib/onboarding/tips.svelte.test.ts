@@ -113,4 +113,20 @@ describe('OnboardingTips', () => {
 		store.seenHere('no-such-tip', true);
 		expect(sendSeen).not.toHaveBeenCalled();
 	});
+
+	it('drops a walkthrough asked for once a page that is not its own comes up', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.showGuide({ id: 'g', surface: 'franchise', places: ['x'] });
+		store.pageChanged('franchise');
+		expect(store.armed?.id).toBe('g');
+		store.pageChanged('show');
+		expect(store.armed).toBeNull();
+		// A preview from the Debug page waits through other pages.
+		store.showNow(tip('a', false));
+		store.pageChanged('other');
+		expect(store.armed?.id).toBe('a');
+	});
 });
