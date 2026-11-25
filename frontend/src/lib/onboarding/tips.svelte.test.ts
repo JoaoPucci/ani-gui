@@ -101,4 +101,16 @@ describe('OnboardingTips', () => {
 		store.showNow(tip('a', false));
 		expect(store.armedAs).toBe('preview');
 	});
+
+	it('takes a seen state set elsewhere (the Debug page) for this session, sending nothing', async () => {
+		const sendSeen = vi.fn(async () => {});
+		const store = new OnboardingTips(async () => VIEW, sendSeen);
+		await store.load();
+		store.seenHere('a', true);
+		expect(store.tips.find((t) => t.id === 'a')?.pending).toBe(false);
+		store.seenHere('a', false);
+		expect(store.tips.find((t) => t.id === 'a')?.pending).toBe(true);
+		store.seenHere('no-such-tip', true);
+		expect(sendSeen).not.toHaveBeenCalled();
+	});
 });

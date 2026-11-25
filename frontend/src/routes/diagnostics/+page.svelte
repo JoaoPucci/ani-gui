@@ -126,6 +126,7 @@
 		tipSeenFailed = false;
 		try {
 			await onboardingDebugSeen(tip.id, want);
+			onboarding.seenHere(tip.id, want);
 		} catch {
 			box.checked = tip.seen;
 			tipSeenFailed = true;

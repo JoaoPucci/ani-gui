@@ -27,6 +27,7 @@ import DiagnosticsPage from '../../src/routes/diagnostics/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import { onboarding, __resetOnboardingForTests } from '../../src/lib/onboarding/tips.svelte';
+import { asRunnable } from '../../src/lib/diagnostics/tip-keys';
 import type {
 	AppInfo,
 	HistoryEntry,
@@ -245,5 +246,18 @@ describe('the Debug page’s feature tips', () => {
 			.find((b) => b.textContent?.trim() === m.diagnostics_tips_cancel())!
 			.click();
 		await until(() => onboarding.armed === null, 'called off');
+	});
+
+	it('the session’s tips follow a toggle, so the next page shows the tip or not as it says', async () => {
+		useTips();
+		onboarding.view = { version: '0.19.0', tips: [asRunnable(STRIP)] };
+		app = mount(DiagnosticsPage, { target });
+		await until(() => seenBox('watch-order') !== null, 'the toggle');
+		seenBox('watch-order')!.click();
+		await until(() => row('watch-order')?.dataset.pending === 'false', 'seen');
+		expect(onboarding.tips[0].pending).toBe(false);
+		seenBox('watch-order')!.click();
+		await until(() => row('watch-order')?.dataset.pending === 'true', 'unseen');
+		expect(onboarding.tips[0].pending).toBe(true);
 	});
 });
