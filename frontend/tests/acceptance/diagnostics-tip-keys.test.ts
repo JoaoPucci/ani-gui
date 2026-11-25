@@ -213,15 +213,19 @@ describe('the Debug page’s feature tips', () => {
 		expect(row('watch-order')).not.toBeNull();
 	});
 
-	it('holds the toggle while its change is out', async () => {
+	it('holds every toggle while one change is out', async () => {
 		let release!: () => void;
 		useTips(false, false, new Promise<void>((r) => (release = r)));
 		app = mount(DiagnosticsPage, { target });
 		await until(() => seenBox('watch-order') !== null, 'the toggle');
 		seenBox('watch-order')!.click();
 		await until(() => seenBox('watch-order')!.disabled, 'held');
+		// Every other toggle waits too, so no two changes and their
+		// re-reads cross.
+		expect(seenBox('in-the-player')!.disabled).toBe(true);
 		release();
 		await until(() => !seenBox('watch-order')!.disabled, 'released');
+		expect(seenBox('in-the-player')!.disabled).toBe(false);
 		expect(puts).toHaveLength(1);
 	});
 
