@@ -43,6 +43,9 @@
 		 *  faint band marking out the row's extent while the pointer is
 		 *  over it or focus is inside it (the home row style switch). */
 		surface?: 'plain' | 'band';
+		/** The row is still loading: its region is busy, for a screen
+		 *  reader, while what it holds stands in for the cards. */
+		busy?: boolean;
 		children: Snippet;
 	}
 
@@ -56,6 +59,7 @@
 		headerMeta,
 		headerActions,
 		surface = 'plain',
+		busy = false,
 		children
 	}: Props = $props();
 
@@ -252,6 +256,7 @@
 			ondragstart={(e) => e.preventDefault()}
 			role="region"
 			aria-label={eyebrow}
+			aria-busy={busy ? 'true' : undefined}
 			tabindex="0"
 		>
 			<!--

@@ -172,6 +172,10 @@ describe('/search with no query: the discovery rows', () => {
 			trendingRow!.compareDocumentPosition(topRatedRow!) & Node.DOCUMENT_POSITION_FOLLOWING
 		).not.toBe(0);
 		expect(screen()).toContain(m.search_discovery_trending_caption_loading());
+		// The placeholder cards are hidden from screen readers, so each
+		// row's region says it is loading.
+		expect(trendingRow!.getAttribute('aria-busy')).toBe('true');
+		expect(topRatedRow!.getAttribute('aria-busy')).toBe('true');
 		// A placeholder card keeps room for a title wrapped to two lines,
 		// as most rows of twenty have, so a row does not grow as it fills.
 		for (const card of target.querySelectorAll('.skel-card')) {
@@ -185,6 +189,12 @@ describe('/search with no query: the discovery rows', () => {
 			'both rows once both land'
 		);
 		expect(skeletons()).toBe(0);
+		for (const eyebrow of [
+			m.search_discovery_trending_eyebrow(),
+			m.search_discovery_top_rated_eyebrow()
+		]) {
+			expect(row(eyebrow)!.getAttribute('aria-busy')).not.toBe('true');
+		}
 	});
 
 	it('does not show Top rated alone while Trending, above it, is still loading', async () => {

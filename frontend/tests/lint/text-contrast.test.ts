@@ -79,7 +79,8 @@ const EXEMPT: Record<string, string> = {
 	'lib/components/Strip.svelte .strip-meta-sep': 'separator dot between the caption and the status',
 	'routes/anime/[id]/+page.svelte .ep-jump-go:disabled': 'disabled control',
 	'routes/play/[id]/+page.svelte .ep-jump-go:disabled': 'disabled control',
-	'routes/play/[id]/+page.svelte .ep-card-foot-dot': 'separator dot between number and length',
+	'routes/play/[id]/+page.svelte .ep-card-foot-len::before':
+		'separator dot between number and length',
 	'routes/play/[id]/+page.svelte .np-em-dash': 'em dash between episode number and title',
 	'routes/search/+page.svelte .eyebrow-sep': 'separator dot in the results eyebrow'
 };
