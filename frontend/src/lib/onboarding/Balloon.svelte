@@ -25,6 +25,7 @@
 	import { onMount } from 'svelte';
 	import type { BalloonAction } from './balloon-actions';
 	import type { Placement } from './place';
+	import { StepWatch } from './step-watch';
 
 	let {
 		root = $bindable(),
@@ -67,25 +68,18 @@
 	const quiet = $derived(actions.filter((a) => a.kind === 'quiet'));
 	const rest = $derived(actions.filter((a) => a.kind !== 'quiet'));
 
-	// Each step after the first: announced, since focus may not move.
+	// As the sequence moves ($./step-watch): the primary takes focus
+	// again, and the step is announced.
 	let announced = $state('');
-	let moved = false;
+	const watch = new StepWatch();
 	$effect(() => {
-		const at = step?.index ?? 1;
-		const said = `${stepLabel}. ${title}. ${body}`;
-		if (at === 1 && !moved) return;
-		moved = true;
-		announced = said;
-	});
-
-	// Each new step: its primary action takes focus again (the modal
-	// layer focused it on the first).
-	let lastStep = 1;
-	$effect(() => {
-		const at = step?.index ?? 1;
-		if (at === lastStep || !root) return;
-		lastStep = at;
-		root.querySelector<HTMLElement>('button[data-kind="primary"]')?.focus({ preventScroll: true });
+		const r = watch.seen(step?.index ?? 1, `${stepLabel}. ${title}. ${body}`);
+		if (r.announce !== null) announced = r.announce;
+		if (r.refocus) {
+			root
+				?.querySelector<HTMLElement>('button[data-kind="primary"]')
+				?.focus({ preventScroll: true });
+		}
 	});
 
 	onMount(() => {

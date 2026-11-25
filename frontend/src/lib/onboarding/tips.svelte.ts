@@ -26,6 +26,8 @@ export class OnboardingTips {
 	 *  which says "How it works" and names no version. */
 	armedAs = $state<'preview' | 'guide'>('preview');
 	#asked: Promise<void> | null = null;
+	/** The page an armed walkthrough's own page came up at. */
+	#guidePage: string | null = null;
 
 	readonly #fetchTips: () => Promise<OnboardingView>;
 	readonly #sendSeen: (id: string) => Promise<void>;
@@ -85,13 +87,21 @@ export class OnboardingTips {
 			pending: true
 		};
 		this.armedAs = 'guide';
+		this.#guidePage = null;
 	}
 
-	/** A page came up on `surface`: a walkthrough asked for that runs
-	 *  elsewhere is dropped, so it never shows unasked on a later visit.
+	/** A page came up on `surface`, at `path`: a walkthrough asked for
+	 *  that runs elsewhere is dropped, and so is one whose own page came
+	 *  and went without it, so it never shows unasked on a later visit.
 	 *  A Debug preview waits until its page comes. */
-	pageChanged(surface: string): void {
-		if (this.armedAs === 'guide' && this.armed && this.armed.surface !== surface) this.armed = null;
+	pageChanged(surface: string, path: string): void {
+		if (this.armedAs !== 'guide' || !this.armed) return;
+		if (this.armed.surface !== surface || (this.#guidePage && this.#guidePage !== path)) {
+			this.armed = null;
+			this.#guidePage = null;
+			return;
+		}
+		this.#guidePage = path;
 	}
 
 	/** A tip asked for gave way before it was closed: it is asked for

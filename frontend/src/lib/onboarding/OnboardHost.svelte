@@ -106,7 +106,7 @@
 		untrack(() => {
 			session?.close('yield');
 			closedThisVisit = false;
-			onboarding.pageChanged(surface);
+			onboarding.pageChanged(surface, page.url.pathname);
 		});
 	});
 
