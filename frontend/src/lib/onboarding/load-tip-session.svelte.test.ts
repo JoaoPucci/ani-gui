@@ -115,4 +115,21 @@ describe('LoadTipSession', () => {
 		vi.advanceTimersByTime(SHOW_AFTER_MS);
 		expect(s.up).toBe(true);
 	});
+
+	it('learns the source played from the veil alone, before any tip is fed', () => {
+		s.observe('start');
+		s.observe('off');
+		s.feed({ veil: 'start', blocked: false });
+		vi.advanceTimersByTime(SHOW_AFTER_MS * 2);
+		expect(s.up).toBe(false);
+	});
+
+	it('a new source while its start is already up looks again at once', () => {
+		s.observe('start');
+		s.observe('off');
+		s.feed({ veil: 'start', blocked: false });
+		s.newSource();
+		vi.advanceTimersByTime(SHOW_AFTER_MS);
+		expect(s.up).toBe(true);
+	});
 });
