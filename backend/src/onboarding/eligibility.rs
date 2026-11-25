@@ -11,15 +11,15 @@
 //! - **A flagged feature counts from its flag.** Its tip is offered
 //!   only while the flag is on, and its window counts from the release
 //!   of the first read of the tips with the flag on
-//!   ([`Record::flag_on_since`]; the renderer reads them at every
-//!   launch), with the declared end as a hard limit.
+//!   ([`Record::flag_on_since`]), with the declared end as a hard
+//!   limit.
 //!   Counted from the release that shipped the code, a flag turned on
 //!   late would leave the tip no window at all.
 //! - **Seen is forever.** A tip seen is never pending again.
 //! - **A first-ever install has nothing new to be shown.** The first
 //!   read of the tips after a first-ever launch
-//!   ([`Record::baseline_pending`]) marks seen every tip offered then, so later releases still introduce
-//!   their own features. A flagged tip whose flag is off then is left
+//!   ([`Record::baseline_pending`]) marks seen every tip offered
+//!   then, so later releases still introduce their own features. A flagged tip whose flag is off then is left
 //!   alone: when the flag comes on, the feature is new to that install
 //!   too.
 //! - **An on-demand tip is never offered** ([`TipDecl::on_demand`]).

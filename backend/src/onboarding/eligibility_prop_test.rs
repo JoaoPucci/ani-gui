@@ -148,7 +148,7 @@ proptest! {
     }
 
     /// A launch only adds to the record: nothing seen is forgotten, no
-    /// flag's first launch moves, and the release a first-ever install
+    /// flag's first read moves, and the release a first-ever install
     /// started on stays.
     #[test]
     fn sync_only_adds(tips in tips(), rec in a_record(), current in release(), on in flags()) {
