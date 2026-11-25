@@ -2,14 +2,14 @@
 //!
 //! A release that ships a feature worth pointing at adds its tip to
 //! `tips.json`. The file is data the backend owns: it is compiled in,
-//! read once, and held to the rules [`validate`] states by the tests.
+//! read once, and held to the rules [`validate`] states (in
+//! `rules.rs` and `rules_shape.rs`) by the tests.
 //!
 //! The backend never sends a tip's words (AGENTS.md §4). Each step's
 //! title and body are Paraglide messages named after the tip and the
 //! step (`onboarding_<id>_<step>_title`, `…_body`, the id with `-` as
 //! `_` and the step counted from 1), resolved in the renderer.
 
-use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
@@ -119,130 +119,7 @@ pub fn find<'a>(tips: &'a [TipDecl], id: &str) -> Option<&'a TipDecl> {
     tips.iter().find(|t| t.id == id)
 }
 
-/// Check a registry: ids well-formed and unique, places well-formed
-/// and unique within a tip, each tool's shape, windows that open before
-/// they close, flags this build declares, and walkthroughs that name a
-/// sequence on a page of their own.
-///
-/// # Errors
-/// A description of the first problem found.
-pub fn validate(tips: &[TipDecl], flags: &[crate::flags::FlagDecl]) -> Result<(), String> {
-    let mut ids = BTreeSet::new();
-    for tip in tips {
-        check_one(tip, flags)?;
-        if !ids.insert(tip.id.as_str()) {
-            return Err(format!("{} is declared twice", tip.id));
-        }
-    }
-    tips.iter().try_for_each(|t| check_how_to(t, tips))
-}
-
-/// Lower-case ASCII words joined by single `-`.
-fn is_kebab(s: &str) -> bool {
-    !s.is_empty()
-        && !s.starts_with('-')
-        && !s.ends_with('-')
-        && !s.contains("--")
-        && s.bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-}
-
-fn check_one(tip: &TipDecl, flags: &[crate::flags::FlagDecl]) -> Result<(), String> {
-    let id = &tip.id;
-    if !is_kebab(id) {
-        return Err(format!("{id:?} is not lower-case words joined by -"));
-    }
-    check_places(tip)?;
-    check_shape(tip)?;
-    check_window(tip)?;
-    if let Some(flag) = &tip.flag {
-        if !flags.iter().any(|d| d.name == flag) {
-            return Err(format!(
-                "{id} names {flag}, which this build does not declare"
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn check_places(tip: &TipDecl) -> Result<(), String> {
-    let mut seen = BTreeSet::new();
-    for place in &tip.places {
-        if !is_kebab(place) {
-            return Err(format!("{}: place {place:?} is not kebab-case", tip.id));
-        }
-        if !seen.insert(place) {
-            return Err(format!("{}: place {place} is named twice", tip.id));
-        }
-    }
-    Ok(())
-}
-
-fn check_shape(tip: &TipDecl) -> Result<(), String> {
-    let id = &tip.id;
-    let steps = tip.places.len();
-    let fits = match tip.kind {
-        Kind::Single | Kind::Entry => steps == 1,
-        Kind::Sequence => (1..=MAX_STEPS).contains(&steps),
-    };
-    if !fits {
-        return Err(format!(
-            "{id}: a {:?} tip cannot have {steps} steps",
-            tip.kind
-        ));
-    }
-    if tip.how_to.is_some() != (tip.kind == Kind::Entry) {
-        return Err(format!(
-            "{id}: an entry tip, and only one, names a walkthrough"
-        ));
-    }
-    if tip.moment == Moment::StreamLoad
-        && (tip.kind != Kind::Single || tip.surface != Surface::Play)
-    {
-        return Err(format!(
-            "{id}: a stream-load tip is a single tip in the player"
-        ));
-    }
-    Ok(())
-}
-
-fn check_window(tip: &TipDecl) -> Result<(), String> {
-    let id = &tip.id;
-    if tip.flag.is_some() && tip.until.is_none() {
-        return Err(format!("{id}: a flagged tip declares its hard end"));
-    }
-    match tip.until {
-        Some(until) if until <= tip.since => Err(format!(
-            "{id}: its window closes at {until}, before it opens"
-        )),
-        _ => Ok(()),
-    }
-}
-
-fn check_how_to(tip: &TipDecl, tips: &[TipDecl]) -> Result<(), String> {
-    let Some(target) = &tip.how_to else {
-        return Ok(());
-    };
-    let Some(guide) = find(tips, target) else {
-        return Err(format!(
-            "{}: its walkthrough {target} is not declared",
-            tip.id
-        ));
-    };
-    if guide.kind != Kind::Sequence || !guide.on_demand {
-        return Err(format!(
-            "{}: its walkthrough {target} is not an on-demand sequence",
-            tip.id
-        ));
-    }
-    if guide.surface == tip.surface {
-        return Err(format!(
-            "{}: its walkthrough runs where the feature lives, not on the entry's page",
-            tip.id
-        ));
-    }
-    Ok(())
-}
+pub use super::rules::validate;
 
 #[cfg(test)]
 #[path = "decl_test.rs"]
