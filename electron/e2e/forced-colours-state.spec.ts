@@ -34,7 +34,13 @@
  * page's sort and type chips, the search's progress bar, and the
  * player's timeline and volume fills and tracks, and an episode tile
  * the streaming catalogue does not list yet, which must say so in
- * words. A state shown by text
+ * words. And every loading placeholder, held on screen by holding back
+ * the answer it waits for: Home's banner, its rows' cards and a
+ * Continue card; the search's results; a show's banner, title, actions
+ * (above Sub/Dub), episodes and watch-order strip; the loading overlay
+ * a play raises; and the player's start veil. Each part of one draws a
+ * line in a system colour, and the placeholder pictured with its parts
+ * and without them differs. A state shown by text
  * as well (a switch's On/Off label) is still pictured without that
  * text: the control itself must show it. Where a control opts out of
  * the theme's colours, the spec also reads that what it draws stays in
@@ -60,7 +66,9 @@ import os from 'node:os';
 import path from 'node:path';
 import {
 	appInfo,
+	continueHistory,
 	continueKitsuEpisode6,
+	continueKitsuMatch,
 	defaultSettings,
 	topRated,
 	trending
@@ -822,8 +830,223 @@ test('settings, a show, the rail and the download bar keep their state in a forc
 	}
 });
 
-/** A server for the captions media fixture (see player-start.spec.ts). */
-async function mediaServer(): Promise<{ origin: string; close: () => void }> {
+/** A loading placeholder's parts: what `area` draws while an answer is
+ *  out. `pseudo` names the box a part draws in, when it draws in its
+ *  `::before`. `drawn: false` for a part the app paints as a picture
+ *  (the loading animation), which has no border to read. */
+interface Part {
+	sel: string;
+	pseudo?: '::before';
+	drawn?: false;
+}
+
+/**
+ * A loading placeholder shows in a forced-colours theme: each of its
+ * parts draws a border or an outline in a system colour, which the
+ * theme keeps where it replaces every fill with its canvas colour; and
+ * the placeholder pictured with its parts and without them differs
+ * plainly, so the reader sees something where the answer will land,
+ * not the empty page.
+ */
+async function placeholderShows(page: Page, what: string, area: Locator, parts: Part[]) {
+	const at = area.first();
+	await expect(at, `${what} is on the page`).toBeVisible({ timeout: 15_000 });
+	await at.scrollIntoViewIfNeeded();
+	await still(page);
+	const system = await page.evaluate(() => {
+		const probe = document.createElement('span');
+		probe.style.setProperty('forced-color-adjust', 'none');
+		document.body.append(probe);
+		const out: string[] = [];
+		for (const k of ['Canvas', 'CanvasText', 'GrayText', 'Highlight', 'ButtonText', 'LinkText']) {
+			probe.style.color = k;
+			out.push(getComputedStyle(probe).color);
+		}
+		probe.remove();
+		return out;
+	});
+	for (const part of parts) {
+		const found = at.locator(part.sel);
+		const count = await found.count();
+		expect.soft(count, `${what} has ${part.sel}`).toBeGreaterThan(0);
+		if (count === 0 || part.drawn === false) continue;
+		const lines = await found.evaluateAll(
+			(els, pseudo) =>
+				els.map((el) => {
+					const cs = getComputedStyle(el, pseudo ?? null);
+					const colours: string[] = [];
+					for (const side of ['top', 'right', 'bottom', 'left']) {
+						const style = cs.getPropertyValue(`border-${side}-style`);
+						if (
+							style !== 'none' &&
+							style !== 'hidden' &&
+							parseFloat(cs.getPropertyValue(`border-${side}-width`)) >= 1
+						) {
+							colours.push(cs.getPropertyValue(`border-${side}-color`));
+						}
+					}
+					if (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 1) {
+						colours.push(cs.outlineColor);
+					}
+					return colours;
+				}),
+			part.pseudo
+		);
+		for (const colours of lines) {
+			expect
+				.soft(colours.length, `${what}: ${part.sel} draws a border or an outline`)
+				.toBeGreaterThan(0);
+			for (const c of colours) {
+				expect.soft(system, `${what}: ${part.sel} draws in a system colour`).toContain(c);
+				expect.soft(c, `${what}: ${part.sel}'s line is not the canvas`).not.toBe(system[0]);
+			}
+		}
+	}
+	const before = await at.screenshot();
+	const hide = (h: boolean) =>
+		Promise.all(
+			parts.map((part) =>
+				at.locator(part.sel).evaluateAll((els, hh) => {
+					for (const el of els) (el as HTMLElement).style.visibility = hh ? 'hidden' : '';
+				}, h)
+			)
+		);
+	await hide(true);
+	await page.evaluate(
+		() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+	);
+	const after = await at.screenshot();
+	await hide(false);
+	const slug = what.replace(/[^a-z0-9]+/gi, '-');
+	fs.writeFileSync(test.info().outputPath(`${slug}-shown.png`), before);
+	fs.writeFileSync(test.info().outputPath(`${slug}-empty.png`), after);
+	expect
+		.soft(
+			await pixelsApart(page, before, after),
+			`${what} shows in a forced-colours theme, against the page without it`
+		)
+		.toBeGreaterThanOrEqual(SEEN);
+}
+
+test('every loading placeholder stays visible in a forced-colours theme', async () => {
+	test.setTimeout(180_000);
+	const { app, page } = await launch();
+	try {
+		await sizeViewport(page, 1440, 900);
+		// The requests held now: never answered while they are listed.
+		let held: string[] = [];
+		const show = topRated[0];
+		await page.route('**/api/**', async (r) => {
+			const p = new URL(r.request().url()).pathname;
+			if (held.some((h) => p.startsWith(h))) return;
+			const j = (body: unknown) =>
+				answer(r, { status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+			if (p === '/api/history') return j(continueHistory);
+			if (p.startsWith('/api/allmanga-kitsu-map/')) return j(continueKitsuMatch.id);
+			// The walk's first hop foretells the watch-order strip.
+			if (p === `/api/kitsu/franchise/${show.id}/first-hop`) return j({ signal: 'strip' });
+			return r.fallback();
+		});
+		const homeUrl = page.url();
+		const open = async (url: string) => {
+			await page.goto('about:blank');
+			await page.goto(url, { waitUntil: 'domcontentloaded' });
+			await forcedColours(page);
+		};
+
+		// Home, with its banner, its rows and the Continue card's show
+		// all still out.
+		held = [
+			'/api/home/hero',
+			'/api/kitsu/trending-anilist',
+			'/api/kitsu/top-rated',
+			'/api/kitsu/anime/'
+		];
+		await open(homeUrl);
+		await placeholderShows(page, "Home's banner, loading", page.locator('section:has(> .hero-skel)'), [
+			{ sel: '.hero-skel-img' },
+			{ sel: '.line-skel' }
+		]);
+		await placeholderShows(
+			page,
+			'a row of cards, loading',
+			page.locator('.strip-rail:has(.skel-card)'),
+			[
+				{ sel: '.skel-poster' },
+				{ sel: '.skel-title', pseudo: '::before' },
+				{ sel: '.skel-meta', pseudo: '::before' }
+			]
+		);
+		await placeholderShows(
+			page,
+			'a Continue card, loading',
+			page.locator('.resume-card-loading'),
+			[{ sel: '.look-skeleton' }, { sel: '.resume-line-skeleton', pseudo: '::before' }]
+		);
+
+		// The search page, its first page of results out.
+		held = ['/api/kitsu/search/page', '/api/kitsu/search'];
+		await open(new URL('/search?q=bebop', homeUrl).href);
+		await placeholderShows(
+			page,
+			"the search's results, loading",
+			page.locator('ul.grid[aria-busy="true"] .card-skeleton'),
+			[{ sel: '.poster-skeleton' }, { sel: '.line-skeleton' }]
+		);
+
+		// A show's page, its details out.
+		held = ['/api/kitsu/anime/'];
+		await open(new URL(`/anime/${show.id}`, homeUrl).href);
+		await placeholderShows(page, "a show's banner, loading", page.locator('.hero-skeleton'), [
+			{ sel: '.hero-skeleton-img' }
+		]);
+		await placeholderShows(page, "a show's title, loading", page.locator('.masthead'), [
+			{ sel: '.poster-skeleton' },
+			{ sel: '.line-skeleton' }
+		]);
+
+		// A show's page with its details in, and what it reads after them
+		// out: whether it streams (the actions above Sub/Dub), its
+		// episodes, and its watch-order strip.
+		held = ['/api/availability', '/api/kitsu/episodes/', `/api/watch-order/${show.id}/show`];
+		await open(new URL(`/anime/${show.id}`, homeUrl).href);
+		await placeholderShows(page, "a show's actions, loading", page.locator('.actions-loading'), [
+			{ sel: '.action-skel' }
+		]);
+		await placeholderShows(page, "a show's episodes, loading", page.locator('.ep-tile-skel'), [
+			{ sel: '.ep-thumb-skel' },
+			{ sel: '.ep-foot-skel' }
+		]);
+		await placeholderShows(
+			page,
+			"a show's watch-order strip, loading",
+			page.locator('[data-testid="wo-reserve"] .band'),
+			[{ sel: '.sk' }]
+		);
+
+		// The overlay a play raises while the stream resolves.
+		held = ['/api/play'];
+		await open(new URL(`/anime/${show.id}`, homeUrl).href);
+		const playButton = page.locator('.actions button.btn').first();
+		await expect(playButton).toBeVisible({ timeout: 15_000 });
+		await playButton.click();
+		await expect(page.locator('.band .anim svg').first()).toBeAttached({ timeout: 15_000 });
+		await placeholderShows(page, 'the loading overlay', page.locator('.backdrop .band'), [
+			{ sel: '.anim', drawn: false }
+		]);
+	} finally {
+		await stopApp(app);
+	}
+});
+
+/** A server for the captions media fixture (see player-start.spec.ts).
+ *  Its fragments are held back until `release`, so the player's start
+ *  veil stays up to be pictured. */
+async function mediaServer(): Promise<{ origin: string; close: () => void; release: () => void }> {
+	let release: () => void = () => {};
+	const released = new Promise<void>((r) => {
+		release = r;
+	});
 	const dir = path.join(__dirname, 'fixtures', 'captions');
 	const types: Record<string, string> = {
 		'.m3u8': 'application/vnd.apple.mpegurl',
@@ -837,15 +1060,26 @@ async function mediaServer(): Promise<{ origin: string; close: () => void }> {
 			return;
 		}
 		const body = fs.readFileSync(file);
-		res.writeHead(200, {
-			'content-type': types[path.extname(name)] ?? 'application/octet-stream',
-			'content-length': body.length
-		});
-		res.end(body);
+		const send = () => {
+			res.writeHead(200, {
+				'content-type': types[path.extname(name)] ?? 'application/octet-stream',
+				'content-length': body.length
+			});
+			res.end(body);
+		};
+		if (name.endsWith('.ts')) void released.then(send);
+		else send();
 	});
 	await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
 	const { port } = server.address() as net.AddressInfo;
-	return { origin: `http://127.0.0.1:${port}`, close: () => server.close() };
+	return {
+		origin: `http://127.0.0.1:${port}`,
+		close: () => {
+			release();
+			server.close();
+		},
+		release
+	};
 }
 
 test("the player's timeline and volume keep their fill in a forced-colours theme", async () => {
@@ -875,6 +1109,17 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 			await sizeViewport(page, 1440, 900);
 			await forcedColours(page);
 			await playFromContinue(page, play);
+			// The start veil, while the first fragment is held back: its
+			// film strip shows once the start has lasted a beat.
+			await expect(page.locator('section.player-frame')).toHaveAttribute(
+				'data-start-veil',
+				'start',
+				{ timeout: 30_000 }
+			);
+			const strip = page.locator('.start-veil .strip');
+			await expect.poll(() => computed(strip, 'opacity'), { timeout: 15_000 }).toBe('1');
+			await placeholderShows(page, "the player's start veil", strip, [{ sel: '.cell' }]);
+			media.release();
 			const scrubber = page.locator('.pc-scrubber');
 			await expect(scrubber).toBeVisible({ timeout: 30_000 });
 			// Halfway through, paused, so the fill is there to see.
