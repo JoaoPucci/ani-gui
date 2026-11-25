@@ -157,3 +157,65 @@ fn the_windows_build_carries_its_own_c_runtime() {
         "the CRT is linked dynamically; a clean Windows has no vcruntime140.dll"
     );
 }
+
+/// Boot `build` with a tempdir as the profile root, after `stage` has
+/// put whatever an earlier launch would have left there.
+fn build_in_profile(stage: impl FnOnce(&std::path::Path)) -> (tempfile::TempDir, AppState) {
+    use crate::config::paths::TEST_PROFILE_ROOT_ENV;
+    let _guard = crate::config::paths::TEST_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempfile::tempdir().expect("tempdir");
+    stage(td.path());
+    let saved = std::env::var_os(TEST_PROFILE_ROOT_ENV);
+    std::env::set_var(TEST_PROFILE_ROOT_ENV, td.path());
+    let built = AppState::build(
+        reqwest::Client::new(),
+        ProxyOrigin::new("127.0.0.1", 1),
+        None,
+    );
+    match saved {
+        Some(v) => std::env::set_var(TEST_PROFILE_ROOT_ENV, v),
+        None => std::env::remove_var(TEST_PROFILE_ROOT_ENV),
+    }
+    (td, built.expect("build succeeds against the staged env"))
+}
+
+fn onboarding_record(state: &AppState) -> crate::onboarding::state::Record {
+    match crate::onboarding::state::load(&crate::onboarding::state::path_in(&state.state_dir)) {
+        crate::onboarding::state::Loaded::Record(r) => r,
+        other => panic!("the launch wrote no onboarding record: {other:?}"),
+    }
+}
+
+/// A profile nothing ran in before is a first-ever install, though the
+/// launch itself creates the metadata cache before it returns.
+#[tokio::test]
+async fn a_launch_in_an_empty_profile_records_a_first_ever_install() {
+    let (_td, state) = build_in_profile(|_| {});
+    let rec = onboarding_record(&state);
+    assert_eq!(rec.installed_in, Some(crate::onboarding::running_version()));
+    assert!(rec.baseline_pending);
+}
+
+/// Any one of the files an earlier launch leaves makes it an update.
+#[tokio::test]
+async fn a_launch_in_a_used_profile_records_an_update() {
+    let files: [&[&str]; 3] = [
+        &["state", "history"],
+        &["cache", "metadata.sqlite"],
+        &["config", "config.toml"],
+    ];
+    for parts in files {
+        let (_td, state) = build_in_profile(|root| {
+            let path = parts
+                .iter()
+                .fold(root.to_path_buf(), |p, part| p.join(part));
+            std::fs::create_dir_all(path.parent().expect("a parent")).expect("mkdir");
+            std::fs::write(&path, b"").expect("written");
+        });
+        let rec = onboarding_record(&state);
+        assert_eq!(rec.installed_in, None, "{parts:?}");
+        assert!(!rec.baseline_pending, "{parts:?}");
+    }
+}
