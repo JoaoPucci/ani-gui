@@ -34,6 +34,7 @@
 		view,
 		accent,
 		travelling = false,
+		step = 0,
 		onArrived = () => {},
 		onOutside
 	}: {
@@ -49,6 +50,8 @@
 		accent: string;
 		/** Moving between a sequence's steps. */
 		travelling?: boolean;
+		/** Which step is up: a step change restarts the glide's clock. */
+		step?: number;
 		/** The glide is over. */
 		onArrived?: () => void;
 		onOutside: () => void;
@@ -57,6 +60,7 @@
 	/** As long as the glide (`--dur-slow`), and past it. */
 	const GLIDE_MS = 700;
 	$effect(() => {
+		void step;
 		if (!travelling) return;
 		const t = setTimeout(onArrived, GLIDE_MS);
 		return () => clearTimeout(t);

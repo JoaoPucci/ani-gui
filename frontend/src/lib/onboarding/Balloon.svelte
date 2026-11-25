@@ -17,7 +17,9 @@
     one drawn twice as wide. Width carries the state, so a contrast
     theme keeps it and it needs no motion. On each step the primary
     action takes focus again and carries the step's words, so Enter
-    walks the sequence and a screen reader reads what the step says.
+    walks the sequence. The button that keeps focus says nothing new by
+    itself, so each step after the first is announced through a polite
+    live region in the balloon.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -64,6 +66,17 @@
 	const uid = Math.random().toString(36).slice(2, 8);
 	const quiet = $derived(actions.filter((a) => a.kind === 'quiet'));
 	const rest = $derived(actions.filter((a) => a.kind !== 'quiet'));
+
+	// Each step after the first: announced, since focus may not move.
+	let announced = $state('');
+	let moved = false;
+	$effect(() => {
+		const at = step?.index ?? 1;
+		const said = `${stepLabel}. ${title}. ${body}`;
+		if (at === 1 && !moved) return;
+		moved = true;
+		announced = said;
+	});
 
 	// Each new step: its primary action takes focus again (the modal
 	// layer focused it on the first).
@@ -125,6 +138,7 @@
 		{/if}
 	</div>
 	<h2 class="title" id="ob-title-{uid}">{title}</h2>
+	<p class="sr-only" aria-live="polite">{announced}</p>
 	<p class="body" id="ob-body-{uid}">{body}</p>
 	<div class="foot">
 		{#each quiet as a (a.id)}
@@ -164,6 +178,14 @@
 		color: var(--bone-100);
 		font-family: var(--font-body);
 		animation: rise var(--dur-med) var(--ease-out-soft) both;
+	}
+	.sr-only {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.balloon.sheet {
 		max-inline-size: none;

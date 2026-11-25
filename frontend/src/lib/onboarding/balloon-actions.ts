@@ -8,7 +8,7 @@
  * - A sequence: Skip (not on its last step), Back (from its second),
  *   and Next, or Done on its last step. A one-step sequence is Got it.
  */
-import type { OnboardingTip } from '$lib/api';
+import type { OnboardingHowTo, OnboardingTip } from '$lib/api';
 import { m } from '$lib/paraglide/messages';
 import { actionsFor, type SeqState } from './sequence';
 
@@ -32,4 +32,29 @@ export function balloonActions(tip: OnboardingTip, seq: SeqState): BalloonAction
 		...(a.back ? [{ id: 'back', label: m.onboarding_back(), kind: 'secondary' } as const] : []),
 		{ id: 'next', label: a.last ? m.onboarding_done() : m.onboarding_next(), kind: 'primary' }
 	];
+}
+
+/** What `runAction` needs of the tip on screen. */
+export interface ActionTarget {
+	tip: OnboardingTip;
+	place: HTMLElement;
+	close: (route: 'got-it' | 'skip' | 'show-how') => void;
+	step: (to: 'next' | 'back') => void;
+}
+
+/** Do what the balloon's action `id` says. Show me how closes the
+ *  entry, asks for the feature's walkthrough, then presses the entry
+ *  point, which opens the feature's page where the walkthrough runs. */
+export function runAction(
+	id: ActionId,
+	s: ActionTarget,
+	store: { showGuide: (howTo: OnboardingHowTo) => void }
+): void {
+	if (id === 'got-it' || id === 'skip') return s.close(id);
+	if (id === 'next' || id === 'back') return s.step(id);
+	const howTo = s.tip.how_to;
+	const entry = s.place;
+	s.close('show-how');
+	if (howTo) store.showGuide(howTo);
+	entry.click();
 }

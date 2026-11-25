@@ -24,7 +24,7 @@
 	import { onboarding } from './tips.svelte';
 	import { PlaceWatcher, browserWatchDeps, placeElement } from './watch';
 	import { foundSteps } from './tip-steps.svelte';
-	import { balloonActions, type ActionId } from './balloon-actions';
+	import { balloonActions, runAction } from './balloon-actions';
 	import { stepWords } from './words';
 
 	let settled = $state<ReadonlySet<string>>(new Set());
@@ -106,6 +106,7 @@
 		untrack(() => {
 			session?.close('yield');
 			closedThisVisit = false;
+			onboarding.pageChanged(surface);
 		});
 	});
 
@@ -145,23 +146,6 @@
 		});
 	});
 
-	/** The balloon's actions: Got it, Show me how, or the sequence's Skip,
-	 *  Back, Next and Done. */
-	function onAction(id: ActionId) {
-		const s = session;
-		if (!s) return;
-		if (id === 'got-it') return s.close('got-it');
-		if (id === 'skip') return s.close('skip');
-		if (id === 'next' || id === 'back') return s.step(id);
-		// Show me how: the entry is closed, its walkthrough asked for where
-		// the feature lives, and the entry point pressed to go there.
-		const howTo = s.tip.how_to;
-		const entry = s.place;
-		s.close('show-how');
-		if (howTo) onboarding.showGuide(howTo);
-		entry.click();
-	}
-
 	// Once placed, the balloon holds the page as its topmost modal
 	// (the session scrolls a place with no room into room first).
 	$effect(() => {
@@ -191,6 +175,7 @@
 		view={session.view}
 		accent={session.accent}
 		travelling={session.steps.travelling}
+		step={session.steps.seq.index}
 		onArrived={() => session?.steps.arrived()}
 		onOutside={() => session?.close('outside')}
 	/>
@@ -211,7 +196,7 @@
 			n: String(session.steps.seq.index + 1),
 			total: String(session.steps.seq.total)
 		})}
-		{onAction}
+		onAction={(id) => session && runAction(id, session, onboarding)}
 		measure={(s) => (size = s)}
 	/>
 {/if}

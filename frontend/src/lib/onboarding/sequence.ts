@@ -3,8 +3,10 @@
  * moved with Next, Back and Skip. Rendering: where the balloon stands
  * among the steps on screen.
  *
- * The host scrolls each step's place into view, and leaves out a step
- * whose place is not on the page. A sequence ends as seen by every
+ * The session brings each step's place on screen as the step comes up,
+ * and leaves out a step whose place is not on the page; a step's place
+ * leaving the page while the sequence is up takes the whole sequence
+ * away, unseen. A sequence ends as seen by every
  * route that closes it: Done on the last step, Skip, Escape, or a press
  * outside. Back on the first step does nothing.
  */

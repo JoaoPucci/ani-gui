@@ -17,7 +17,7 @@
  */
 import type { OnboardingTip } from '$lib/api';
 import { closing, type CloseRoute } from './closing';
-import { roomAbove, type Placement, type Rect } from './place';
+import { roomAbove, wholly, type Placement, type Rect } from './place';
 import { accentAt, observePlace, rereadInto } from './screen-read';
 import { BalloonHold } from './balloon-hold';
 import { focusAfterClose } from './tip-focus';
@@ -52,6 +52,8 @@ export class SpotlightSession {
 	readonly #hold: BalloonHold;
 	#unobserve: () => void;
 	#scrolled = false;
+	#scroll: ((place: HTMLElement, marginTop: number) => void) | null = null;
+	#size = { h: 0 };
 	readonly #reread = () => this.read();
 
 	/** `places`: each step's place found on the page, in step order, at
@@ -83,6 +85,12 @@ export class SpotlightSession {
 		this.#unobserve();
 		this.#unobserve = observePlace(this.#deps.doc, this.place, this.#reread);
 		this.#measure();
+		// A step whose place is off screen is brought into room as it
+		// comes up.
+		if (this.#scroll && !wholly(this.rect, this.view)) {
+			this.#scroll(this.place, roomAbove(this.view.top, this.#size));
+			this.#measure();
+		}
 		this.#hold.follow(this.place);
 	}
 
@@ -113,6 +121,8 @@ export class SpotlightSession {
 		scroll: (place: HTMLElement, marginTop: number) => void
 	): void {
 		if (this.closed) return;
+		this.#scroll = scroll;
+		this.#size = size;
 		if (!placement.fits && !this.#scrolled) {
 			this.#scrolled = true;
 			scroll(this.place, roomAbove(this.view.top, size));

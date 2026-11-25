@@ -87,6 +87,13 @@ export class OnboardingTips {
 		this.armedAs = 'guide';
 	}
 
+	/** A page came up on `surface`: a walkthrough asked for that runs
+	 *  elsewhere is dropped, so it never shows unasked on a later visit.
+	 *  A Debug preview waits until its page comes. */
+	pageChanged(surface: string): void {
+		if (this.armedAs === 'guide' && this.armed && this.armed.surface !== surface) this.armed = null;
+	}
+
 	/** The tip asked for has shown. */
 	disarm(): void {
 		this.armed = null;
