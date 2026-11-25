@@ -64,4 +64,38 @@ describe('holdOutside', () => {
 		expect(byId('holder').hasAttribute('inert')).toBe(true);
 		expect(byId('header').hasAttribute('inert')).toBe(true);
 	});
+
+	it('keeps the live elements and their way up within reach, and the rest of their containers inert', () => {
+		document.body.innerHTML = `
+			<header id="header"><span id="title"></span><button id="win">x</button></header>
+			<main id="main">
+				<section id="rail"></section>
+				<section id="show"><p id="text"></p><div id="place"><a id="link">l</a></div></section>
+				<div id="holder"><div id="modal"></div></div>
+			</main>`;
+		holdOutside(byId('modal'), [byId('place'), byId('win')]);
+		for (const id of ['main', 'holder', 'modal', 'show', 'place', 'link', 'header', 'win']) {
+			expect(byId(id).closest('[inert]'), id).toBeNull();
+		}
+		for (const id of ['title', 'rail', 'text']) {
+			expect(byId(id).hasAttribute('inert'), id).toBe(true);
+		}
+		holdOutside(null);
+		expect(document.querySelectorAll('[inert]')).toHaveLength(0);
+	});
+
+	it('holds what mounts beside a live element later', async () => {
+		holdOutside(byId('modal'), [byId('rail')]);
+		const late = document.createElement('p');
+		byId('rail').parentElement!.appendChild(late);
+		await flush();
+		expect(late.hasAttribute('inert')).toBe(true);
+		expect(byId('rail').hasAttribute('inert')).toBe(false);
+	});
+
+	it('leaves out a live element no longer on the page', () => {
+		const gone = document.createElement('div');
+		holdOutside(byId('modal'), [gone]);
+		expect(byId('rail').hasAttribute('inert')).toBe(true);
+	});
 });
