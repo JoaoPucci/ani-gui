@@ -867,7 +867,9 @@ either way. The Debug page lists every declared tip by key from the
 first, with its tool, its window for this install and a Seen toggle that
 uses the second. Its "Show it" asks for a tip the next time its first
 place settles on its page, seen or not: shown that way, a tip marks
-nothing seen and leaves the visit's one tip to come. No route sends
+nothing seen, and it is the visit's one tip. A tip that loads in the
+player cannot be shown that way, and a wait for a tip's place can be
+called off. No route sends
 words: each
 step's title and body are the renderer's messages, named after the tip
 and the step (`onboarding_<id>_<step>_title` and `_body`).
