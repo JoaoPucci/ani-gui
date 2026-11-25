@@ -7,13 +7,16 @@
 <script lang="ts">
 	import type { OnboardingHowTo } from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
+	import { page } from '$app/state';
 	import { onboarding } from './tips.svelte';
 
 	let { howTo }: { howTo: OnboardingHowTo } = $props();
 </script>
 
-<button type="button" class="show-how" onclick={() => onboarding.showGuide(howTo)}
-	>{m.onboarding_show_how()}</button
+<button
+	type="button"
+	class="show-how"
+	onclick={() => onboarding.showGuide(howTo, page.url.pathname)}>{m.onboarding_show_how()}</button
 >
 
 <style>
