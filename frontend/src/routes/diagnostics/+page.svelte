@@ -25,6 +25,7 @@
 		type TipKeysState
 	} from '$lib/diagnostics/tip-keys';
 	import { onboarding } from '$lib/onboarding/tips.svelte';
+	import { previewable } from '$lib/onboarding/gate';
 	import {
 		createDiagnosticsActions,
 		INITIAL_DIAGNOSTICS,
@@ -113,12 +114,24 @@
 		readTipKeys(() => onboardingDebug({ signal: reads.signal })).then((s) => {
 			if (!reads.signal.aborted) tipKeys = s;
 		});
-	async function setTipSeen(tip: OnboardingDebugTip, seen: boolean) {
+	// A toggle is held while its change is out. One the backend refuses
+	// goes back and says so, and a list that cannot be read again keeps
+	// the last one read.
+	let tipBusy = $state<string | null>(null);
+	let tipSeenFailed = $state(false);
+	async function setTipSeen(tip: OnboardingDebugTip, box: HTMLInputElement) {
+		const want = box.checked;
+		tipBusy = tip.id;
+		tipSeenFailed = false;
 		try {
-			await onboardingDebugSeen(tip.id, seen);
-		} finally {
-			await readTips();
+			await onboardingDebugSeen(tip.id, want);
+		} catch {
+			box.checked = tip.seen;
+			tipSeenFailed = true;
 		}
+		const again = await readTipKeys(() => onboardingDebug({ signal: reads.signal }));
+		if (!reads.signal.aborted && again.kind === 'read') tipKeys = again;
+		tipBusy = null;
 	}
 	const kindLabel = (k: OnboardingDebugTip['kind']) =>
 		k === 'single'
@@ -364,6 +377,9 @@
 				{m.diagnostics_tips_version({ version: view.version })}
 				{installLabel(view)}
 			</p>
+			{#if tipSeenFailed}
+				<p role="alert">{m.diagnostics_tips_seen_failed()}</p>
+			{/if}
 			<table class="hero-walk">
 				<thead>
 					<tr>
@@ -385,8 +401,8 @@
 									<input
 										type="checkbox"
 										checked={tip.seen}
-										disabled={tip.on_demand}
-										onchange={(e) => setTipSeen(tip, e.currentTarget.checked)}
+										disabled={tip.on_demand || tipBusy === tip.id}
+										onchange={(e) => setTipSeen(tip, e.currentTarget)}
 									/>
 									{m.diagnostics_tips_seen()}
 								</label>
@@ -394,7 +410,10 @@
 							<td>
 								{#if onboarding.armed?.id === tip.id}
 									<span>{m.diagnostics_tips_waiting()}</span>
-								{:else}
+									<button type="button" onclick={() => onboarding.disarm()}
+										>{m.diagnostics_tips_cancel()}</button
+									>
+								{:else if previewable(tip)}
 									<button type="button" onclick={() => onboarding.showNow(asRunnable(tip))}
 										>{m.diagnostics_tips_show()}</button
 									>

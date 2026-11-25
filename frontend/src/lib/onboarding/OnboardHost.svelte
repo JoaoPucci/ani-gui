@@ -16,7 +16,7 @@
 	import { scrollBehavior } from '$lib/motion/scroll';
 	import Balloon from './Balloon.svelte';
 	import Scrim from './Scrim.svelte';
-	import { armedNow, arrivingNow, surfaceOf, watchedHere } from './gate';
+	import { armedNow, arrivesOn, arrivingNow, surfaceOf, watchedHere } from './gate';
 	import { placeBalloon, roomAbove } from './place';
 	import { litArea, passHoles } from './spotlight';
 	import { SpotlightSession } from './spotlight-session.svelte';
@@ -38,7 +38,9 @@
 	const watched = $derived([
 		...new Set([
 			...watchedHere(onboarding.tips, surface).map((t) => t.places[0]),
-			...(onboarding.armed?.places.slice(0, 1) ?? [])
+			...(onboarding.armed && arrivesOn({ ...onboarding.armed, pending: true }, surface)
+				? onboarding.armed.places.slice(0, 1)
+				: [])
 		])
 	]);
 	const words = $derived(session ? stepWords(session.tip.id, 1) : null);
@@ -119,12 +121,13 @@
 				doc: document,
 				now: () => performance.now(),
 				// A tip shown on demand is a preview: it marks nothing seen,
-				// and leaves the visit's one tip to come.
+				// and counts as the visit's one tip, so a pending tip does
+				// not follow it on the same visit.
 				markSeen: (id) => {
 					if (!asked) onboarding.markSeen(id);
 				},
 				onClosed: (seen) => {
-					if (seen && !asked) closedThisVisit = true;
+					if (seen) closedThisVisit = true;
 					session = null;
 				}
 			});

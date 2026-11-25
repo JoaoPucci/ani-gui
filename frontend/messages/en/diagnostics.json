@@ -86,10 +86,10 @@
 	"start_look_still": "Episode still with a loader",
 	"start_look_card": "Title card",
 	"section_tips": "Feature tips",
-	"tips_description": "Every tip this version declares, by key. A tip marked seen is not shown again. Show it puts the tip on screen the next time its place is, without marking it seen.",
+	"tips_description": "Every tip this version declares, by key. A tip marked seen is not shown again. Show it puts the tip on screen the next time its place is on screen, without marking it seen.",
 	"tips_loading": "Reading the tips…",
 	"tips_failed": "Could not read the tips.",
-	"tips_version": "Windows counted at {version}.",
+	"tips_version": "Tip windows as of {version}.",
 	"tips_updated": "This install was updated from an earlier version.",
 	"tips_installed_in": "This install started on {version}.",
 	"tips_on_demand": "Runs only when asked for",
@@ -107,5 +107,7 @@
 	"tips_col_show": "Preview",
 	"tips_kind_single": "One highlight",
 	"tips_kind_sequence": "Short sequence",
-	"tips_kind_entry": "Entry point"
+	"tips_kind_entry": "Entry point",
+	"tips_cancel": "Cancel",
+	"tips_seen_failed": "Could not change it. Try again."
 }

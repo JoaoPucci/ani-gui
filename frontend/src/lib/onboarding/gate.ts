@@ -88,3 +88,10 @@ export function armedNow(
 	if (!arrivesOn({ ...tip, pending: true }, now.surface)) return null;
 	return now.settled(tip.places[0]) ? tip : null;
 }
+
+/** Whether the Debug page can preview `tip`: one that arrives on a page
+ *  of its own, with places. A tip that loads in the player shows only
+ *  during a stream's load, which a preview cannot ask for. */
+export function previewable(tip: OnboardingTip): boolean {
+	return tip.moment === 'arrive' && tip.surface !== 'play' && tip.places.length > 0;
+}
