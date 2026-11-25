@@ -6,7 +6,13 @@
  * close, so a tip closed is not shown again before the next launch
  * reads the record.
  */
-import { onboardingSeen, onboardingTips, type OnboardingTip, type OnboardingView } from '$lib/api';
+import {
+	onboardingSeen,
+	onboardingTips,
+	type OnboardingHowTo,
+	type OnboardingTip,
+	type OnboardingView
+} from '$lib/api';
 
 export class OnboardingTips {
 	/** The answer, or null until it arrives (or when it never did). */
@@ -15,6 +21,10 @@ export class OnboardingTips {
 	 *  the next time its first place settles on its page, whether or not
 	 *  it is pending, and closing it marks nothing seen. */
 	armed = $state<OnboardingTip | null>(null);
+	/** How the armed tip shows: a Debug preview, which looks as it would
+	 *  when offered, or a walkthrough a feature's "Show me how" asked for,
+	 *  which says "How it works" and names no version. */
+	armedAs = $state<'preview' | 'guide'>('preview');
 	#asked: Promise<void> | null = null;
 
 	readonly #fetchTips: () => Promise<OnboardingView>;
@@ -48,6 +58,23 @@ export class OnboardingTips {
 	/** Show `tip` the next time its first place settles on screen. */
 	showNow(tip: OnboardingTip): void {
 		this.armed = tip;
+		this.armedAs = 'preview';
+	}
+
+	/** Run a feature's walkthrough the next time its first place settles
+	 *  on its page. */
+	showGuide(howTo: OnboardingHowTo): void {
+		this.armed = {
+			id: howTo.id,
+			kind: 'sequence',
+			surface: howTo.surface,
+			moment: 'arrive',
+			since: '',
+			places: howTo.places,
+			how_to: null,
+			pending: true
+		};
+		this.armedAs = 'guide';
 	}
 
 	/** The tip asked for has shown. */

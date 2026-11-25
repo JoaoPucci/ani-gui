@@ -35,7 +35,12 @@
 	const cards = $derived(stackCards(summary.posters, 3));
 </script>
 
-<a class="stack" data-fan-host href={resolve('/anime/[id]/franchise', { id })}>
+<a
+	class="stack"
+	data-fan-host
+	data-onboard="watch-order-franchise"
+	href={resolve('/anime/[id]/franchise', { id })}
+>
 	<PosterFan {cards} {total} />
 	<span class="stack-text">
 		<span class="stack-title">{m.watchorder_strip_franchise_stack_title()}</span>

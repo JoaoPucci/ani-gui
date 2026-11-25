@@ -46,7 +46,7 @@
 						alt=""
 					/>{/if}
 			</div>
-			<div class="masthead-text">
+			<div class="masthead-text" data-onboard="franchise-masthead">
 				<p class="eyebrow">
 					<span class="eyebrow-key">{m.watchorder_franchise_eyebrow()}</span>
 					{#if model.total !== null}
@@ -83,7 +83,7 @@
 						</span>
 					{/if}
 				</div>
-				<p class="order-note">
+				<p class="order-note" data-onboard="franchise-order">
 					{order === 'linked'
 						? m.watchorder_franchise_order_note_linked()
 						: m.watchorder_franchise_order_note_released()}
@@ -159,7 +159,7 @@
 			</li>
 		{/snippet}
 
-		<section class="main-story">
+		<section class="main-story" data-onboard="franchise-rows">
 			<h2 class="eyebrow section-eyebrow">
 				<span class="eyebrow-key">{m.watchorder_franchise_main()}</span>
 			</h2>

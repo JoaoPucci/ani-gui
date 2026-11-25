@@ -23,6 +23,8 @@
 	import { SpotlightSession } from './spotlight-session.svelte';
 	import { onboarding } from './tips.svelte';
 	import { PlaceWatcher, browserWatchDeps, placeElement } from './watch';
+	import { foundSteps } from './tip-steps.svelte';
+	import { balloonActions, type ActionId } from './balloon-actions';
 	import { stepWords } from './words';
 
 	let settled = $state<ReadonlySet<string>>(new Set());
@@ -43,7 +45,10 @@
 				: [])
 		])
 	]);
-	const words = $derived(session ? stepWords(session.tip.id, 1) : null);
+	const words = $derived(session ? stepWords(session.tip.id, session.steps.number) : null);
+	/** How the tip on screen shows: as offered, as a Debug preview, or as
+	 *  a walkthrough asked for ("How it works", no version). */
+	let shownAs = $state<'tip' | 'preview' | 'guide'>('tip');
 	const lit = $derived(session ? litArea(session.rect, session.view) : null);
 	const placement = $derived(session && lit && size ? placeBalloon(lit, size, session.view) : null);
 
@@ -112,27 +117,50 @@
 		const asked = armedNow(onboarding.armed, screen);
 		const tip = asked ?? arrivingNow(onboarding.tips, { ...screen, closedThisVisit });
 		if (!tip || !stepWords(tip.id, 1)) return;
-		const el = placeElement(document, tip.places[0]);
-		if (!el) return;
+		const found = foundSteps(tip.places, (p) => placeElement(document, p));
+		if (found[0]?.n !== 1) return;
 		untrack(() => {
+			shownAs = asked ? onboarding.armedAs : 'tip';
 			if (asked) onboarding.disarm();
 			size = null;
-			session = new SpotlightSession(tip, el, {
-				doc: document,
-				now: () => performance.now(),
-				// A tip shown on demand is a preview: it marks nothing seen,
-				// and counts as the visit's one tip, so a pending tip does
-				// not follow it on the same visit.
-				markSeen: (id) => {
-					if (!asked) onboarding.markSeen(id);
+			session = new SpotlightSession(
+				tip,
+				found.map((f) => f.el),
+				{
+					doc: document,
+					now: () => performance.now(),
+					// A tip shown on demand (a preview, or a walkthrough asked
+					// for) marks nothing seen, and counts as the visit's one tip,
+					// so a pending tip does not follow it on the same visit.
+					markSeen: (id) => {
+						if (!asked) onboarding.markSeen(id);
+					},
+					onClosed: (seen) => {
+						if (seen) closedThisVisit = true;
+						session = null;
+					}
 				},
-				onClosed: (seen) => {
-					if (seen) closedThisVisit = true;
-					session = null;
-				}
-			});
+				found.map((f) => f.n)
+			);
 		});
 	});
+
+	/** The balloon's actions: Got it, Show me how, or the sequence's Skip,
+	 *  Back, Next and Done. */
+	function onAction(id: ActionId) {
+		const s = session;
+		if (!s) return;
+		if (id === 'got-it') return s.close('got-it');
+		if (id === 'skip') return s.close('skip');
+		if (id === 'next' || id === 'back') return s.step(id);
+		// Show me how: the entry is closed, its walkthrough asked for where
+		// the feature lives, and the entry point pressed to go there.
+		const howTo = s.tip.how_to;
+		const entry = s.place;
+		s.close('show-how');
+		if (howTo) onboarding.showGuide(howTo);
+		entry.click();
+	}
 
 	// Once placed, the balloon holds the page as its topmost modal
 	// (the session scrolls a place with no room into room first).
@@ -162,19 +190,28 @@
 		passHoles={passHoles(session.buttons, lit)}
 		view={session.view}
 		accent={session.accent}
+		travelling={session.steps.travelling}
+		onArrived={() => session?.steps.arrived()}
 		onOutside={() => session?.close('outside')}
 	/>
 	<Balloon
 		bind:root={balloon}
 		title={words.title()}
 		body={words.body()}
-		version={session.tip.since}
-		newLabel={m.onboarding_new()}
+		version={shownAs === 'guide' ? '' : session.tip.since}
+		newLabel={shownAs === 'guide' ? m.onboarding_guide() : m.onboarding_new()}
 		{placement}
 		accent={session.accent}
 		compact={session.view.h < 700}
-		actions={[{ id: 'got-it', label: m.onboarding_got_it(), kind: 'primary' }]}
-		onAction={() => session?.close('got-it')}
+		actions={balloonActions(session.tip, session.steps.seq)}
+		step={session.steps.seq.total > 1
+			? { index: session.steps.seq.index + 1, total: session.steps.seq.total }
+			: null}
+		stepLabel={m.onboarding_step_aria({
+			n: String(session.steps.seq.index + 1),
+			total: String(session.steps.seq.total)
+		})}
+		{onAction}
 		measure={(s) => (size = s)}
 	/>
 {/if}

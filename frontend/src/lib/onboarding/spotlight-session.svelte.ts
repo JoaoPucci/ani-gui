@@ -1,6 +1,7 @@
 /**
- * One tip on screen as a spotlight: the place it points at, where that
- * place and the window's buttons are, and how the tip closes. The host
+ * One tip on screen as a spotlight: its steps ($./tip-steps: one place
+ * for a single or entry tip, up to three for a sequence), where the
+ * step's place and the window's buttons are, and how the tip closes. The host
  * component ($./OnboardHost.svelte) draws from this and feeds it the
  * screen's events. Rendering glue, kept out of the component so it can
  * be tested.
@@ -15,19 +16,12 @@
  *   the page changes or the place leaves it.
  */
 import type { OnboardingTip } from '$lib/api';
-import { isTopModal, openModal, type ModalHandle } from '$lib/components/modal-layer';
 import { closing, type CloseRoute } from './closing';
 import { roomAbove, type Placement, type Rect } from './place';
-import {
-	WINDOW_BUTTONS,
-	accentAt,
-	observePlace,
-	readScreen,
-	sameRects,
-	sameView
-} from './screen-read';
-import { sameRect } from './spotlight';
+import { accentAt, observePlace, rereadInto } from './screen-read';
+import { BalloonHold } from './balloon-hold';
 import { focusAfterClose } from './tip-focus';
+import { TipSteps } from './tip-steps.svelte';
 
 export interface SessionDeps {
 	doc: Document;
@@ -40,7 +34,8 @@ export interface SessionDeps {
 
 export class SpotlightSession {
 	readonly tip: OnboardingTip;
-	readonly place: HTMLElement;
+	/** Its steps and the one that is up ($./tip-steps). */
+	readonly steps: TipSteps;
 	/** The place, viewport px, as last read. */
 	rect = $state<Rect>({ x: 0, y: 0, w: 0, h: 0 });
 	/** The window, and the top bar's bottom edge. */
@@ -54,27 +49,48 @@ export class SpotlightSession {
 	readonly #deps: SessionDeps;
 	/** When the balloon took the page: the press grace counts from here. */
 	#shownAt = Number.POSITIVE_INFINITY;
-	#modal: ModalHandle | null = null;
-	#root: HTMLElement | null = null;
-	readonly #unobserve: () => void;
+	readonly #hold: BalloonHold;
+	#unobserve: () => void;
 	#scrolled = false;
+	readonly #reread = () => this.read();
 
-	constructor(tip: OnboardingTip, place: HTMLElement, deps: SessionDeps) {
+	/** `places`: each step's place found on the page, in step order, at
+	 *  least one; `numbers`: each one's declared step number. */
+	constructor(tip: OnboardingTip, places: HTMLElement[], deps: SessionDeps, numbers?: number[]) {
 		this.tip = tip;
-		this.place = place;
+		this.steps = new TipSteps(places, numbers);
 		this.#deps = deps;
-		this.accent = accentAt(deps.doc, place, this.accent);
+		this.#hold = new BalloonHold(deps.doc, () => this.close('escape'));
+		this.accent = accentAt(deps.doc, places[0], this.accent);
 		this.#measure();
 		// The place may grow, shrink or leave with no scroll to say so:
 		// read it again whenever it does.
-		this.#unobserve = observePlace(deps.doc, place, () => this.read());
+		this.#unobserve = observePlace(deps.doc, this.place, this.#reread);
 	}
 
-	/** Read where the place, the window and its buttons are now. The
-	 *  place gone from the page is a yield. */
+	/** The place the step that is up points at. */
+	get place(): HTMLElement {
+		return this.steps.place;
+	}
+
+	/** Next or Back: the step after or before. Next on the last step is
+	 *  Done. */
+	step(to: 'next' | 'back'): void {
+		if (this.closed) return;
+		const move = this.steps.go(to);
+		if (move === 'done') this.close('done');
+		if (move !== 'moved') return;
+		this.#unobserve();
+		this.#unobserve = observePlace(this.#deps.doc, this.place, this.#reread);
+		this.#measure();
+		this.#hold.follow(this.place);
+	}
+
+	/** Read where the place, the window and its buttons are now. A
+	 *  step's place gone from the page is a yield. */
 	read(): void {
 		if (this.closed) return;
-		if (!this.place.isConnected) {
+		if (!this.steps.connected()) {
 			this.close('yield');
 			return;
 		}
@@ -82,10 +98,7 @@ export class SpotlightSession {
 	}
 
 	#measure(): void {
-		const now = readScreen(this.#deps.doc, this.place);
-		if (!sameView(now.view, this.view)) this.view = now.view;
-		if (!sameRect(now.rect, this.rect)) this.rect = now.rect;
-		if (!sameRects(now.buttons, this.buttons)) this.buttons = now.buttons;
+		rereadInto(this, this.#deps.doc, this.place);
 	}
 
 	/** The balloon has its size and its place: a place with no room
@@ -112,27 +125,20 @@ export class SpotlightSession {
 	 *  `scrim` stays within reach too, so a press outside lands on its
 	 *  catcher rather than on an inert page. */
 	hold(root: HTMLElement, scrim: HTMLElement | null = null): void {
-		if (this.closed || this.#modal) return;
-		this.#root = root;
+		if (this.closed || this.#hold.held) return;
 		this.#shownAt = this.#deps.now();
-		const live = [
-			this.place,
-			...this.#deps.doc.querySelectorAll(WINDOW_BUTTONS),
-			...(scrim ? [scrim] : [])
-		];
-		this.#modal = openModal(root, { onEscape: () => this.close('escape'), live });
+		this.#hold.take(root, scrim, this.place);
 	}
 
 	/** A modal opened or closed: one opened over the balloon takes the
 	 *  page, and the tip yields to it. */
 	modalsChanged(): void {
-		// The modal and its root are set together, in hold().
-		if (this.#modal && !isTopModal(this.#root as HTMLElement)) this.close('yield');
+		if (this.#hold.covered()) this.close('yield');
 	}
 
 	/** A press anywhere: one on the place works, and closes the tip. */
 	pressed(target: EventTarget | null): void {
-		if (target instanceof Node && this.place.contains(target)) this.close('place');
+		if (this.place.contains(target as Node | null)) this.close('place');
 	}
 
 	close(route: CloseRoute): void {
@@ -142,12 +148,11 @@ export class SpotlightSession {
 		this.closed = true;
 		this.#unobserve();
 		if (how.seen) this.#deps.markSeen(this.tip.id);
-		// A tip never held, or held under a dialog now on top, moves no focus.
-		const covered = !isTopModal(this.#root ?? this.place);
-		// Closing the modal gives focus back to what held it when it opened.
-		this.#modal?.close();
-		this.#modal = null;
-		if (!covered) focusAfterClose(how.focus, this.#deps.doc, this.place, this.#root);
+		// Closing the modal gives focus back to what held it when it
+		// opened. A tip never held, or under a dialog now on top, moves no
+		// focus itself.
+		const { covered } = this.#hold.release();
+		if (!covered) focusAfterClose(how.focus, this.#deps.doc, this.place, this.#hold.root);
 		this.#deps.onClosed(how.seen);
 	}
 }
