@@ -163,6 +163,9 @@ test('the entry point leads to its walkthrough, which steps to Done and marks no
 		await expect(strip).toBeEnabled();
 		await showIt(page, 'franchise-entry');
 		await go(page, `/anime/${stripShow.id}`);
+		// The tip waits for its place to be on screen and still.
+		const link = page.locator('[data-onboard="watch-order-franchise"]');
+		await link.scrollIntoViewIfNeeded();
 		await expect(balloon(page)).toBeVisible({ timeout: 15_000 });
 		await expect(balloon(page).getByRole('button')).toHaveText([/show me how/i, /got it/i]);
 		await balloon(page).getByRole('button', { name: /show me how/i }).click();
