@@ -151,6 +151,7 @@ fn a_save_leaves_no_temporary_file_and_the_record_whole_on_disk() {
     let td = tempfile::tempdir().expect("tempdir");
     let path = path_in(td.path());
     save(&path, &Record::new_install(false, r("0.19.0"))).expect("saved");
+    assert!(!path.with_extension("json.tmp").exists());
     let bytes = std::fs::read(&path).expect("read");
     assert!(serde_json::from_slice::<Record>(&bytes).is_ok());
 }

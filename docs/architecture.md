@@ -796,7 +796,7 @@ walkthrough), the release that shipped it (`since`), an optional end
 (`until`), its page, its moment (`arrive`, or `stream-load` in the
 player), an optional flag, and its places, the `data-onboard` ids of
 the elements its steps point at. A tip marked `on_demand` runs only when
-asked for (a walkthrough, or a tool's demonstration on the Debug page)
+asked for (a walkthrough, or a tool's demonstration)
 and is never offered. The backend's tests hold the file to these rules
 (`onboarding::decl::validate`).
 
@@ -808,8 +808,8 @@ it opened. A tip whose feature is behind a flag is offered only while the
 flag is on, and its two releases count from the first read of the tips
 with the flag on, with its declared end, which a flagged tip must have,
 as a hard limit. A tip
-offered and not yet seen is pending. Seen is per tip and forever: any way
-of closing a tip marks it.
+offered and not yet seen is pending. Seen is per tip and forever:
+`POST /api/onboarding/seen` marks it, whatever closed it.
 
 **The record.** `onboarding.json` in the state directory, beside the
 watch history (`config::paths::state_dir`, so on Linux

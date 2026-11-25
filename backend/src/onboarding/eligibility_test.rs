@@ -95,7 +95,7 @@ fn a_flagged_tip_stops_at_its_declared_end_however_late_the_flag_came_on() {
     rec.flag_on_since.insert("a_feature".into(), r("0.26.0"));
     assert!(!offered(&t, &rec, r("0.26.0"), ON));
     // A window that would open at or after its end has none at all, so
-    // the Debug list never shows an inverted one.
+    // the debug route never shows an inverted one.
     assert_eq!(window(&t, &rec, r("0.26.0"), ON), None);
 }
 
