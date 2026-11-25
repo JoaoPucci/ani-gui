@@ -3,10 +3,6 @@
 //! A release that ships a feature worth pointing at adds its tip to
 //! `tips.json`. The file is data the backend owns: it is compiled in,
 //! read once, and held to the rules [`validate`] states by the tests.
-//! `tests/arch/onboarding_places.sh` reads the same file with a JSON
-//! parser to hold the renderer to it: every place a tip names is marked
-//! once in the renderer's source, and every step has its words in every
-//! locale.
 //!
 //! The backend never sends a tip's words (AGENTS.md §4). Each step's
 //! title and body are Paraglide messages named after the tip and the
@@ -26,22 +22,23 @@ use super::release::Release;
 pub const MAX_STEPS: usize = 3;
 
 /// Minor releases a tip is offered for, counted from the release that
-/// shipped it, or for a flagged feature from the first launch with its
-/// flag on: shipped in 0.19.0, a tip is offered in 0.19.x and 0.20.x
-/// and gone from 0.21.0.
+/// shipped it, or for a flagged feature from the first read of the tips
+/// with its flag on: shipped in 0.19.0, a tip is offered in 0.19.x and
+/// 0.20.x and gone from 0.21.0. The count stays within one major
+/// number: a major release (0.20.x to 1.0.0, say) closes every window
+/// the major before it opened.
 pub const OFFERED_MINORS: u32 = 2;
 
 /// Which of the three tools a tip uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
-    /// One balloon on one place, with the page dimmed around it.
+    /// One step, on one place.
     Single,
-    /// Up to [`MAX_STEPS`] balloons on one page, with Next, Back and
-    /// Skip.
+    /// Up to [`MAX_STEPS`] steps, all on one page.
     Sequence,
-    /// One balloon on a feature's entry point, offering the feature's
-    /// walkthrough ([`TipDecl::how_to`]) on demand.
+    /// One step on a feature's entry point, naming the feature's
+    /// walkthrough ([`TipDecl::how_to`]), run on demand.
     Entry,
 }
 
@@ -86,7 +83,7 @@ pub struct TipDecl {
     pub since: Release,
     /// The first release that no longer offers it. Left out, it is
     /// [`OFFERED_MINORS`] after `since`. A flagged tip must declare it:
-    /// its window counts from the flag's first launch on, with this as
+    /// its window counts from the flag's first read on, with this as
     /// the hard limit.
     #[serde(default)]
     pub until: Option<Release>,
@@ -104,10 +101,9 @@ pub struct TipDecl {
     /// own page when asked for.
     #[serde(default)]
     pub how_to: Option<String>,
-    /// Runs only when asked for: a feature's walkthrough, started by
-    /// "Show me how", or a tool's demonstration, started from the Debug
-    /// page. Never offered on its own, never pending, and never marked
-    /// seen.
+    /// Runs only when asked for (a feature's walkthrough, or a tool's
+    /// demonstration): never offered on its own, never pending, and
+    /// never marked seen.
     #[serde(default)]
     pub on_demand: bool,
 }
