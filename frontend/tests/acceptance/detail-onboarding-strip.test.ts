@@ -329,4 +329,16 @@ describe('detail route — the strip’s feature tip', () => {
 		}
 		await until(() => balloon()?.style.visibility === 'visible', 'the balloon after the dialog');
 	});
+
+	it('a preview of a pending tip shows once on the visit, and marks nothing seen', async () => {
+		useShow(true);
+		onboarding.showNow(tips(true).tips[0]);
+		mountPage();
+		await shown();
+		gotIt()!.click();
+		await until(() => balloon() === null, 'closed');
+		await new Promise((r) => setTimeout(r, 900));
+		expect(balloon()).toBeNull();
+		expect(seen).toEqual([]);
+	});
 });

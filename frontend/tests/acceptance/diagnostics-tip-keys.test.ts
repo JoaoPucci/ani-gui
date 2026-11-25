@@ -54,6 +54,13 @@ const STRIP: OnboardingDebugTip = {
 	places: ['watch-order-strip'],
 	how_to: null
 };
+const PLAYER: OnboardingDebugTip = {
+	...STRIP,
+	id: 'in-the-player',
+	surface: 'play',
+	moment: 'stream-load',
+	places: ['player-frame']
+};
 const GUIDE: OnboardingDebugTip = {
 	...STRIP,
 	id: 'a-guide',
@@ -72,13 +79,13 @@ let app: ReturnType<typeof mount> | null = null;
 let seenSet: Map<string, boolean>;
 let puts: { id: string; seen: boolean }[];
 
-function useTips(fail = false) {
+function useTips(fail = false, putFails = false, putHeld?: Promise<void>) {
 	seenSet = new Map();
 	puts = [];
 	server.use(
 		http.get(`${API_BASE}/api/onboarding/debug`, () => {
 			if (fail) return errorAnswer(503);
-			const tips = [STRIP, GUIDE].map((t) => {
+			const tips = [STRIP, GUIDE, PLAYER].map((t) => {
 				const seen = seenSet.get(t.id) ?? t.seen;
 				return { ...t, seen, pending: t.offered && !seen };
 			});
@@ -91,6 +98,8 @@ function useTips(fail = false) {
 		http.put(`${API_BASE}/api/onboarding/debug/seen`, async ({ request }) => {
 			const body = (await request.json()) as { id: string; seen: boolean };
 			puts.push(body);
+			if (putHeld) await putHeld;
+			if (putFails) return errorAnswer(503);
 			seenSet.set(body.id, body.seen);
 			return new HttpResponse(null, { status: 204 });
 		})
@@ -189,5 +198,48 @@ describe('the Debug page’s feature tips', () => {
 			() => section()?.textContent?.includes(m.diagnostics_tips_failed()) ?? false,
 			'the failure'
 		);
+	});
+
+	it('a toggle the backend refuses goes back, says so, and keeps the list', async () => {
+		useTips(false, true);
+		app = mount(DiagnosticsPage, { target });
+		await until(() => seenBox('watch-order') !== null, 'the toggle');
+		seenBox('watch-order')!.click();
+		await until(
+			() => section()!.textContent!.includes(m.diagnostics_tips_seen_failed()),
+			'the failure'
+		);
+		expect(seenBox('watch-order')!.checked).toBe(false);
+		expect(row('watch-order')).not.toBeNull();
+	});
+
+	it('holds the toggle while its change is out', async () => {
+		let release!: () => void;
+		useTips(false, false, new Promise<void>((r) => (release = r)));
+		app = mount(DiagnosticsPage, { target });
+		await until(() => seenBox('watch-order') !== null, 'the toggle');
+		seenBox('watch-order')!.click();
+		await until(() => seenBox('watch-order')!.disabled, 'held');
+		release();
+		await until(() => !seenBox('watch-order')!.disabled, 'released');
+		expect(puts).toHaveLength(1);
+	});
+
+	it('offers no Show it for a tip that loads in the player, and a wait can be called off', async () => {
+		useTips();
+		app = mount(DiagnosticsPage, { target });
+		await until(() => row('in-the-player') !== null, 'the list');
+		const buttons = (id: string) => [...row(id)!.querySelectorAll('button')];
+		expect(
+			buttons('in-the-player').some((b) => b.textContent?.trim() === m.diagnostics_tips_show())
+		).toBe(false);
+		buttons('watch-order')
+			.find((b) => b.textContent?.trim() === m.diagnostics_tips_show())!
+			.click();
+		await until(() => onboarding.armed !== null, 'armed');
+		buttons('watch-order')
+			.find((b) => b.textContent?.trim() === m.diagnostics_tips_cancel())!
+			.click();
+		await until(() => onboarding.armed === null, 'called off');
 	});
 });

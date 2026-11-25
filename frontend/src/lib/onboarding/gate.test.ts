@@ -3,6 +3,7 @@ import fc from 'fast-check';
 import type { OnboardingTip } from '$lib/api';
 import {
 	armedNow,
+	previewable,
 	arrivesOn,
 	arrivingNow,
 	onScreen,
@@ -120,5 +121,17 @@ describe('armedNow', () => {
 		expect(armedNow(tip(), now({ modalOpen: true }))).toBeNull();
 		expect(armedNow(null, now())).toBeNull();
 		expect(armedNow(tip({ places: [] }), now())).toBeNull();
+	});
+});
+
+describe('previewable', () => {
+	it('is a tip that arrives on a page of its own, with places', () => {
+		expect(previewable(tip())).toBe(true);
+		expect(previewable(tip({ surface: 'any' }))).toBe(true);
+	});
+	it('is never one that shows in the player, or has no places', () => {
+		expect(previewable(tip({ surface: 'play', moment: 'stream-load' }))).toBe(false);
+		expect(previewable(tip({ surface: 'play' }))).toBe(false);
+		expect(previewable(tip({ places: [] }))).toBe(false);
 	});
 });
