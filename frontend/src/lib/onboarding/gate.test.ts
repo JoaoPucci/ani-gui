@@ -121,8 +121,10 @@ describe('previewable', () => {
 		expect(previewable(tip())).toBe(true);
 		expect(previewable(tip({ surface: 'any' }))).toBe(true);
 	});
-	it('is never one that shows in the player, or has no places', () => {
-		expect(previewable(tip({ surface: 'play', moment: 'stream-load' }))).toBe(false);
+	it('is one that loads in the player, which shows on the next slow start', () => {
+		expect(previewable(tip({ surface: 'play', moment: 'stream-load' }))).toBe(true);
+	});
+	it('is never one that arrives in the player, or has no places', () => {
 		expect(previewable(tip({ surface: 'play' }))).toBe(false);
 		expect(previewable(tip({ places: [] }))).toBe(false);
 	});

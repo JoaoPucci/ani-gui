@@ -20,8 +20,10 @@ export function armedNow(
 }
 
 /** Whether the Debug page can preview `tip`: one that arrives on a page
- *  of its own, with places. A tip that loads in the player shows only
- *  during a stream's load, which a preview cannot ask for. */
+ *  of its own, or one that loads in the player (it then shows on the
+ *  next slow start), with places. */
 export function previewable(tip: OnboardingTip): boolean {
-	return tip.moment === 'arrive' && tip.surface !== 'play' && tip.places.length > 0;
+	if (tip.places.length === 0) return false;
+	if (tip.moment === 'stream-load') return tip.surface === 'play';
+	return tip.surface !== 'play';
 }

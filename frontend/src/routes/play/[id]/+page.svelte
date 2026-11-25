@@ -219,6 +219,7 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
 	import { watchStart, type StartWatch } from '$lib/play/start-watch';
+	import LoadTipHost from '$lib/onboarding/LoadTipHost.svelte';
 	import StartVeil from '$lib/play/StartVeil.svelte';
 	import StartAnnounce from '$lib/play/StartAnnounce.svelte';
 	import { episodeInPages, veilMode } from '$lib/play/start-veil';
@@ -548,6 +549,8 @@
 	// individual `change` event bumps it so `availableTracks` and
 	// `captionsOn` re-derive.
 	let ccMenuOpen = $state(false);
+	/** What the load tip says in the live region ($lib/onboarding). */
+	let loadTipSaid = $state('');
 	let ccMenuAnchor = $state<HTMLButtonElement | null>(null);
 	let textTracksTick = $state(0);
 	const availableTracks = $derived.by(() => {
@@ -4310,8 +4313,21 @@
 				</div>
 			{/if}
 		{/if}
+		<!-- A feature tip while the stream loads ($lib/onboarding): after
+		     the controls, so Tab reaches it there. It never takes focus. -->
+		<LoadTipHost
+			veil={startVeil}
+			blocked={isFullscreen || playerError !== null}
+			playerMenuOpen={ccMenuOpen || pcMenuOpen}
+			{accent}
+			source="{id}#{episodeNum}"
+			announce={(text) => (loadTipSaid = text)}
+		/>
 	</section>
 	<StartAnnounce mode={startVeil} />
+	<!-- The load tip's announcement, outside the frame, which is busy for
+	     the very start the tip appears in. -->
+	<p class="load-tip-said" role="status">{loadTipSaid}</p>
 
 	<div class="watch-column">
 		{#if playLink.slip !== 'none'}
@@ -6818,5 +6834,14 @@
 				0 1px 2px rgb(0 0 0 / 0.4),
 				0 0 0 6px color-mix(in oklab, var(--accent) 0%, transparent);
 		}
+	}
+	/* Heard, not seen: the load tip's announcement. */
+	.load-tip-said {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 </style>

@@ -17,5 +17,9 @@
 	"franchise_tour_2_title": "You choose the order",
 	"franchise_tour_2_body": "Follow the anime databases' links or the release dates. Change it in Settings.",
 	"franchise_tour_3_title": "Main story",
-	"franchise_tour_3_body": "In watch order. Titles you started show how far you got."
+	"franchise_tour_3_body": "In watch order. Titles you started show how far you got.",
+	"player_up_next_1_title": "What comes next",
+	"player_up_next_1_body": "After the last episode, the player offers the next title in the watch order.",
+	"announce": "New in {version}: {title}",
+	"close_tip": "Close the tip"
 }

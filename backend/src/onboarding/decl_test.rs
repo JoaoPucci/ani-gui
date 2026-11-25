@@ -234,3 +234,13 @@ fn the_tools_ship_as_on_demand_demonstrations_of_an_entry_and_its_walkthrough() 
         ["franchise-masthead", "franchise-order", "franchise-rows"]
     );
 }
+
+#[test]
+fn the_player_load_tip_ships_as_an_on_demand_demonstration() {
+    let tip = find(&TIPS, "player-up-next").expect("declared");
+    assert!(tip.on_demand, "a demonstration is never offered");
+    assert_eq!(tip.kind, Kind::Single);
+    assert_eq!(tip.surface, Surface::Play);
+    assert_eq!(tip.moment, Moment::StreamLoad);
+    assert_eq!(tip.places, ["player-frame"]);
+}
