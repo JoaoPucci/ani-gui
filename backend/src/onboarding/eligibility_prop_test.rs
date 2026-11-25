@@ -84,8 +84,29 @@ proptest! {
         }
     }
 
+    /// A flagged tip with its flag on opens at the later of its
+    /// shipping release and its flag's first recorded release (this
+    /// one, when none is recorded), and ends two minors on, or at its
+    /// declared end if that comes first.
+    #[test]
+    fn a_flagged_window_counts_from_the_flag(
+        tips in tips(), rec in a_record(), current in release(), on in flags(),
+    ) {
+        let flag_on = |f: &str| on.contains(f);
+        for t in tips.iter().filter(|t| !t.on_demand) {
+            let Some(flag) = t.flag.as_deref() else { continue };
+            if !on.contains(flag) { continue; }
+            let opens = t.since.max(rec.flag_on_since(flag).unwrap_or(current));
+            let end = t.until.expect("a flagged tip declares its end").min(opens.plus_minors(OFFERED_MINORS));
+            let want = (opens < end).then_some((opens, end));
+            prop_assert_eq!(window(t, &rec, current, flag_on), want);
+        }
+    }
+
     /// Without a declared end, an unflagged tip is offered in exactly
-    /// the two minors from the release that shipped it.
+    /// the two minors from the release that shipped it. The expected
+    /// end is computed with `plus_minors`, whose own values
+    /// `release_test.rs` checks by literal.
     #[test]
     fn the_default_window_is_two_minors(since in release(), current in release()) {
         let t = TipDecl {
