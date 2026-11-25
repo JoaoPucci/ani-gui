@@ -160,7 +160,8 @@ test('after an update the strip is explained once, and a press outside closes it
 			const hit = await buttons.nth(i).evaluate((b) => {
 				const r = b.getBoundingClientRect();
 				const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-				return at !== null && b.contains(at);
+				// The press reaches it: the button under the point, and not inert.
+				return at !== null && b.contains(at) && b.closest('[inert]') === null;
 			});
 			expect(hit, `window button ${i}`).toBe(true);
 		}

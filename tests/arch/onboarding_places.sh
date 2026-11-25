@@ -6,10 +6,10 @@
 # For each declared tip, read with Python's JSON parser:
 #
 #   - each of its places is marked `data-onboard="<place>"` exactly once
-#     across the .svelte files under frontend/src. Once, so the place a
-#     tip lights is never ambiguous; a component rendered several times
-#     (a list's rows) still marks one place by marking it on one
-#     element;
+#     across the .svelte files under frontend/src. This counts marks in
+#     the source, not elements on screen: a component rendered several
+#     times renders its mark several times, and the renderer then lights
+#     the first. Whether a mark renders once is not seen here;
 #   - each of its steps has `<id>_<n>_title` and `<id>_<n>_body` (the
 #     id with `-` as `_`, the step from 1) in every locale's
 #     frontend/messages/<locale>/onboarding.json, the locales being those
