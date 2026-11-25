@@ -1,18 +1,22 @@
 /**
  * Watches the places pending tips point at, and says which have
- * settled on screen: found on the page (`data-onboard="<place>"`), on
- * screen enough to point at (`onScreen`), and unmoved across the
- * IntersectionObserver's thresholds for SETTLE_MS. Rendering glue: an
- * IntersectionObserver per watcher and a MutationObserver for places
- * that mount late, no per-frame reads.
+ * settled on screen ($./settle): found on the page
+ * (`data-onboard="<place>"`), on screen enough to point at (`onScreen`),
+ * and unmoved for SETTLE_MS. Rendering glue: an IntersectionObserver
+ * sees a place cross into or out of view, a scroll of the page or of a
+ * scroller holding a place moves that place (a place fully in view
+ * crosses no threshold while the page scrolls under it), and a
+ * MutationObserver finds places that mount late. A place's position is
+ * read only while the page scrolls, never per frame otherwise.
  */
-import { SETTLE_MS, onScreen } from './gate';
+import { onScreen } from './gate';
+import { Settler, type Timers } from './settle';
 
 /** Fine enough that a scroll crosses one every few pixels on a strip,
  *  so "still" means no crossing for SETTLE_MS. */
 const THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 20);
 
-export interface WatchDeps {
+export interface WatchDeps extends Timers {
 	doc: Document;
 	/** The top bar's bottom edge, in viewport px. */
 	viewTop: () => number;
@@ -46,17 +50,16 @@ export function placeElement(doc: Document, place: string): HTMLElement | null {
 export class PlaceWatcher {
 	readonly #deps: WatchDeps;
 	readonly #places: string[];
-	readonly #onChange: (settled: ReadonlySet<string>) => void;
 	readonly #io: IntersectionObserver;
 	readonly #mo: MutationObserver;
 	readonly #els = new Map<string, HTMLElement>();
-	readonly #timers = new Map<string, ReturnType<typeof setTimeout>>();
-	readonly #settled = new Set<string>();
+	readonly #settler: Settler;
+	readonly #onScroll = (e: Event) => this.#moved(e.target);
 
 	constructor(places: string[], onChange: (settled: ReadonlySet<string>) => void, deps: WatchDeps) {
 		this.#deps = deps;
 		this.#places = places;
-		this.#onChange = onChange;
+		this.#settler = new Settler(onChange, deps);
 		this.#io = deps.observe((entries) => this.#seen(entries), { threshold: THRESHOLDS });
 		this.#mo = new MutationObserver(() => this.#find());
 		this.#mo.observe(deps.doc.body, {
@@ -65,6 +68,7 @@ export class PlaceWatcher {
 			attributes: true,
 			attributeFilter: ['data-onboard']
 		});
+		deps.doc.addEventListener('scroll', this.#onScroll, { capture: true, passive: true });
 		this.#find();
 	}
 
@@ -75,7 +79,7 @@ export class PlaceWatcher {
 			const was = this.#els.get(place);
 			if (el === was) continue;
 			if (was) this.#io.unobserve(was);
-			this.#unsettle(place);
+			this.#settler.drop(place);
 			if (el) {
 				this.#els.set(place, el);
 				this.#io.observe(el);
@@ -85,43 +89,35 @@ export class PlaceWatcher {
 		}
 	}
 
-	#placeOf(el: Element): string | null {
-		for (const [place, e] of this.#els) if (e === el) return place;
-		return null;
+	#visible(box: { top: number; bottom: number; width: number }): boolean {
+		return onScreen(box, { h: this.#deps.viewHeight(), top: this.#deps.viewTop() });
 	}
 
+	/** Crossings: each is a sighting of the place it names. */
 	#seen(entries: IntersectionObserverEntry[]): void {
 		for (const entry of entries) {
-			const place = this.#placeOf(entry.target);
-			if (!place) continue;
-			// Any crossing is movement: the place settles only once it has
-			// stayed on screen, uncrossed, for SETTLE_MS.
-			this.#unsettle(place);
-			const box = entry.boundingClientRect;
-			const view = { h: this.#deps.viewHeight(), top: this.#deps.viewTop() };
-			if (!onScreen({ top: box.top, bottom: box.bottom, width: box.width }, view)) continue;
-			this.#timers.set(
-				place,
-				this.#deps.setTimer(() => {
-					this.#timers.delete(place);
-					this.#settled.add(place);
-					this.#onChange(this.#settled);
-				}, SETTLE_MS)
-			);
+			for (const [place, el] of this.#els) {
+				if (el === entry.target)
+					this.#settler.sighted(place, this.#visible(entry.boundingClientRect));
+			}
 		}
 	}
 
-	#unsettle(place: string): void {
-		const t = this.#timers.get(place);
-		if (t !== undefined) this.#deps.clearTimer(t);
-		this.#timers.delete(place);
-		if (this.#settled.delete(place)) this.#onChange(this.#settled);
+	/** A scroll of the page, or of a scroller that holds a place, moved
+	 *  that place: it starts settling again. A scroll beside it (a rail,
+	 *  a carousel) moved nothing it watches. */
+	#moved(target: EventTarget | null): void {
+		const page = target === this.#deps.doc || target === this.#deps.doc.documentElement;
+		for (const [place, el] of this.#els) {
+			if (!page && !(target instanceof Node && target.contains(el))) continue;
+			this.#settler.sighted(place, this.#visible(el.getBoundingClientRect()));
+		}
 	}
 
 	stop(): void {
 		this.#io.disconnect();
 		this.#mo.disconnect();
-		for (const t of this.#timers.values()) this.#deps.clearTimer(t);
-		this.#timers.clear();
+		this.#deps.doc.removeEventListener('scroll', this.#onScroll, { capture: true });
+		this.#settler.stop();
 	}
 }

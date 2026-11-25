@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { OnboardingTip, OnboardingView } from '$lib/api';
-import { OnboardingTips } from './tips.svelte';
+import { OnboardingTips, __resetOnboardingForTests, onboarding } from './tips.svelte';
+import { onboardingSeen, onboardingTips } from '$lib/api';
+
+vi.mock('$lib/api', () => ({ onboardingTips: vi.fn(), onboardingSeen: vi.fn() }));
 
 const tip = (id: string, pending = true): OnboardingTip => ({
 	id,
@@ -65,5 +68,19 @@ describe('OnboardingTips', () => {
 		expect(store.armed?.id).toBe('a');
 		store.disarm();
 		expect(store.armed).toBeNull();
+	});
+
+	it('the session’s store reads the backend’s routes, and a reset asks again', async () => {
+		const read = vi.mocked(onboardingTips).mockResolvedValue(VIEW);
+		const send = vi.mocked(onboardingSeen).mockResolvedValue(undefined);
+		__resetOnboardingForTests();
+		await onboarding.load();
+		expect(onboarding.tips).toHaveLength(2);
+		onboarding.markSeen('a');
+		expect(send).toHaveBeenCalledWith('a');
+		__resetOnboardingForTests();
+		expect(onboarding.tips).toEqual([]);
+		await onboarding.load();
+		expect(read).toHaveBeenCalledTimes(2);
 	});
 });

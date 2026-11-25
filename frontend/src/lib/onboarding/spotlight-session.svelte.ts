@@ -17,12 +17,17 @@
 import type { OnboardingTip } from '$lib/api';
 import { isTopModal, openModal, type ModalHandle } from '$lib/components/modal-layer';
 import { closing, type CloseRoute } from './closing';
-import type { Rect } from './place';
+import { roomAbove, type Placement, type Rect } from './place';
+import {
+	WINDOW_BUTTONS,
+	accentAt,
+	observePlace,
+	readScreen,
+	sameRects,
+	sameView
+} from './screen-read';
 import { sameRect } from './spotlight';
-
-/** The window's own buttons: minimize, maximize, close. */
-const WINDOW_BUTTONS = '.winctl-btn';
-const FOCUSABLE = 'a[href], button:not([disabled]), input, select, [tabindex]:not([tabindex="-1"])';
+import { focusAfterClose } from './tip-focus';
 
 export interface SessionDeps {
 	doc: Document;
@@ -32,8 +37,6 @@ export interface SessionDeps {
 	/** The tip closed by any route, seen or not. */
 	onClosed: (seen: boolean) => void;
 }
-
-const toRect = (r: DOMRect): Rect => ({ x: r.left, y: r.top, w: r.width, h: r.height });
 
 export class SpotlightSession {
 	readonly tip: OnboardingTip;
@@ -53,22 +56,18 @@ export class SpotlightSession {
 	#shownAt = Number.POSITIVE_INFINITY;
 	#modal: ModalHandle | null = null;
 	#root: HTMLElement | null = null;
-	#resize: ResizeObserver | null = null;
-	#leave: MutationObserver | null = null;
+	readonly #unobserve: () => void;
+	#scrolled = false;
 
 	constructor(tip: OnboardingTip, place: HTMLElement, deps: SessionDeps) {
 		this.tip = tip;
 		this.place = place;
 		this.#deps = deps;
-		const a = deps.doc.defaultView?.getComputedStyle(place).getPropertyValue('--accent').trim();
-		if (a) this.accent = a;
+		this.accent = accentAt(deps.doc, place, this.accent);
 		this.#measure();
 		// The place may grow, shrink or leave with no scroll to say so:
 		// read it again whenever it does.
-		this.#resize = new ResizeObserver(() => this.read());
-		this.#resize.observe(place);
-		this.#leave = new MutationObserver(() => this.read());
-		this.#leave.observe(deps.doc.body, { childList: true, subtree: true });
+		this.#unobserve = observePlace(deps.doc, place, () => this.read());
 	}
 
 	/** Read where the place, the window and its buttons are now. The
@@ -83,24 +82,30 @@ export class SpotlightSession {
 	}
 
 	#measure(): void {
-		const doc = this.#deps.doc;
-		const win = doc.defaultView;
-		const top = doc.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0;
-		const view = { w: win?.innerWidth ?? 0, h: win?.innerHeight ?? 0, top: Math.round(top) };
-		if (view.w !== this.view.w || view.h !== this.view.h || view.top !== this.view.top) {
-			this.view = view;
+		const now = readScreen(this.#deps.doc, this.place);
+		if (!sameView(now.view, this.view)) this.view = now.view;
+		if (!sameRect(now.rect, this.rect)) this.rect = now.rect;
+		if (!sameRects(now.buttons, this.buttons)) this.buttons = now.buttons;
+	}
+
+	/** The balloon has its size and its place: a place with no room
+	 *  beside it is first scrolled, once, to `roomAbove` under the top
+	 *  bar (`scroll` moves the page), and then the balloon takes the
+	 *  page. */
+	placed(
+		placement: Placement,
+		size: { h: number },
+		balloon: HTMLElement,
+		scrim: HTMLElement | null,
+		scroll: (place: HTMLElement, marginTop: number) => void
+	): void {
+		if (this.closed) return;
+		if (!placement.fits && !this.#scrolled) {
+			this.#scrolled = true;
+			scroll(this.place, roomAbove(this.view.top, size));
+			this.#measure();
 		}
-		const rect = toRect(this.place.getBoundingClientRect());
-		if (!sameRect(rect, this.rect)) this.rect = rect;
-		const buttons = [...doc.querySelectorAll<HTMLElement>(WINDOW_BUTTONS)].map((b) =>
-			toRect(b.getBoundingClientRect())
-		);
-		if (
-			buttons.length !== this.buttons.length ||
-			buttons.some((b, i) => !sameRect(b, this.buttons[i]))
-		) {
-			this.buttons = buttons;
-		}
+		this.hold(balloon, scrim);
 	}
 
 	/** The balloon is measured and placed: it becomes the topmost modal.
@@ -121,7 +126,8 @@ export class SpotlightSession {
 	/** A modal opened or closed: one opened over the balloon takes the
 	 *  page, and the tip yields to it. */
 	modalsChanged(): void {
-		if (this.#root && this.#modal && !isTopModal(this.#root)) this.close('yield');
+		// The modal and its root are set together, in hold().
+		if (this.#modal && !isTopModal(this.#root as HTMLElement)) this.close('yield');
 	}
 
 	/** A press anywhere: one on the place works, and closes the tip. */
@@ -134,28 +140,14 @@ export class SpotlightSession {
 		const how = closing(route, this.#shownAt, this.#deps.now());
 		if (!how) return;
 		this.closed = true;
-		this.#resize?.disconnect();
-		this.#leave?.disconnect();
+		this.#unobserve();
 		if (how.seen) this.#deps.markSeen(this.tip.id);
-		const covered = this.#root !== null && !isTopModal(this.#root);
+		// A tip never held, or held under a dialog now on top, moves no focus.
+		const covered = !isTopModal(this.#root ?? this.place);
 		// Closing the modal gives focus back to what held it when it opened.
 		this.#modal?.close();
 		this.#modal = null;
-		if (!covered) this.#focus(how.focus);
+		if (!covered) focusAfterClose(how.focus, this.#deps.doc, this.place, this.#root);
 		this.#deps.onClosed(how.seen);
-	}
-
-	#focus(to: 'place' | 'back' | 'none' | 'leave'): void {
-		if (to === 'none' || to === 'leave') return;
-		const active = this.#deps.doc.activeElement;
-		// Focus left on the balloon (it held focus, and the modal had
-		// nowhere to give it back to) is nowhere: the balloon is going.
-		const nowhere =
-			!active || active === this.#deps.doc.body || (this.#root?.contains(active) ?? false);
-		if (to === 'back' && !nowhere) return;
-		const target = this.place.matches(FOCUSABLE)
-			? this.place
-			: this.place.querySelector<HTMLElement>(FOCUSABLE);
-		target?.focus({ preventScroll: true });
 	}
 }

@@ -9,7 +9,7 @@
   screen and how it closes.
 -->
 <script lang="ts">
-	import { onMount, tick, untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { m } from '$lib/paraglide/messages';
 	import { isModalOpen, watchModals } from '$lib/components/modal-layer';
@@ -17,7 +17,7 @@
 	import Balloon from './Balloon.svelte';
 	import Scrim from './Scrim.svelte';
 	import { armedNow, arrivesOn, arrivingNow, surfaceOf, watchedHere } from './gate';
-	import { placeBalloon, roomAbove } from './place';
+	import { placeBalloon } from './place';
 	import { litArea, passHoles } from './spotlight';
 	import { SpotlightSession } from './spotlight-session.svelte';
 	import { onboarding } from './tips.svelte';
@@ -32,7 +32,6 @@
 	let size = $state<{ w: number; h: number } | null>(null);
 	let balloon = $state<HTMLDivElement | undefined>();
 	let scrim = $state<HTMLDivElement | undefined>();
-	let scrolledFor: SpotlightSession | null = null;
 
 	const surface = $derived(surfaceOf(page.route?.id ?? null));
 	const watched = $derived([
@@ -134,21 +133,16 @@
 		});
 	});
 
-	// Once placed, the balloon holds the page as its topmost modal. A
-	// place with no room beside it for the balloon is scrolled into
-	// room under the top bar first, once.
+	// Once placed, the balloon holds the page as its topmost modal
+	// (the session scrolls a place with no room into room first).
 	$effect(() => {
 		const s = session;
-		const p = placement;
-		if (!s || !p || !balloon || !size) return;
-		if (!p.fits && scrolledFor !== s) {
-			scrolledFor = s;
-			s.place.style.scrollMarginTop = `${roomAbove(s.view.top, size)}px`;
-			s.place.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
-			s.place.style.scrollMarginTop = '';
-			void tick().then(() => s.read());
-		}
-		s.hold(balloon, scrim ?? null);
+		if (!s || !placement || !balloon || !size) return;
+		s.placed(placement, size, balloon, scrim ?? null, (el, margin) => {
+			el.style.scrollMarginTop = `${margin}px`;
+			el.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
+			el.style.scrollMarginTop = '';
+		});
 	});
 
 	// A press on the lit place works, and closes the tip.
