@@ -62,6 +62,23 @@
       "guess",
       "again"
     ],
+    "OnboardingKind": [
+      "single",
+      "sequence",
+      "entry"
+    ],
+    "OnboardingMoment": [
+      "arrive",
+      "stream-load"
+    ],
+    "OnboardingSurface": [
+      "home",
+      "show",
+      "franchise",
+      "settings",
+      "play",
+      "any"
+    ],
     "PkceMethod": [
       "plain",
       "S256"
@@ -465,6 +482,24 @@
         "card",
         "rows",
         "show"
+      ]
+    },
+    "OnboardingDebugSeenBody": {
+      "accepts": [
+        "id",
+        "seen"
+      ],
+      "requires": [
+        "id",
+        "seen"
+      ]
+    },
+    "OnboardingSeenBody": {
+      "accepts": [
+        "id"
+      ],
+      "requires": [
+        "id"
       ]
     },
     "PkceWire": {
@@ -2174,6 +2209,175 @@
           "unaired": true
         },
         "kind": "unaired"
+      }
+    },
+    "OnboardingDebugTip": {
+      "full": {
+        "ends": "0.21.0",
+        "flag": "a_feature",
+        "flag_on": true,
+        "flag_on_since": "0.19.0",
+        "how_to": {
+          "id": "a-guide",
+          "places": [
+            "one",
+            "two"
+          ],
+          "surface": "franchise"
+        },
+        "id": "watch-order",
+        "kind": "single",
+        "moment": "arrive",
+        "offered": true,
+        "on_demand": true,
+        "opens": "0.19.0",
+        "pending": true,
+        "places": [
+          "watch-order-strip"
+        ],
+        "seen": true,
+        "since": "0.19.0",
+        "surface": "show",
+        "until": "0.25.0"
+      },
+      "min": {
+        "ends": null,
+        "flag": null,
+        "flag_on": false,
+        "flag_on_since": null,
+        "how_to": null,
+        "id": "watch-order",
+        "kind": "single",
+        "moment": "arrive",
+        "offered": false,
+        "on_demand": false,
+        "opens": null,
+        "pending": false,
+        "places": [],
+        "seen": false,
+        "since": "0.19.0",
+        "surface": "show",
+        "until": null
+      }
+    },
+    "OnboardingDebugView": {
+      "full": {
+        "installed_in": "0.19.0",
+        "tips": [
+          {
+            "ends": "0.21.0",
+            "flag": "a_feature",
+            "flag_on": true,
+            "flag_on_since": "0.19.0",
+            "how_to": {
+              "id": "a-guide",
+              "places": [
+                "one",
+                "two"
+              ],
+              "surface": "franchise"
+            },
+            "id": "watch-order",
+            "kind": "single",
+            "moment": "arrive",
+            "offered": true,
+            "on_demand": true,
+            "opens": "0.19.0",
+            "pending": true,
+            "places": [
+              "watch-order-strip"
+            ],
+            "seen": true,
+            "since": "0.19.0",
+            "surface": "show",
+            "until": "0.25.0"
+          }
+        ],
+        "version": "0.19.0"
+      },
+      "min": {
+        "installed_in": null,
+        "tips": [],
+        "version": "0.19.0"
+      }
+    },
+    "OnboardingHowTo": {
+      "full": {
+        "id": "a-guide",
+        "places": [
+          "one",
+          "two"
+        ],
+        "surface": "franchise"
+      },
+      "min": {
+        "id": "a-guide",
+        "places": [
+          "one",
+          "two"
+        ],
+        "surface": "franchise"
+      }
+    },
+    "OnboardingTip": {
+      "full": {
+        "how_to": {
+          "id": "a-guide",
+          "places": [
+            "one",
+            "two"
+          ],
+          "surface": "franchise"
+        },
+        "id": "watch-order",
+        "kind": "single",
+        "moment": "arrive",
+        "pending": true,
+        "places": [
+          "watch-order-strip"
+        ],
+        "since": "0.19.0",
+        "surface": "show"
+      },
+      "min": {
+        "how_to": null,
+        "id": "watch-order",
+        "kind": "single",
+        "moment": "arrive",
+        "pending": false,
+        "places": [],
+        "since": "0.19.0",
+        "surface": "show"
+      }
+    },
+    "OnboardingView": {
+      "full": {
+        "tips": [
+          {
+            "how_to": {
+              "id": "a-guide",
+              "places": [
+                "one",
+                "two"
+              ],
+              "surface": "franchise"
+            },
+            "id": "watch-order",
+            "kind": "single",
+            "moment": "arrive",
+            "pending": true,
+            "places": [
+              "watch-order-strip"
+            ],
+            "since": "0.19.0",
+            "surface": "show"
+          }
+        ],
+        "version": "0.19.0"
+      },
+      "min": {
+        "tips": [],
+        "version": "0.19.0"
       }
     },
     "ProgressLine.links_fetched": {

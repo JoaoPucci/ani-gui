@@ -41,6 +41,7 @@ pub mod kitsu_id;
 pub mod lanes;
 pub mod legacy_script;
 pub mod meta;
+pub mod onboarding;
 pub mod parent_watch;
 pub mod provider_set;
 pub mod proxy;
