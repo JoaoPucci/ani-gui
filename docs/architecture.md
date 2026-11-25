@@ -836,11 +836,12 @@ the tips once per launch and shows a pending one only on its own page,
 never in the player, in fullscreen or over one of the app's dialogs, and
 at most one per page visit. It waits until the tip's first place has
 been on screen, half of it or 160 px of a tall one below the top bar,
-and still for 600 ms (an IntersectionObserver, no per-frame reads). Then
-the page dims around the place and a balloon beside it explains it, with
-the release that brought it. The dim is a layer cut out with
-`clip-path`, so a Windows contrast theme keeps it, and the lit place
-gets a Highlight outline there. The balloon is the topmost modal
+and still for 600 ms: an IntersectionObserver sees it cross into view,
+and any scroll starts the wait again (no per-frame reads). Then the page
+dims around the place and a balloon beside it explains it, with the
+release that brought it. The dim is a layer cut out with `clip-path`, so
+a Windows contrast theme keeps it, and the lit place gets a Highlight
+outline there. The balloon is the topmost modal
 (`$lib/components/modal-layer`): focus moves to "Got it", Tab stays in
 the balloon, the app's shortcuts stand down, and the rest of the page is
 inert except the place itself and the window's own buttons, which a
