@@ -781,6 +781,62 @@ One request per launch, and at most one an hour after the first few
 retries of a session whose fetch keeps failing, is far below any
 plausible one. A rate-limited answer is a failed fetch like any other.
 
+## Feature tips
+
+Feature tips point out what an update brought, once per install. The
+backend keeps the registry of tips, decides which ones an install is
+offered, and records the ones closed. It sends ids and places, never
+words. The code is in `backend/src/onboarding/`.
+
+**The registry.** Each tip is declared in
+`backend/src/onboarding/tips.json`: its id (the key its seen state is
+kept under), its tool (`single`, `sequence` of at most three steps, or
+`entry`, a balloon on a feature's entry point that offers the feature's
+walkthrough), the release that shipped it (`since`), an optional end
+(`until`), its page, its moment (`arrive`, or `stream-load` in the
+player), an optional flag, and its places, the `data-onboard` ids of
+the elements its steps point at. A tip marked `on_demand` runs only when
+asked for (a walkthrough, or a tool's demonstration on the Debug page)
+and is never offered. The backend's tests hold the file to these rules
+(`onboarding::decl::validate`).
+
+**Windows.** A tip is offered for two minor releases from the one that
+shipped it, unless it declares its own end: shipped in 0.19.0, it is
+offered in 0.19.x and 0.20.x and gone from 0.21.0. A tip whose feature is
+behind a flag is offered only while the flag is on, and its two releases
+count from the first launch on which that install had the flag on, with
+its declared end, which a flagged tip must have, as a hard limit. A tip
+offered and not yet seen is pending. Seen is per tip and forever: any way
+of closing a tip marks it.
+
+**The record.** `onboarding.json` in the state directory, beside the
+watch history (`config::paths::state_dir`, so on Linux
+`$XDG_STATE_HOME/ani-gui/` and on Windows the app's folder under
+`%LOCALAPPDATA%`). It holds the tips seen, the release a first-ever
+install started on, and per flag a tip names the release it was first on
+in. A file that cannot be read reads as an update's empty record, and the
+next write replaces it; writes go through a temporary file renamed over
+it.
+
+**First-ever installs.** A new install has nothing new to be shown.
+0.19.0 is the first release with the record, so "no record" cannot mean
+"new install": every earlier install has none either. The launch asks,
+before it creates anything in the profile, whether a watch history, a
+metadata cache or a settings file is there; if none is, it records a
+first-ever install, and the first read after the launch's flags settle
+marks seen every tip offered then. A flagged tip whose flag is off then
+is left pending for the day the flag comes on.
+
+**Routes.** `GET /api/onboarding` answers the release counted at and the
+tips offered, each with its tool, page, moment, places and whether it is
+pending; `POST /api/onboarding/seen {id}` records a tip closed.
+`GET /api/onboarding/debug` answers every declared tip with its window
+and state, and `PUT /api/onboarding/debug/seen {id, seen}` sets seen
+either way, for a list of tip keys on the Debug page. No route sends
+words: each
+step's title and body are the renderer's messages, named after the tip
+and the step (`onboarding_<id>_<step>_title` and `_body`).
+
 ## Embedded playback
 
 Playback happens inside the desktop window — not in a detached `mpv` process. Implementation:
