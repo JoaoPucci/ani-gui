@@ -202,6 +202,8 @@ test('a press on the strip itself does what it does and closes the tip', async (
 	try {
 		await openShow(page);
 		await expect(balloon(page)).toBeVisible({ timeout: 10_000 });
+		// Past the first moments: a press then was aimed before the tip.
+		await page.waitForTimeout(500);
 		const tile = page.locator('[data-onboard="watch-order-strip"] a[href^="/anime/"]').first();
 		const href = (await tile.getAttribute('href'))!;
 		await tile.click();

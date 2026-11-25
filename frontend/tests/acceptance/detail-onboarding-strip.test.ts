@@ -283,6 +283,8 @@ describe('detail route — the strip’s feature tip', () => {
 		useShow(true);
 		mountPage();
 		await shown();
+		// Past the first moments: a press then was aimed before the tip.
+		await new Promise((r) => setTimeout(r, 450));
 		const link = strip()!.querySelector('a')!;
 		link.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
 		await until(() => seen.length === 1, 'the close sent');
