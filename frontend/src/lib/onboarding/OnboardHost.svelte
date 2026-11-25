@@ -16,7 +16,8 @@
 	import { scrollBehavior } from '$lib/motion/scroll';
 	import Balloon from './Balloon.svelte';
 	import Scrim from './Scrim.svelte';
-	import { armedNow, arrivesOn, arrivingNow, surfaceOf, watchedHere } from './gate';
+	import { arrivesOn, arrivingNow, surfaceOf, watchedHere } from './gate';
+	import { armedNow } from './on-demand';
 	import { placeBalloon } from './place';
 	import { litArea, passHoles } from './spotlight';
 	import { SpotlightSession } from './spotlight-session.svelte';

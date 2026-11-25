@@ -1,16 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { OnboardingTip } from '$lib/api';
-import {
-	armedNow,
-	previewable,
-	arrivesOn,
-	arrivingNow,
-	onScreen,
-	surfaceOf,
-	watchedHere,
-	type ScreenNow
-} from './gate';
+import { arrivesOn, arrivingNow, onScreen, surfaceOf, watchedHere, type ScreenNow } from './gate';
+import { armedNow, previewable } from './on-demand';
 
 const tip = (over: Partial<OnboardingTip> = {}): OnboardingTip => ({
 	id: 'watch-order',

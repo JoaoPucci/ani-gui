@@ -25,7 +25,7 @@
 		type TipKeysState
 	} from '$lib/diagnostics/tip-keys';
 	import { onboarding } from '$lib/onboarding/tips.svelte';
-	import { previewable } from '$lib/onboarding/gate';
+	import { previewable } from '$lib/onboarding/on-demand';
 	import { stepWords } from '$lib/onboarding/words';
 	import {
 		createDiagnosticsActions,
