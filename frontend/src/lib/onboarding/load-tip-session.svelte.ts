@@ -72,12 +72,13 @@ export class LoadTipSession {
 		else if (veil === 'off' && this.#sawStart) this.#played = true;
 	}
 
-	/** Another episode's stream: a tip that went unseen waits for its
-	 *  load; one seen stays gone. */
+	/** Another episode's stream: a wait under way starts afresh, a tip
+	 *  that went unseen waits for its load, one seen stays gone. */
 	newSource(): void {
 		this.#sawStart = false;
 		this.#played = false;
-		if (this.state.phase === 'gone' && !this.state.seen) {
+		const unseenGone = this.state.phase === 'gone' && !this.state.seen;
+		if (unseenGone || this.state.phase === 'waiting') {
 			this.#clear();
 			this.state = LOAD_TIP_IDLE;
 		}
