@@ -17,13 +17,8 @@
 		onboardingDebugSeen,
 		type OnboardingDebugTip
 	} from '$lib/api';
-	import {
-		asRunnable,
-		installLabel,
-		readTipKeys,
-		windowLabel,
-		type TipKeysState
-	} from '$lib/diagnostics/tip-keys';
+	import { asRunnable, installLabel, windowLabel } from '$lib/diagnostics/tip-keys';
+	import { TipSeenToggles } from '$lib/diagnostics/tip-seen-toggle.svelte';
 	import { onboarding } from '$lib/onboarding/tips.svelte';
 	import { previewable } from '$lib/onboarding/on-demand';
 	import { stepWords } from '$lib/onboarding/words';
@@ -107,35 +102,14 @@
 	// $lib/diagnostics/hero-walk. Read once, when the page opens.
 	let heroWalkState = $state<HeroWalkState>({ kind: 'loading' });
 
-	// The feature tips, by key, with this install's state — see
-	// $lib/diagnostics/tip-keys. Read when the page opens, and again
-	// after a seen toggle.
-	let tipKeys = $state<TipKeysState>({ kind: 'loading' });
-	const readTips = () =>
-		readTipKeys(() => onboardingDebug({ signal: reads.signal })).then((s) => {
-			if (!reads.signal.aborted) tipKeys = s;
-		});
-	// Every toggle is held while one change is out. One the backend refuses
-	// goes back and says so, and a list that cannot be read again keeps
-	// the last one read.
-	let tipBusy = $state(false);
-	let tipSeenFailed = $state(false);
-	async function setTipSeen(tip: OnboardingDebugTip, box: HTMLInputElement) {
-		const want = box.checked;
-		tipBusy = true;
-		tipSeenFailed = false;
-		try {
-			await onboardingDebugSeen(tip.id, want);
-			onboarding.seenHere(tip.id, want);
-		} catch {
-			box.checked = tip.seen;
-			tipSeenFailed = true;
-		}
-		const again = await readTipKeys(() => onboardingDebug({ signal: reads.signal }));
-		if (!reads.signal.aborted && again.kind === 'read') tipKeys = again;
-		else tipSeenFailed = true;
-		tipBusy = false;
-	}
+	// The feature tips, by key, with this install's state, and their
+	// Seen toggles — see $lib/diagnostics/tip-seen-toggle. Read when the
+	// page opens.
+	const tipToggles = new TipSeenToggles({
+		send: (id, seen) => onboardingDebugSeen(id, seen),
+		read: () => onboardingDebug({ signal: reads.signal }),
+		tell: (id, seen) => onboarding.seenHere(id, seen)
+	});
 	const kindLabel = (k: OnboardingDebugTip['kind']) =>
 		k === 'single'
 			? m.diagnostics_tips_kind_single()
@@ -148,7 +122,7 @@
 		void readHeroWalk(() => heroWalk({ signal: reads.signal })).then((s) => {
 			if (!reads.signal.aborted) heroWalkState = s;
 		});
-		void readTips();
+		void tipToggles.load();
 	});
 </script>
 
@@ -370,17 +344,17 @@
 	<section data-testid="tip-keys">
 		<h2>{m.diagnostics_section_tips()}</h2>
 		<p>{m.diagnostics_tips_description()}</p>
-		{#if tipKeys.kind === 'loading'}
+		{#if tipToggles.state.kind === 'loading'}
 			<p>{m.diagnostics_tips_loading()}</p>
-		{:else if tipKeys.kind === 'failed'}
+		{:else if tipToggles.state.kind === 'failed'}
 			<p>{m.diagnostics_tips_failed()}</p>
 		{:else}
-			{@const view = tipKeys.view}
+			{@const view = tipToggles.state.view}
 			<p>
 				{m.diagnostics_tips_version({ version: view.version })}
 				{installLabel(view)}
 			</p>
-			{#if tipSeenFailed}
+			{#if tipToggles.failed}
 				<p role="alert">{m.diagnostics_tips_seen_failed()}</p>
 			{/if}
 			<table class="hero-walk">
@@ -404,8 +378,8 @@
 									<input
 										type="checkbox"
 										checked={tip.seen}
-										disabled={tip.on_demand || tipBusy}
-										onchange={(e) => setTipSeen(tip, e.currentTarget)}
+										disabled={tip.on_demand || tipToggles.busy}
+										onchange={(e) => tipToggles.set(tip, e.currentTarget)}
 									/>
 									{m.diagnostics_tips_seen()}
 								</label>
