@@ -13,7 +13,13 @@
  *   is still on the page.
  *
  * While one is up, `isModalOpen()` is true, and the page's own
- * window-level shortcuts stand down.
+ * window-level shortcuts stand down. `watchModals` hears each open and
+ * close, and `isTopModal` says whether a given one is on top: a feature
+ * tip's balloon yields to a dialog that opens over it.
+ *
+ * A modal may leave elements outside it within reach of the pointer
+ * (`live`): a feature tip's spotlight keeps the place it lights and the
+ * window's own buttons pressable, while Tab still stays in the balloon.
  *
  * Modals stack: only the topmost one is live, and closing it hands the
  * page back to the one beneath. A modal that closes from under another
@@ -39,6 +45,11 @@ export interface ModalOptions {
 	/** What Escape does while this is the topmost modal. Without it,
 	 *  Escape is left alone. */
 	onEscape?: () => void;
+	/** Elements outside it that the pointer must still reach while it is
+	 *  the topmost modal: the place a feature tip points at, and the
+	 *  window's own buttons. They stay out of the inert page; Tab still
+	 *  stays inside the modal. */
+	live?: readonly Element[];
 }
 
 export interface ModalHandle {
@@ -53,6 +64,16 @@ interface Layer {
 }
 
 const stack: Layer[] = [];
+const watchers = new Set<() => void>();
+
+function changed(): void {
+	for (const w of [...watchers]) w();
+}
+
+function hold(): void {
+	const layer = top();
+	holdOutside(layer?.root ?? null, layer?.opts.live ?? []);
+}
 
 const top = (): Layer | undefined => stack[stack.length - 1];
 
@@ -82,8 +103,9 @@ function close(layer: Layer): void {
 	for (const above of stack.slice(at)) {
 		if (layer.root.contains(above.returnTo)) above.returnTo = layer.returnTo;
 	}
-	holdOutside(top()?.root ?? null);
+	hold();
 	if (stack.length === 0) layer.root.ownerDocument.removeEventListener('keydown', onKeydown, true);
+	changed();
 	// Only the topmost modal held focus; one closing beneath another
 	// leaves it where it is.
 	if (at < stack.length) return;
@@ -103,6 +125,18 @@ export function isModalOpen(): boolean {
 	return stack.length > 0;
 }
 
+/** Whether `root` is the topmost modal. */
+export function isTopModal(root: HTMLElement): boolean {
+	return top()?.root === root;
+}
+
+/** Call `listener` whenever a modal opens or closes, until the returned
+ *  function is called. */
+export function watchModals(listener: () => void): () => void {
+	watchers.add(listener);
+	return () => watchers.delete(listener);
+}
+
 /** Make `root` the topmost modal on its page. */
 export function openModal(root: HTMLElement, opts: ModalOptions = {}): ModalHandle {
 	const doc = root.ownerDocument;
@@ -115,10 +149,14 @@ export function openModal(root: HTMLElement, opts: ModalOptions = {}): ModalHand
 	stepAside(top()?.root);
 	stack.push(layer);
 	leaveHidingFullscreen(doc, root);
-	holdOutside(root);
+	hold();
 	enter(root);
+	changed();
 	return {
-		update: (next) => (layer.opts = next),
+		update: (next) => {
+			layer.opts = next;
+			if (top() === layer) hold();
+		},
 		close: () => close(layer)
 	};
 }
