@@ -145,6 +145,41 @@ describe('PlaceWatcher', () => {
 		expect(settled).toEqual([['strip']]);
 	});
 
+	it('a scroll in a scroller beside the place leaves its settling alone', () => {
+		document.body.innerHTML =
+			'<main><div id="rail"><span></span></div><div data-onboard="strip" id="strip"></div></main>';
+		start(['strip']);
+		const el = document.getElementById('strip')!;
+		el.getBoundingClientRect = () => ({ top: 200, bottom: 400, width: 100 }) as DOMRect;
+		io.fire(el, 200, 400);
+		vi.advanceTimersByTime(SETTLE_MS - 100);
+		document.getElementById('rail')!.dispatchEvent(new Event('scroll'));
+		vi.advanceTimersByTime(100);
+		expect(settled).toEqual([['strip']]);
+	});
+
+	it('a scroll inside a scroller that holds the place starts its settling again', () => {
+		document.body.innerHTML = '<main id="pane"><div data-onboard="strip" id="strip"></div></main>';
+		start(['strip']);
+		const el = document.getElementById('strip')!;
+		el.getBoundingClientRect = () => ({ top: 200, bottom: 400, width: 100 }) as DOMRect;
+		io.fire(el, 200, 400);
+		vi.advanceTimersByTime(SETTLE_MS - 100);
+		document.getElementById('pane')!.dispatchEvent(new Event('scroll'));
+		vi.advanceTimersByTime(100);
+		expect(settled).toEqual([]);
+	});
+
+	it('hears no scroll once stopped', () => {
+		start(['strip']);
+		const el = document.getElementById('strip')!;
+		el.getBoundingClientRect = () => ({ top: 200, bottom: 400, width: 100 }) as DOMRect;
+		watcher!.stop();
+		document.dispatchEvent(new Event('scroll'));
+		vi.advanceTimersByTime(SETTLE_MS);
+		expect(settled).toEqual([]);
+	});
+
 	it('a scroll that takes the place out of view unsettles it', () => {
 		start(['strip']);
 		const el = document.getElementById('strip')!;
@@ -157,6 +192,8 @@ describe('PlaceWatcher', () => {
 });
 
 describe('browserWatchDeps', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
 	it('reads the top bar and the window, and uses the page’s observer and clock', () => {
 		document.body.innerHTML = '<header class="topbar"></header>';
 		document.querySelector('.topbar')!.getBoundingClientRect = () => ({ bottom: 64 }) as DOMRect;
@@ -179,7 +216,6 @@ describe('browserWatchDeps', () => {
 		deps.clearTimer(t);
 		vi.advanceTimersByTime(20);
 		expect(fn).not.toHaveBeenCalled();
-		vi.unstubAllGlobals();
 	});
 
 	it('reads no top bar as the window’s top', () => {
