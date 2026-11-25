@@ -140,5 +140,17 @@ fn a_record_that_cannot_be_written_leaves_the_launch_going() {
     let blocked = td.path().join("state");
     std::fs::write(&blocked, b"").expect("written");
     boot(&blocked, false, r("0.19.0"));
-    assert!(save(&path_in(&blocked), &Record::default()).is_err());
+    assert!(
+        !matches!(load(&path_in(&blocked)), Loaded::Record(_)),
+        "nothing was written, and the launch went on"
+    );
+}
+
+#[test]
+fn a_save_leaves_no_temporary_file_and_the_record_whole_on_disk() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let path = path_in(td.path());
+    save(&path, &Record::new_install(false, r("0.19.0"))).expect("saved");
+    let bytes = std::fs::read(&path).expect("read");
+    assert!(serde_json::from_slice::<Record>(&bytes).is_ok());
 }

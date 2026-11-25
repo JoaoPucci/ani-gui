@@ -65,6 +65,14 @@ fn test_run_version(
     stand_in.and_then(Release::parse)
 }
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_build_counts_at_its_own_release() {
+        assert_eq!(super::built_version().to_string(), crate::VERSION);
+    }
+}
+
 #[cfg(all(test, feature = "test-run-key"))]
 #[path = "version_test.rs"]
 mod version_tests;

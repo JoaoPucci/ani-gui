@@ -6,11 +6,6 @@ use std::ffi::OsStr;
 use super::*;
 
 #[test]
-fn the_build_counts_at_its_own_release() {
-    assert_eq!(built_version().to_string(), crate::VERSION);
-}
-
-#[test]
 fn a_test_run_may_name_a_stand_in() {
     assert_eq!(
         test_run_version(Some(OsStr::new("1")), Some("0.19.0")),
