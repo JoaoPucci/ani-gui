@@ -15,6 +15,9 @@ export class OnboardingTips {
 	 *  the next time its first place settles on its page, whether or not
 	 *  it is pending, and closing it marks nothing seen. */
 	armed = $state<OnboardingTip | null>(null);
+	/** How the armed tip shows: a Debug preview, which looks as it would
+	 *  when offered. */
+	armedAs = $state<'preview'>('preview');
 	#asked: Promise<void> | null = null;
 
 	readonly #fetchTips: () => Promise<OnboardingView>;
@@ -58,6 +61,13 @@ export class OnboardingTips {
 	/** Show `tip` the next time its first place settles on screen. */
 	showNow(tip: OnboardingTip): void {
 		this.armed = tip;
+	}
+
+	/** A tip asked for gave way before it was closed: it is asked for
+	 *  again, as it was. */
+	rearm(tip: OnboardingTip, as: 'preview'): void {
+		this.armed = tip;
+		this.armedAs = as;
 	}
 
 	/** The tip asked for has shown. */

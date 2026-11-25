@@ -128,6 +128,9 @@
 				},
 				onClosed: (seen) => {
 					if (seen) closedThisVisit = true;
+					// A preview that gave way is asked for again, so it never
+					// comes back as the real tip.
+					else if (asked) onboarding.rearm(tip, 'preview');
 					session = null;
 				}
 			});
