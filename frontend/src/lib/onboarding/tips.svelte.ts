@@ -75,7 +75,7 @@ export class OnboardingTips {
 
 	/** Run a feature's walkthrough the next time its first place settles
 	 *  on its page. */
-	showGuide(howTo: OnboardingHowTo): void {
+	showGuide(howTo: OnboardingHowTo, here: string | null = null): void {
 		this.armed = {
 			id: howTo.id,
 			kind: 'sequence',
@@ -87,7 +87,9 @@ export class OnboardingTips {
 			pending: true
 		};
 		this.armedAs = 'guide';
-		this.#guidePage = null;
+		// Asked for on its own page (a feature's Show me how), it keeps to
+		// it; asked for from an entry point, its page is the next one.
+		this.#guidePage = here;
 	}
 
 	/** A page came up on `surface`, at `path`: a walkthrough asked for
