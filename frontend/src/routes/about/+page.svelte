@@ -22,6 +22,19 @@
 	} from '$lib/about/credits';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { APP_VERSION_LABEL as appVersion } from '$lib/version';
+	import { onMount } from 'svelte';
+	import { onboarding } from '$lib/onboarding/tips.svelte';
+	import { stepWords } from '$lib/onboarding/words';
+
+	// The feature tips offered in this version, seen or not, so a tip
+	// closed in passing can be read again here.
+	const newHere = $derived(
+		onboarding.tips.flatMap((t) => {
+			const w = stepWords(t.id, 1);
+			return w ? [{ id: t.id, since: t.since, title: w.title(), body: w.body() }] : [];
+		})
+	);
+	onMount(() => void onboarding.load());
 
 	// Static switches so paraglide compiles each m.* into an actual
 	// callable rather than getting reached by a dynamic indexer (the
@@ -102,6 +115,27 @@
 		</div>
 		<p class="intro">{m.about_intro()}</p>
 	</header>
+
+	{#if newHere.length > 0}
+		<!-- IN THIS VERSION -->
+		<section class="section" data-testid="about-in-this-version">
+			<h2 class="section-eyebrow">
+				<span>{m.about_section_in_this_version_title()}</span>
+				<span class="section-eyebrow-faint">{m.about_section_in_this_version_hint()}</span>
+			</h2>
+			<ul class="credit-list">
+				{#each newHere as item (item.id)}
+					<li class="credit-item">
+						<div class="credit-head">
+							<span class="new-title">{item.title}</span>
+							<span class="credit-license">{item.since}</span>
+						</div>
+						<p class="credit-note">{item.body}</p>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 
 	<!-- DONATE -->
 	<section class="section">
@@ -477,6 +511,13 @@
 		text-decoration: none;
 		border-block-end: 1px solid transparent;
 		transition: border-color var(--dur-fast) var(--ease-out-soft);
+	}
+	/* A tip's title: the credit's voice, without a link's hover. */
+	.new-title {
+		font-family: var(--font-body);
+		font-size: var(--type-body);
+		font-weight: 600;
+		color: var(--bone-100);
 	}
 	.credit-name:hover {
 		border-block-end-color: var(--brand);

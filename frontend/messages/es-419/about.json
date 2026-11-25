@@ -31,5 +31,7 @@
 	"install_download_build_link": "la compilación {version}",
 	"install_download_source_link": "código fuente de {name} {version}",
 	"asset_note_lottie_loading": "Se muestra mientras carga un episodio y en otras esperas.",
-	"asset_name_lottie_loading": "Animación de carga (LottieFiles)"
+	"asset_name_lottie_loading": "Animación de carga (LottieFiles)",
+	"section_in_this_version_title": "En esta versión",
+	"section_in_this_version_hint": "Lo nuevo y dónde encontrarlo"
 }

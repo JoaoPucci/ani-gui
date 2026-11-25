@@ -31,5 +31,7 @@
 	"install_download_build_link": "the {version} build",
 	"install_download_source_link": "{name} {version} source code",
 	"asset_note_lottie_loading": "Plays while an episode loads and during other waits.",
-	"asset_name_lottie_loading": "Loading animation (LottieFiles)"
+	"asset_name_lottie_loading": "Loading animation (LottieFiles)",
+	"section_in_this_version_title": "In this version",
+	"section_in_this_version_hint": "What is new, and where to find it"
 }
