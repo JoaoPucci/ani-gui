@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SETTLE_MS } from './gate';
-import { PlaceWatcher, type WatchDeps } from './watch';
+import { PlaceWatcher, browserWatchDeps, type WatchDeps } from './watch';
 
 /** An IntersectionObserver the test drives by hand. */
 class FakeIO {
@@ -129,5 +129,61 @@ describe('PlaceWatcher', () => {
 		vi.advanceTimersByTime(SETTLE_MS);
 		expect(settled).toEqual([]);
 		expect(io.observed.size).toBe(0);
+	});
+
+	it('a scroll while the place stays in full view starts its settling again', () => {
+		start(['strip']);
+		const el = document.getElementById('strip')!;
+		el.getBoundingClientRect = () => ({ top: 200, bottom: 400, width: 100 }) as DOMRect;
+		io.fire(el, 200, 400);
+		vi.advanceTimersByTime(SETTLE_MS - 100);
+		// No threshold crosses: only the scroll says the page moved.
+		document.dispatchEvent(new Event('scroll'));
+		vi.advanceTimersByTime(SETTLE_MS - 1);
+		expect(settled).toEqual([]);
+		vi.advanceTimersByTime(1);
+		expect(settled).toEqual([['strip']]);
+	});
+
+	it('a scroll that takes the place out of view unsettles it', () => {
+		start(['strip']);
+		const el = document.getElementById('strip')!;
+		io.fire(el, 200, 400);
+		vi.advanceTimersByTime(SETTLE_MS);
+		el.getBoundingClientRect = () => ({ top: -600, bottom: -400, width: 100 }) as DOMRect;
+		document.dispatchEvent(new Event('scroll'));
+		expect(settled).toEqual([['strip'], []]);
+	});
+});
+
+describe('browserWatchDeps', () => {
+	it('reads the top bar and the window, and uses the page’s observer and clock', () => {
+		document.body.innerHTML = '<header class="topbar"></header>';
+		document.querySelector('.topbar')!.getBoundingClientRect = () => ({ bottom: 64 }) as DOMRect;
+		const made: IntersectionObserverInit[] = [];
+		vi.stubGlobal(
+			'IntersectionObserver',
+			class {
+				constructor(_cb: IntersectionObserverCallback, init: IntersectionObserverInit) {
+					made.push(init);
+				}
+			}
+		);
+		const deps = browserWatchDeps(document);
+		expect(deps.viewTop()).toBe(64);
+		expect(deps.viewHeight()).toBe(window.innerHeight);
+		deps.observe(() => {}, { threshold: [0] });
+		expect(made).toEqual([{ threshold: [0] }]);
+		const fn = vi.fn();
+		const t = deps.setTimer(fn, 10);
+		deps.clearTimer(t);
+		vi.advanceTimersByTime(20);
+		expect(fn).not.toHaveBeenCalled();
+		vi.unstubAllGlobals();
+	});
+
+	it('reads no top bar as the window’s top', () => {
+		document.body.innerHTML = '';
+		expect(browserWatchDeps(document).viewTop()).toBe(0);
 	});
 });

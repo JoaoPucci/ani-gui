@@ -207,4 +207,73 @@ describe('SpotlightSession', () => {
 		expect(onClosed).toHaveBeenCalledWith(false);
 		expect(isModalOpen()).toBe(false);
 	});
+
+	it('scrolls a place with no room beside it into room once, then holds the page', () => {
+		const place = document.getElementById('place')!;
+		const s = new SpotlightSession(TIP, place, {
+			doc: document,
+			now: () => clock,
+			markSeen: () => {},
+			onClosed: () => {}
+		});
+		sessions.push(s);
+		const scrolled: number[] = [];
+		const balloon = document.getElementById('balloon')!;
+		const none = {
+			mode: 'anchored',
+			side: 'below',
+			x: 0,
+			y: 0,
+			width: 300,
+			fits: false,
+			arrow: 0
+		} as const;
+		s.placed(none, { h: 180 }, balloon, null, (_el, margin) => scrolled.push(margin));
+		expect(scrolled).toEqual([16 + 180 + 12 + 8]);
+		expect(isModalOpen()).toBe(true);
+		s.placed(none, { h: 180 }, balloon, null, (_el, margin) => scrolled.push(margin));
+		expect(scrolled).toHaveLength(1);
+	});
+
+	it('holds the page at once when the balloon fits beside its place', () => {
+		const place = document.getElementById('place')!;
+		const s = new SpotlightSession(TIP, place, {
+			doc: document,
+			now: () => clock,
+			markSeen: () => {},
+			onClosed: () => {}
+		});
+		sessions.push(s);
+		const scroll = vi.fn();
+		const fits = {
+			mode: 'anchored',
+			side: 'below',
+			x: 0,
+			y: 0,
+			width: 300,
+			fits: true,
+			arrow: 0
+		} as const;
+		s.placed(fits, { h: 180 }, document.getElementById('balloon')!, null, scroll);
+		expect(scroll).not.toHaveBeenCalled();
+		expect(document.activeElement?.id).toBe('got');
+	});
+
+	it('a closed session neither scrolls nor holds', () => {
+		const s = start();
+		s.close('got-it');
+		const scroll = vi.fn();
+		const none = {
+			mode: 'anchored',
+			side: 'below',
+			x: 0,
+			y: 0,
+			width: 300,
+			fits: false,
+			arrow: 0
+		} as const;
+		s.placed(none, { h: 180 }, document.getElementById('balloon')!, null, scroll);
+		expect(scroll).not.toHaveBeenCalled();
+		expect(isModalOpen()).toBe(false);
+	});
 });
