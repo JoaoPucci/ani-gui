@@ -16,7 +16,7 @@
 	import { scrollBehavior } from '$lib/motion/scroll';
 	import Balloon from './Balloon.svelte';
 	import Scrim from './Scrim.svelte';
-	import { arrivingNow, surfaceOf, watchedHere } from './gate';
+	import { armedNow, arrivingNow, surfaceOf, watchedHere } from './gate';
 	import { placeBalloon } from './place';
 	import { litArea, passHoles } from './spotlight';
 	import { SpotlightSession } from './spotlight-session.svelte';
@@ -35,7 +35,12 @@
 	let scrolledFor: SpotlightSession | null = null;
 
 	const surface = $derived(surfaceOf(page.route?.id ?? null));
-	const watched = $derived(watchedHere(onboarding.tips, surface).map((t) => t.places[0]));
+	const watched = $derived([
+		...new Set([
+			...watchedHere(onboarding.tips, surface).map((t) => t.places[0]),
+			...(onboarding.armed?.places.slice(0, 1) ?? [])
+		])
+	]);
 	const words = $derived(session ? stepWords(session.tip.id, 1) : null);
 	const lit = $derived(session ? litArea(session.rect, session.view) : null);
 	const placement = $derived(session && lit && size ? placeBalloon(lit, size, session.view) : null);
@@ -93,27 +98,29 @@
 		});
 	});
 
-	// Show the tip whose place has settled, when none is up.
+	// Show a tip asked for on demand, else the pending tip whose place
+	// has settled, when none is up.
 	$effect(() => {
 		if (session) return;
-		const tip = arrivingNow(onboarding.tips, {
-			surface,
-			fullscreen,
-			modalOpen,
-			closedThisVisit,
-			settled: (p) => settled.has(p)
-		});
+		const screen = { surface, fullscreen, modalOpen, settled: (p: string) => settled.has(p) };
+		const asked = armedNow(onboarding.armed, screen);
+		const tip = asked ?? arrivingNow(onboarding.tips, { ...screen, closedThisVisit });
 		if (!tip || !stepWords(tip.id, 1)) return;
 		const el = placeElement(document, tip.places[0]);
 		if (!el) return;
 		untrack(() => {
+			if (asked) onboarding.disarm();
 			size = null;
 			session = new SpotlightSession(tip, el, {
 				doc: document,
 				now: () => performance.now(),
-				markSeen: (id) => onboarding.markSeen(id),
+				// A tip shown on demand is a preview: it marks nothing seen,
+				// and leaves the visit's one tip to come.
+				markSeen: (id) => {
+					if (!asked) onboarding.markSeen(id);
+				},
 				onClosed: (seen) => {
-					if (seen) closedThisVisit = true;
+					if (seen && !asked) closedThisVisit = true;
 					session = null;
 				}
 			});

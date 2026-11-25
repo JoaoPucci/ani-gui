@@ -11,6 +11,10 @@ import { onboardingSeen, onboardingTips, type OnboardingTip, type OnboardingView
 export class OnboardingTips {
 	/** The answer, or null until it arrives (or when it never did). */
 	view = $state<OnboardingView | null>(null);
+	/** A tip asked for on demand (the Debug page's Show it): it shows
+	 *  the next time its first place settles on its page, whether or not
+	 *  it is pending, and closing it marks nothing seen. */
+	armed = $state<OnboardingTip | null>(null);
 	#asked: Promise<void> | null = null;
 
 	readonly #fetchTips: () => Promise<OnboardingView>;
@@ -41,6 +45,16 @@ export class OnboardingTips {
 		return this.#asked;
 	}
 
+	/** Show `tip` the next time its first place settles on screen. */
+	showNow(tip: OnboardingTip): void {
+		this.armed = tip;
+	}
+
+	/** The tip asked for has shown. */
+	disarm(): void {
+		this.armed = null;
+	}
+
 	/** Ask again on the next load (tests). */
 	forget(): void {
 		this.#asked = null;
@@ -65,5 +79,6 @@ export const onboarding = new OnboardingTips();
 /** Tests only: the session's tips as before the first read. */
 export function __resetOnboardingForTests(): void {
 	onboarding.view = null;
+	onboarding.armed = null;
 	onboarding.forget();
 }

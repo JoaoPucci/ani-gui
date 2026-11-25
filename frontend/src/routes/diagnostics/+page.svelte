@@ -7,7 +7,24 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { beginVisit } from '$lib/navigation/visit';
 	import { resolve } from '$app/paths';
-	import { appInfo, heroWalk, historyClear, historyList, metaCacheClear } from '$lib/api';
+	import {
+		appInfo,
+		heroWalk,
+		historyClear,
+		historyList,
+		metaCacheClear,
+		onboardingDebug,
+		onboardingDebugSeen,
+		type OnboardingDebugTip
+	} from '$lib/api';
+	import {
+		asRunnable,
+		installLabel,
+		readTipKeys,
+		windowLabel,
+		type TipKeysState
+	} from '$lib/diagnostics/tip-keys';
+	import { onboarding } from '$lib/onboarding/tips.svelte';
 	import {
 		createDiagnosticsActions,
 		INITIAL_DIAGNOSTICS,
@@ -88,11 +105,34 @@
 	// $lib/diagnostics/hero-walk. Read once, when the page opens.
 	let heroWalkState = $state<HeroWalkState>({ kind: 'loading' });
 
+	// The feature tips, by key, with this install's state — see
+	// $lib/diagnostics/tip-keys. Read when the page opens, and again
+	// after a seen toggle.
+	let tipKeys = $state<TipKeysState>({ kind: 'loading' });
+	const readTips = () =>
+		readTipKeys(() => onboardingDebug({ signal: reads.signal })).then((s) => {
+			if (!reads.signal.aborted) tipKeys = s;
+		});
+	async function setTipSeen(tip: OnboardingDebugTip, seen: boolean) {
+		try {
+			await onboardingDebugSeen(tip.id, seen);
+		} finally {
+			await readTips();
+		}
+	}
+	const kindLabel = (k: OnboardingDebugTip['kind']) =>
+		k === 'single'
+			? m.diagnostics_tips_kind_single()
+			: k === 'sequence'
+				? m.diagnostics_tips_kind_sequence()
+				: m.diagnostics_tips_kind_entry();
+
 	onMount(() => {
 		void actions.refresh();
 		void readHeroWalk(() => heroWalk({ signal: reads.signal })).then((s) => {
 			if (!reads.signal.aborted) heroWalkState = s;
 		});
+		void readTips();
 	});
 </script>
 
@@ -308,6 +348,62 @@
 					</tbody>
 				</table>
 			{/if}
+		{/if}
+	</section>
+
+	<section data-testid="tip-keys">
+		<h2>{m.diagnostics_section_tips()}</h2>
+		<p>{m.diagnostics_tips_description()}</p>
+		{#if tipKeys.kind === 'loading'}
+			<p>{m.diagnostics_tips_loading()}</p>
+		{:else if tipKeys.kind === 'failed'}
+			<p>{m.diagnostics_tips_failed()}</p>
+		{:else}
+			{@const view = tipKeys.view}
+			<p>
+				{m.diagnostics_tips_version({ version: view.version })}
+				{installLabel(view)}
+			</p>
+			<table class="hero-walk">
+				<thead>
+					<tr>
+						<th scope="col">{m.diagnostics_tips_col_key()}</th>
+						<th scope="col">{m.diagnostics_tips_col_tool()}</th>
+						<th scope="col">{m.diagnostics_tips_col_window()}</th>
+						<th scope="col">{m.diagnostics_tips_col_seen()}</th>
+						<th scope="col">{m.diagnostics_tips_col_show()}</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each view.tips as tip (tip.id)}
+						<tr data-testid="tip-key" data-id={tip.id} data-pending={String(tip.pending)}>
+							<td><code>{tip.id}</code></td>
+							<td>{kindLabel(tip.kind)}</td>
+							<td>{windowLabel(tip)}</td>
+							<td>
+								<label>
+									<input
+										type="checkbox"
+										checked={tip.seen}
+										disabled={tip.on_demand}
+										onchange={(e) => setTipSeen(tip, e.currentTarget.checked)}
+									/>
+									{m.diagnostics_tips_seen()}
+								</label>
+							</td>
+							<td>
+								{#if onboarding.armed?.id === tip.id}
+									<span>{m.diagnostics_tips_waiting()}</span>
+								{:else}
+									<button type="button" onclick={() => onboarding.showNow(asRunnable(tip))}
+										>{m.diagnostics_tips_show()}</button
+									>
+								{/if}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		{/if}
 	</section>
 
