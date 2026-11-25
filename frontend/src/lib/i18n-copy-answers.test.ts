@@ -323,18 +323,18 @@ describe('a retry button has one label per locale', () => {
 describe('the watch order names a parent story apart from the main story', () => {
 	// The franchise page's "Main story" section and the strip's word
 	// for the show a side story comes from are different things: the
-	// parent can itself be a side story. English, Spanish and Russian
-	// name them apart. Brazilian Portuguese keeps "História principal"
-	// for both by choice: "História de origem" reads as the show's
+	// parent can itself be a side story. English and Russian name them
+	// apart. Brazilian Portuguese and Latin American Spanish keep
+	// "História principal" and "Historia principal" for both by choice:
+	// "História de origem" and "Historia de origen" read as the show's
 	// origin, which a parent story is not, and that misleads more than
 	// the shared words do.
 	/** The main story's name made plural, which the plural key must not be. */
 	const MAIN_STORIES: Record<string, string> = {
 		en: 'Main stories',
-		'es-419': 'Historias principales',
 		ru: 'Основные истории'
 	};
-	for (const locale of ['en', 'es-419', 'ru']) {
+	for (const locale of ['en', 'ru']) {
 		it(`${locale} uses different words`, () => {
 			const main = message('watchorder_franchise_main')?.({}, { locale });
 			expect(main).toBeDefined();
@@ -344,14 +344,16 @@ describe('the watch order names a parent story apart from the main story', () =>
 			);
 		});
 	}
-	it('pt-BR names a parent story "História principal"', () => {
-		expect(message('watchorder_strip_word_parent')?.({}, { locale: 'pt-BR' })).toBe(
-			'História principal'
-		);
-		expect(message('watchorder_strip_word_parents')?.({}, { locale: 'pt-BR' })).toBe(
-			'Histórias principais'
-		);
-	});
+	const SHARED: Record<string, [string, string]> = {
+		'pt-BR': ['História principal', 'Histórias principais'],
+		'es-419': ['Historia principal', 'Historias principales']
+	};
+	for (const [locale, [one, many]] of Object.entries(SHARED)) {
+		it(`${locale} names a parent story "${one}"`, () => {
+			expect(message('watchorder_strip_word_parent')?.({}, { locale })).toBe(one);
+			expect(message('watchorder_strip_word_parents')?.({}, { locale })).toBe(many);
+		});
+	}
 });
 
 describe("Russian sets a show's name in guillemets", () => {
