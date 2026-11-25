@@ -860,6 +860,21 @@ seen or not. Each step's words are the renderer's
 holds every declared place to exactly one `data-onboard` mark in the
 renderer's source and every step to its words in every locale.
 
+**The other tools.** A sequence tip lights up to three places on one
+page in turn, with Next, Back and Skip, a "Step 2 of 3" readout and a
+still film strip, the lit area gliding between steps (it jumps with
+reduced motion). Done, Skip or any close ends it as seen, and a step
+whose place is not on the page is left out. An entry tip lights a
+feature's entry point with "Show me how" beside "Got it": "Show me how"
+closes it as seen, asks for the feature's walkthrough (an on-demand
+sequence on the feature's own page) and presses the entry point. A
+walkthrough asked for, by that or by the feature's own "Show me how"
+link (`$lib/onboarding/ShowMeHow.svelte`), says "How it works", names no
+version and marks nothing seen. 0.19.0 declares both tools only as
+on-demand demonstrations on the franchise link and the franchise page,
+which the Debug page's "Show it" starts. No tip offered to users uses
+them.
+
 **Routes.** `GET /api/onboarding` answers the release counted at and the
 tips offered, each with its tool, page, moment, places and whether it is
 pending; `POST /api/onboarding/seen {id}` records a tip closed.
