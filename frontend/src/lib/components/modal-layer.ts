@@ -39,6 +39,9 @@
 
 import { nextInCycle, tabbablesIn } from './focus-cycle';
 import { holdOutside } from './page-inert';
+import { modalsChanged as changed } from './modal-watch';
+
+export { watchModals } from './modal-watch';
 import { leaveHidingFullscreen, stepAside, stepBack } from './top-layer';
 
 export interface ModalOptions {
@@ -64,11 +67,6 @@ interface Layer {
 }
 
 const stack: Layer[] = [];
-const watchers = new Set<() => void>();
-
-function changed(): void {
-	for (const w of [...watchers]) w();
-}
 
 function hold(): void {
 	const layer = top();
@@ -128,13 +126,6 @@ export function isModalOpen(): boolean {
 /** Whether `root` is the topmost modal. */
 export function isTopModal(root: HTMLElement): boolean {
 	return top()?.root === root;
-}
-
-/** Call `listener` whenever a modal opens or closes, until the returned
- *  function is called. */
-export function watchModals(listener: () => void): () => void {
-	watchers.add(listener);
-	return () => watchers.delete(listener);
 }
 
 /** Make `root` the topmost modal on its page. */
