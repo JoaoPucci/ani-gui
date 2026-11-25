@@ -26,6 +26,7 @@
 	} from '$lib/diagnostics/tip-keys';
 	import { onboarding } from '$lib/onboarding/tips.svelte';
 	import { previewable } from '$lib/onboarding/gate';
+	import { stepWords } from '$lib/onboarding/words';
 	import {
 		createDiagnosticsActions,
 		INITIAL_DIAGNOSTICS,
@@ -114,14 +115,14 @@
 		readTipKeys(() => onboardingDebug({ signal: reads.signal })).then((s) => {
 			if (!reads.signal.aborted) tipKeys = s;
 		});
-	// A toggle is held while its change is out. One the backend refuses
+	// Every toggle is held while one change is out. One the backend refuses
 	// goes back and says so, and a list that cannot be read again keeps
 	// the last one read.
-	let tipBusy = $state<string | null>(null);
+	let tipBusy = $state(false);
 	let tipSeenFailed = $state(false);
 	async function setTipSeen(tip: OnboardingDebugTip, box: HTMLInputElement) {
 		const want = box.checked;
-		tipBusy = tip.id;
+		tipBusy = true;
 		tipSeenFailed = false;
 		try {
 			await onboardingDebugSeen(tip.id, want);
@@ -131,7 +132,8 @@
 		}
 		const again = await readTipKeys(() => onboardingDebug({ signal: reads.signal }));
 		if (!reads.signal.aborted && again.kind === 'read') tipKeys = again;
-		tipBusy = null;
+		else tipSeenFailed = true;
+		tipBusy = false;
 	}
 	const kindLabel = (k: OnboardingDebugTip['kind']) =>
 		k === 'single'
@@ -401,7 +403,7 @@
 									<input
 										type="checkbox"
 										checked={tip.seen}
-										disabled={tip.on_demand || tipBusy === tip.id}
+										disabled={tip.on_demand || tipBusy}
 										onchange={(e) => setTipSeen(tip, e.currentTarget)}
 									/>
 									{m.diagnostics_tips_seen()}
@@ -413,7 +415,7 @@
 									<button type="button" onclick={() => onboarding.disarm()}
 										>{m.diagnostics_tips_cancel()}</button
 									>
-								{:else if previewable(tip)}
+								{:else if previewable(tip) && stepWords(tip.id, 1)}
 									<button type="button" onclick={() => onboarding.showNow(asRunnable(tip))}
 										>{m.diagnostics_tips_show()}</button
 									>

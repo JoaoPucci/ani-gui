@@ -86,7 +86,7 @@
 	"start_look_still": "Imagen del episodio con indicador de carga",
 	"start_look_card": "Tarjeta de título",
 	"section_tips": "Consejos de novedades",
-	"tips_description": "Todos los consejos que declara esta versión, por clave. Un consejo marcado como visto no vuelve a aparecer. El botón \"Mostrar\" lo pone en pantalla la próxima vez que su lugar esté visible, sin marcarlo como visto.",
+	"tips_description": "Todos los consejos que declara esta versión, por clave. Un consejo marcado como visto no vuelve a aparecer. El botón “Mostrar” lo pone en pantalla la próxima vez que su lugar esté visible, sin marcarlo como visto.",
 	"tips_loading": "Leyendo los consejos…",
 	"tips_failed": "No se pudieron leer los consejos.",
 	"tips_version": "Períodos de los consejos en la versión {version}.",
