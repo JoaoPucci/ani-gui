@@ -1709,6 +1709,125 @@ export function heroWalk(opts: ReadOptions = {}): Promise<HeroWalkView> {
 	return getJson<HeroWalkView>('/api/home/hero/walk', opts);
 }
 
+/** A feature tip's tool (backend/src/onboarding): one balloon, a short
+ *  sequence, or a balloon on a feature's entry point that offers its
+ *  walkthrough. */
+export const ONBOARDING_KINDS = ['single', 'sequence', 'entry'] as const;
+export type OnboardingKind = (typeof ONBOARDING_KINDS)[number];
+/** The page a tip's places are on; `any` for the app's own chrome. */
+export const ONBOARDING_SURFACES = [
+	'home',
+	'show',
+	'franchise',
+	'settings',
+	'play',
+	'any'
+] as const;
+export type OnboardingSurface = (typeof ONBOARDING_SURFACES)[number];
+/** When a tip may show: when its place is reached and still, or in the
+ *  player while a stream loads. */
+export const ONBOARDING_MOMENTS = ['arrive', 'stream-load'] as const;
+export type OnboardingMoment = (typeof ONBOARDING_MOMENTS)[number];
+
+/** An entry tip's walkthrough: the on-demand sequence it runs, on its
+ *  own page. Its words are named after its id. */
+export interface OnboardingHowTo {
+	id: string;
+	surface: OnboardingSurface;
+	places: string[];
+}
+
+/** A tip offered to this install. Ids and places only: each step's
+ *  words are the renderer's, named after the tip and the step. */
+export interface OnboardingTip {
+	id: string;
+	kind: OnboardingKind;
+	surface: OnboardingSurface;
+	moment: OnboardingMoment;
+	/** The release that shipped its feature. */
+	since: string;
+	/** The `data-onboard` ids its steps point at, in step order. */
+	places: string[];
+	how_to: OnboardingHowTo | null;
+	/** Not seen yet: shown when its moment comes. */
+	pending: boolean;
+}
+
+/** The tips offered at the running release, seen or not, in the
+ *  order they are offered. */
+export interface OnboardingView {
+	version: string;
+	tips: OnboardingTip[];
+}
+
+/** A declared tip with this install's state, for the Debug page. */
+export interface OnboardingDebugTip {
+	id: string;
+	kind: OnboardingKind;
+	surface: OnboardingSurface;
+	moment: OnboardingMoment;
+	since: string;
+	/** The end it declares, if any. */
+	until: string | null;
+	/** This install's window, null when it is not offered at all (on
+	 *  demand, or its flag off): where it opens and the first release
+	 *  past it. */
+	opens: string | null;
+	ends: string | null;
+	flag: string | null;
+	flag_on: boolean;
+	/** The release of the first launch its flag was on in. */
+	flag_on_since: string | null;
+	/** Run only when asked for: never offered, never marked seen. */
+	on_demand: boolean;
+	offered: boolean;
+	seen: boolean;
+	pending: boolean;
+	places: string[];
+	how_to: OnboardingHowTo | null;
+}
+
+/** The Debug page's list of every declared tip. */
+export interface OnboardingDebugView {
+	version: string;
+	/** The release a first-ever install started on; null for an update. */
+	installed_in: string | null;
+	tips: OnboardingDebugTip[];
+}
+
+/** Body of `POST /api/onboarding/seen`. */
+export interface OnboardingSeenBody {
+	id: string;
+}
+
+/** Body of `PUT /api/onboarding/debug/seen`. */
+export interface OnboardingDebugSeenBody {
+	id: string;
+	seen: boolean;
+}
+
+/** The feature tips offered to this install at the running release. */
+export function onboardingTips(opts: ReadOptions = {}): Promise<OnboardingView> {
+	return getJson<OnboardingView>('/api/onboarding', opts);
+}
+
+/** A tip was closed, by any route: it is never pending again. */
+export function onboardingSeen(id: string): Promise<void> {
+	const body: OnboardingSeenBody = { id };
+	return postJson<void>('/api/onboarding/seen', body);
+}
+
+/** Every declared tip with this install's state, for the Debug page. */
+export function onboardingDebug(opts: ReadOptions = {}): Promise<OnboardingDebugView> {
+	return getJson<OnboardingDebugView>('/api/onboarding/debug', opts);
+}
+
+/** The Debug page's seen toggle. */
+export function onboardingDebugSeen(id: string, seen: boolean): Promise<void> {
+	const body: OnboardingDebugSeenBody = { id, seen };
+	return putJson<void>('/api/onboarding/debug/seen', body);
+}
+
 /** Body of `/api/kitsu/by-mal-ids`. */
 export interface KitsuByMalIdsBody {
 	mal_ids: number[];
