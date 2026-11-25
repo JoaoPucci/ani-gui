@@ -179,7 +179,11 @@
 		position: absolute;
 		z-index: 4;
 		inset-inline-end: calc(1.5rem + var(--player-letterbox-x, 0px));
-		inset-block-end: calc(5rem + var(--player-letterbox-y, 0px));
+		/* Clear of the player's controls, whose top row (the volume and
+		   fullscreen buttons, with their focus rings) reaches about 5.4rem
+		   up the frame: at the skip pill's 5rem the card sat over the top
+		   of a focused button's ring. */
+		inset-block-end: calc(6rem + var(--player-letterbox-y, 0px));
 		inline-size: min(22rem, calc(100% - 3rem));
 		padding: var(--space-3);
 		color: var(--bone-100);
@@ -206,6 +210,10 @@
 		background: color-mix(in oklab, var(--accent) 92%, #000);
 	}
 	a.row:focus-visible {
+		/* Lifted above the rows beside it, which its ring reaches into,
+		   so nothing they paint covers it. */
+		position: relative;
+		z-index: 1;
 		outline: 2px solid var(--bone-100);
 		outline-offset: 2px;
 		box-shadow: none;
@@ -241,8 +249,13 @@
 		text-transform: uppercase;
 		color: color-mix(in oklab, var(--bone-100) 75%, transparent);
 	}
+	/* As tall as the dismiss button's corner, and the first way on far
+	   enough below it that the button does not sit over its ring. The
+	   sum holds while the card's padding is --space-3 and the button
+	   sits --space-2 from its top, 1.75rem tall (.up-next, .dismiss). */
 	.list-key {
-		margin: 0 0 var(--space-3);
+		min-block-size: calc(var(--space-2) + 1.75rem - var(--space-3));
+		margin: 0 0 var(--space-4);
 		padding-inline-end: var(--space-6);
 	}
 	/* Three lines: the card is narrow, and the words that tell the
@@ -272,7 +285,8 @@
 	}
 	.dismiss {
 		position: absolute;
-		z-index: 1;
+		/* Over a focused row, which is lifted to keep its ring whole. */
+		z-index: 2;
 		inset-block-start: var(--space-2);
 		inset-inline-end: var(--space-2);
 		display: grid;

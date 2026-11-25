@@ -84,4 +84,36 @@
 		padding: var(--space-7) var(--space-8);
 		color: var(--bone-300);
 	}
+	/* The show page's outline button (routes/anime/[id]), restated: its
+	   styles are scoped to that page. */
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-3) var(--space-5);
+		font-family: var(--font-mono);
+		font-size: var(--type-meta);
+		font-weight: 600;
+		letter-spacing: var(--tracking-micro);
+		text-transform: uppercase;
+		color: var(--bone-100);
+		border: 1px solid var(--ink-300);
+		border-radius: var(--radius-control);
+		transition:
+			color var(--dur-fast) var(--ease-out-soft),
+			background var(--dur-fast) var(--ease-out-soft),
+			border-color var(--dur-fast) var(--ease-out-soft),
+			box-shadow var(--dur-fast) var(--ease-out-soft),
+			transform var(--dur-fast) var(--ease-out-soft);
+	}
+	.btn:hover {
+		transform: translateY(-1px);
+	}
+	.btn-outline {
+		color: var(--bone-100);
+		border-color: var(--bone-300);
+	}
+	.btn-outline:hover {
+		border-color: var(--bone-100);
+	}
 </style>

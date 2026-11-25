@@ -749,4 +749,21 @@
 	.dl-btn-accent:hover:not(:disabled) {
 		background: color-mix(in oklab, var(--brand) 80%, var(--bone-100));
 	}
+	/* A forced-colours theme (a Windows contrast theme) turns every
+	   background into its canvas colour, so a state shown by a fill
+	   would vanish: there the fill takes the theme's own colours. */
+	@media (forced-colors: active) {
+		.dl-mode-btn.active {
+			forced-color-adjust: none;
+			background: Highlight;
+			color: HighlightText;
+			border-color: Highlight;
+		}
+		/* Named as the count's own colour rule names it, which would
+		   otherwise outrank a bare descendant here and keep the accent. */
+		.dl-mode-btn.active *,
+		.dl-mode-btn.active .dl-mode-num {
+			color: HighlightText;
+		}
+	}
 </style>

@@ -175,4 +175,20 @@
 		inset-inline-start: 116px;
 		inline-size: 12rem;
 	}
+	/* A forced-colours theme (a Windows contrast theme) paints every
+	   fill in its canvas colour and every border in its text colour:
+	   the outline's lines, drawn as fills, would vanish, and its
+	   borders turn loud. There every part draws a line in the theme's
+	   grey text colour, quiet as the outline is. */
+	@media (forced-colors: active) {
+		.sk,
+		.sk.rule,
+		.sk.foot {
+			border-color: GrayText;
+		}
+		.sk.line,
+		.sk.key {
+			border: 1px solid GrayText;
+		}
+	}
 </style>

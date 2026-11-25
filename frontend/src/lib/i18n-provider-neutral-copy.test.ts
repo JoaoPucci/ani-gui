@@ -30,6 +30,7 @@ const DETAIL = new Map<string, Record<string, string>>(
 /** The detail-page keys that describe the streaming catalogue. */
 const CATALOGUE_KEYS = [
 	'ep_disabled_tooltip',
+	'ep_not_listed',
 	'ep_recheck_busy',
 	'ep_recheck_idle',
 	'ep_recheck_still_gated',

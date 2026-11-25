@@ -1273,4 +1273,14 @@
 	.line.w-70 {
 		inline-size: 70%;
 	}
+	/* A forced-colours theme (a Windows contrast theme) paints every
+	   fill in its canvas colour, and a placeholder drawn by fills alone
+	   would leave the page looking empty while it loads. There each
+	   part draws its outline in the theme's grey text colour instead. */
+	@media (forced-colors: active) {
+		.card-skeleton .poster-skeleton,
+		.line-skeleton {
+			border: 1px solid GrayText;
+		}
+	}
 </style>

@@ -10,6 +10,7 @@
 	"ep_recheck_busy": "Verificando disponibilidade…",
 	"ep_recheck_failed": "Não foi possível verificar agora. Tente de novo em instantes.",
 	"ep_recheck_idle": "Ainda não está no catálogo de streaming. Clique para verificar de novo.",
+	"ep_not_listed": "Ainda não listado",
 	"ep_recheck_still_gated": "Ainda não está no catálogo de streaming.",
 	"ep_unaired": "Não exibido",
 	"ep_unaired_recheck_busy": "Verificando a programação…",

@@ -429,6 +429,13 @@
 	.story-row:hover {
 		background: var(--ink-050);
 	}
+	/* Its ring reaches past the row into the next one, which is painted
+	   after it: a focused row is lifted above its neighbours, so the
+	   next row's fill (the row being watched, or one under the mouse)
+	   does not cover it. */
+	.story-row:focus-visible {
+		z-index: 1;
+	}
 	.story-row.compact {
 		grid-template-columns: 3rem minmax(0, 1fr) 9rem;
 	}

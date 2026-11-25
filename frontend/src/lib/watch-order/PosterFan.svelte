@@ -92,11 +92,12 @@
 		inline-size: var(--card);
 		aspect-ratio: var(--poster-aspect);
 		overflow: hidden;
+		/* The dark keyline that parts one card from the next, drawn as the
+		   card's border (it is dropped while the link is focused, below). */
+		border: 1px solid var(--ink-000);
 		border-radius: 4px;
 		background: var(--ink-200);
-		box-shadow:
-			0 0 0 1px var(--ink-000),
-			var(--shadow-card-rest);
+		box-shadow: var(--shadow-card-rest);
 		transform-origin: 50% calc(100% + var(--radius));
 		transform: translateY(var(--rest-y)) rotate(calc(var(--rest-r) * var(--flip)));
 		/* Back to rest without overshoot; out with the card easing's. */
@@ -113,9 +114,12 @@
 	}
 	:global([data-fan-host]:hover) .fan-card:not(.blank),
 	:global([data-fan-host]:focus-visible) .fan-card:not(.blank) {
-		box-shadow:
-			0 0 0 1px var(--ink-000),
-			var(--shadow-card-hover);
+		box-shadow: var(--shadow-card-hover);
+	}
+	/* Focused, the link carries the focus ring: the cards drop their
+	   keyline, which drew a ring around every card inside it. */
+	:global([data-fan-host]:focus-visible) .fan-card {
+		border-color: transparent;
 	}
 	/* No poster anywhere in the franchise: blank frames, the front one
 	   carrying the entry count in the numeral motif. */
@@ -123,9 +127,7 @@
 		display: grid;
 		place-items: center;
 		background: var(--ink-200);
-		box-shadow:
-			inset 0 0 0 1px var(--ink-300),
-			0 0 0 1px var(--ink-000);
+		box-shadow: inset 0 0 0 1px var(--ink-300);
 	}
 	.blank-count {
 		font-family: var(--font-mono);

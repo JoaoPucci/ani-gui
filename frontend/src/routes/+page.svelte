@@ -2675,11 +2675,16 @@
 		transition: box-shadow var(--dur-fast) var(--ease-out-soft);
 	}
 	.resume-card:hover .resume-poster {
-		/* Hover halo replaces the old border-tint cue. Accent-tinted
-		   box-shadow lifts the thumb without adding a 1px ring. */
+		/* Hover halo replaces the old border-tint cue: an accent-tinted
+		   shadow that lifts the thumb, and a 1px accent keyline. */
 		box-shadow:
 			0 12px 28px -8px color-mix(in oklab, var(--accent) 38%, transparent),
 			0 0 0 1px color-mix(in oklab, var(--accent) 60%, transparent);
+	}
+	/* A card the keyboard focused carries the app's ring: under the mouse
+	   its thumb keeps the halo and drops the keyline, a second ring. */
+	.resume-card:focus-visible:hover .resume-poster {
+		box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--accent) 38%, transparent);
 	}
 	/* Bottom scrim under the frame-number — keeps the oversized "EP 24"
 	   readable against any thumbnail without painting a chip. */
@@ -2959,5 +2964,32 @@
 	}
 	.line.w-70 {
 		inline-size: 70%;
+	}
+	/* A forced-colours theme (a Windows contrast theme) turns every
+	   background into its canvas colour, so a state shown by a fill
+	   would vanish: there the fill takes the theme's own colours. */
+	@media (forced-colors: active) {
+		.hero-pager-track {
+			forced-color-adjust: none;
+			background: GrayText;
+		}
+		.hero-pager-dot:hover .hero-pager-track {
+			background: CanvasText;
+		}
+		.hero-pager-dot.active .hero-pager-track {
+			background: Highlight;
+		}
+	}
+	/* A forced-colours theme (a Windows contrast theme) paints every
+	   fill in its canvas colour, and a placeholder drawn by fills alone
+	   would leave the page looking empty while it loads. There each
+	   part draws its outline in the theme's grey text colour instead. */
+	@media (forced-colors: active) {
+		.hero-skel-img,
+		.line-skel,
+		.look-skeleton,
+		.resume-line-skeleton::before {
+			border: 1px solid GrayText;
+		}
 	}
 </style>

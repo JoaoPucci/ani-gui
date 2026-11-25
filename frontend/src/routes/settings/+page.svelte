@@ -1301,11 +1301,14 @@
 		box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 60%, transparent);
 	}
 	/* A forced-colours theme drops the track's shadow, and the field
-	   that takes focus is transparent: the track draws an outline. */
+	   that takes focus is transparent: the track draws an outline. A
+	   checked track opts out of the theme (below), which would bring
+	   the shadow back in the accent, so none is drawn. */
 	@media (forced-colors: active) {
 		.switch input:focus-visible + .switch-track {
 			outline: var(--ring-forced, 2px solid CanvasText);
 			outline-offset: var(--ring-forced-offset, 2px);
+			box-shadow: none;
 		}
 	}
 	.switch-state {
@@ -1314,5 +1317,45 @@
 		letter-spacing: var(--tracking-micro);
 		text-transform: uppercase;
 		color: var(--bone-300);
+	}
+	/* A forced-colours theme (a Windows contrast theme) turns every
+	   background into its canvas colour, so a state shown by a fill
+	   would vanish: there the fill takes the theme's own colours. */
+	@media (forced-colors: active) {
+		.switch-track {
+			border: 1px solid CanvasText;
+		}
+		.switch-thumb {
+			forced-color-adjust: none;
+			background: CanvasText;
+		}
+		.switch input:checked + .switch-track {
+			forced-color-adjust: none;
+			background: Highlight;
+			border-color: Highlight;
+		}
+		.switch input:checked + .switch-track .switch-thumb {
+			background: HighlightText;
+		}
+		/* Where it sat before, 1px inside the track's border. */
+		.switch-thumb {
+			inset-block-start: 1px;
+			inset-inline-start: 1px;
+		}
+		.switch input:checked + .switch-track .switch-thumb {
+			inset-inline-start: calc(2.5rem - (1.375rem - 4px) - 3px);
+		}
+		.seg-btn.active {
+			forced-color-adjust: none;
+			background: Highlight;
+			color: HighlightText;
+			border-color: Highlight;
+		}
+		/* Its keyboard ring is drawn in the app's colours, which the
+		   opt-out would bring back; the theme's own outline shows
+		   focus (tokens.css). */
+		.seg-btn.active:focus-visible {
+			box-shadow: none;
+		}
 	}
 </style>

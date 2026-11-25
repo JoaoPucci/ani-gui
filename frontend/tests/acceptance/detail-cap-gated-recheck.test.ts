@@ -403,6 +403,14 @@ describe('detail route — clicking a dimmed aired episode', () => {
 			() => tile(AIRED)?.getAttribute('title') === m.detail_ep_recheck_idle(),
 			`episode ${AIRED} gated by the sub count`
 		);
+		// Said in words in its tile, not only by its dimming; a listed
+		// episode is not.
+		expect(tile(AIRED)?.querySelector('.ep-meta')?.textContent?.trim()).toBe(
+			m.detail_ep_not_listed()
+		);
+		expect(tile(1)?.querySelector('.ep-meta')?.textContent?.trim()).not.toBe(
+			m.detail_ep_not_listed()
+		);
 
 		audio('DUB').click();
 		await until(() => ordinary.includes('dub'), 'the dub lookup');

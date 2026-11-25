@@ -74,6 +74,7 @@
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
 	import { airedCap, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
+	import { tileMeta } from '$lib/detail/tile-meta';
 	import {
 		capGateAnswerFrom,
 		createCapGateProbe,
@@ -4914,6 +4915,12 @@
 							{@const epThumb = imageProxyUrl(ep.thumbnail?.original ?? null)}
 							{@const air = epAirState(n, airing)}
 							{@const capGated = !air.unaired && beyondPlayable(n, playableEpisodeCount)}
+							{@const meta = tileMeta({
+								unaired: air.unaired,
+								hasThumb: Boolean(epThumb),
+								notListed: capGated && showListed !== false,
+								length: ep.length ?? null
+							})}
 							<!-- in: only, no out:. With a 5-col grid, simultaneously
 						     mounting outgoing + incoming cards wraps to two
 						     rows for ~320ms during a page change, pushing the
@@ -4977,14 +4984,16 @@
 											<span class="ep-card-foot-num"
 												>{m.play_episode_card_num({ episode: String(n) })}</span
 											>
-											{#if air.unaired && epThumb}
-												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
+											<!-- The dot travels with the words, so when they move
+											     under the number it does not stay behind on its line. -->
+											{#if meta?.kind === 'unaired' && air.unaired}
 												<span class="ep-card-foot-len">{unairedLabel(air.airsAt)}</span>
-											{:else if !air.unaired && ep.length}
-												<span class="ep-card-foot-dot" aria-hidden="true">·</span>
+											{:else if meta?.kind === 'not-listed'}
+												<span class="ep-card-foot-len">{m.detail_ep_not_listed()}</span>
+											{:else if meta?.kind === 'length'}
 												<span class="ep-card-foot-len"
 													>{m.play_episode_card_length_minutes({
-														minutes: String(ep.length)
+														minutes: String(meta.minutes)
 													})}</span
 												>
 											{/if}
@@ -6587,6 +6596,14 @@
 			0 0 0 2px var(--accent),
 			0 14px 36px -6px color-mix(in oklab, var(--accent) 55%, transparent);
 	}
+	/* A card the keyboard focused carries the app's ring: the current or
+	   jumped-to card's thumb keeps its glow and drops its own accent
+	   ring, a second one around the same tile. (With motion on, the
+	   jump's two pulses still ring the thumb while they run.) */
+	.ep-card-current:focus-visible .ep-card-thumb,
+	.ep-row > li.ep-highlight .ep-card:focus-visible .ep-card-thumb {
+		box-shadow: 0 14px 36px -6px color-mix(in oklab, var(--accent) 55%, transparent);
+	}
 	.ep-card-thumb img {
 		position: absolute;
 		inset: 0;
@@ -6690,9 +6707,16 @@
 		padding: var(--space-2) var(--space-2) 0;
 	}
 	.ep-card-foot-row {
-		display: inline-flex;
+		/* A card is narrow at the smallest window (five to a row): the
+		   number keeps its line, and the length or the words beside it
+		   move under it and wrap between words when they do not fit,
+		   inside the card. */
+		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
-		gap: var(--space-2);
+		column-gap: var(--space-2);
+		row-gap: 0;
+		min-inline-size: 0;
 		font-family: var(--font-body);
 		font-size: 0.6875rem; /* 11px */
 		font-weight: 600;
@@ -6702,11 +6726,18 @@
 	}
 	.ep-card-foot-num {
 		font-variant-numeric: tabular-nums lining-nums;
+		white-space: nowrap;
 	}
-	.ep-card-foot-dot {
+	/* The dot before the length or the words, drawn with them so it
+	   moves under the number with them; not read out. */
+	.ep-card-foot-len::before {
+		content: '·' / '';
+		margin-inline-end: var(--space-2);
+		font-family: var(--font-body);
 		color: color-mix(in oklab, var(--bone-100) 24%, transparent);
 	}
 	.ep-card-foot-len {
+		min-inline-size: 0;
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		letter-spacing: 0;
@@ -6817,6 +6848,24 @@
 				0 4px 14px color-mix(in oklab, var(--accent) 50%, transparent),
 				0 1px 2px rgb(0 0 0 / 0.4),
 				0 0 0 6px color-mix(in oklab, var(--accent) 0%, transparent);
+		}
+	}
+	/* A forced-colours theme (a Windows contrast theme) turns every
+	   background into its canvas colour, so a state shown by a fill
+	   would vanish: there the fill takes the theme's own colours. */
+	@media (forced-colors: active) {
+		.pc-volume-fill,
+		.pc-scrubber-fill {
+			forced-color-adjust: none;
+			background: Highlight;
+		}
+		.pc-volume-thumb,
+		.pc-scrubber-thumb {
+			forced-color-adjust: none;
+			background: CanvasText;
+			/* The timeline's thumb rests on a shadow, which the opt-out
+			   would bring back. */
+			box-shadow: none;
 		}
 	}
 </style>
