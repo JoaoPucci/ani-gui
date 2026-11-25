@@ -120,13 +120,19 @@ describe('OnboardingTips', () => {
 			vi.fn(async () => {})
 		);
 		store.showGuide({ id: 'g', surface: 'franchise', places: ['x'] });
-		store.pageChanged('franchise');
+		store.pageChanged('franchise', '/anime/1/franchise');
 		expect(store.armed?.id).toBe('g');
-		store.pageChanged('show');
+		store.pageChanged('show', '/anime/1');
+		expect(store.armed).toBeNull();
+		// Its own page came and went with no walkthrough: another page of
+		// the same kind does not get it.
+		store.showGuide({ id: 'g', surface: 'franchise', places: ['x'] });
+		store.pageChanged('franchise', '/anime/1/franchise');
+		store.pageChanged('franchise', '/anime/2/franchise');
 		expect(store.armed).toBeNull();
 		// A preview from the Debug page waits through other pages.
 		store.showNow(tip('a', false));
-		store.pageChanged('other');
+		store.pageChanged('other', '/diagnostics');
 		expect(store.armed?.id).toBe('a');
 	});
 
