@@ -38,9 +38,10 @@
  * the answer it waits for: Home's banner, its rows' cards and a
  * Continue card; the search's results; a show's banner, title, actions
  * (above Sub/Dub), episodes and watch-order strip; the loading overlay
- * a play raises; and the player's start veil. Each part of one draws a
- * line in a system colour, and the placeholder pictured with its parts
- * and without them differs. A state shown by text
+ * a play raises; and the player's start veil. Each is pictured with its
+ * parts and without them, and the two must differ; each part but the
+ * overlay's animation, which is a picture the theme leaves alone, also
+ * draws a line in a system colour. A state shown by text
  * as well (a switch's On/Off label) is still pictured without that
  * text: the control itself must show it. Where a control opts out of
  * the theme's colours, the spec also reads that what it draws stays in
@@ -1041,7 +1042,10 @@ test('every loading placeholder stays visible in a forced-colours theme', async 
 
 /** A server for the captions media fixture (see player-start.spec.ts).
  *  Its fragments are held back until `release`, so the player's start
- *  veil stays up to be pictured. */
+ *  veil stays up to be pictured. Not for long: the player gives a
+ *  fragment 10 s to start and retries it once
+ *  ($lib/play/hls-load-policy), so a hold past about 20 s fails the
+ *  stream. */
 async function mediaServer(): Promise<{ origin: string; close: () => void; release: () => void }> {
 	let release: () => void = () => {};
 	const released = new Promise<void>((r) => {
@@ -1119,6 +1123,11 @@ test("the player's timeline and volume keep their fill in a forced-colours theme
 			const strip = page.locator('.start-veil .strip');
 			await expect.poll(() => computed(strip, 'opacity'), { timeout: 15_000 }).toBe('1');
 			await placeholderShows(page, "the player's start veil", strip, [{ sel: '.cell' }]);
+			// Still the start, so the pictures were of it.
+			await expect(page.locator('section.player-frame')).toHaveAttribute(
+				'data-start-veil',
+				'start'
+			);
 			media.release();
 			const scrubber = page.locator('.pc-scrubber');
 			await expect(scrubber).toBeVisible({ timeout: 30_000 });
