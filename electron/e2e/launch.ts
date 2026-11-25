@@ -142,19 +142,23 @@ export function removeAfterExit(dir: string): void {
  *  `flagsFile` is the test run's flags file (`ANI_GUI_TEST_FLAGS_FILE`,
  *  which flags-file.ts writes) and the only way to name one: a value in
  *  `env`, inherited from the shell that runs the suite or not, is
- *  dropped, so a launch without it runs with the defaults. */
+ *  dropped, so a launch without it runs with the defaults.
+ *  `onboardingVersion` is, the same way, the only way to name the
+ *  release the backend counts the feature tips at. */
 export async function launchPackagedApp(
 	env: NonNullable<Parameters<typeof _electron.launch>[0]>['env'],
 	{
 		binary = packagedBinary,
 		profile,
 		flagsFile,
+		onboardingVersion,
 		switches = [],
 		cwd
 	}: {
 		binary?: string;
 		profile?: string;
 		flagsFile?: string;
+		onboardingVersion?: string;
 		switches?: readonly string[];
 		/** The directory the app is started in; the runner's own when unset. */
 		cwd?: string;
@@ -178,7 +182,7 @@ export async function launchPackagedApp(
 		app = await _electron.launch({
 			executablePath: binary,
 			args: [...testLaunchSwitches, ...switches],
-			env: appEnv(env, { proxyOrigin: proxy.origin, flagsFile }),
+			env: appEnv(env, { proxyOrigin: proxy.origin, flagsFile, onboardingVersion }),
 			cwd
 		});
 	} catch (err) {

@@ -31,5 +31,7 @@
 	"install_download_build_link": "сборка {version}",
 	"install_download_source_link": "исходный код {name} {version}",
 	"asset_note_lottie_loading": "Показывается, пока загружается эпизод, и при других ожиданиях.",
-	"asset_name_lottie_loading": "Анимация загрузки (LottieFiles)"
+	"asset_name_lottie_loading": "Анимация загрузки (LottieFiles)",
+	"section_in_this_version_title": "В этой версии",
+	"section_in_this_version_hint": "Что нового и где это найти"
 }

@@ -84,7 +84,7 @@
 {/snippet}
 
 <section class="trio" style:--accent={accentFor(id)} aria-labelledby="{headingId}-h">
-	<div class="band">
+	<div class="band" data-onboard="watch-order-strip">
 		<h2 class="eyebrow" id="{headingId}-h">
 			<span class="eyebrow-key">{m.watchorder_strip_eyebrow()}</span>
 			{#if model.outside}
