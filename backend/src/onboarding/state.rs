@@ -5,7 +5,8 @@
 //!
 //! It holds which tips were seen, the release a first-ever install
 //! started on, whether that install's baseline is still to be taken,
-//! and the release of the first launch each tip's flag was on in.
+//! and the release of the first read of the tips with each tip's flag
+//! on.
 //! Nothing in it leaves the machine, and nothing records whether a
 //! tip was read: only that it was closed.
 //!
@@ -15,7 +16,10 @@
 //! from the profile, before anything writes it ([`profile_existed`]):
 //! a watch history, a metadata cache or a settings file means the app
 //! ran here before. [`boot`] then writes the record at once, so the
-//! answer outlives a launch that ends before any tip is asked for.
+//! answer outlives a launch that ends before any tip is asked for. A
+//! profile whose cache was deleted, with no history and no settings
+//! ever saved, reads as new: nothing else it leaves tells the two apart,
+//! and the cost is tips not shown.
 //!
 //! **Reading it.** No file reads as an update's empty record, and so
 //! does a file that cannot be read or parsed: a corrupt record must not
@@ -41,13 +45,13 @@ pub struct Record {
     /// a profile an earlier release had already used.
     pub installed_in: Option<Release>,
     /// A first-ever install whose baseline (every tip offered then,
-    /// marked seen) is still to be taken. Taken with the launch's
-    /// flags, on the first read after they settle.
+    /// marked seen) is still to be taken: on the first read of the
+    /// tips, under that launch's flags.
     pub baseline_pending: bool,
     /// The tips seen, by id.
     pub seen: BTreeSet<String>,
-    /// Per flag a tip names, the release of the first launch on which
-    /// this install had it on.
+    /// Per flag a tip names, the release of the first read of the tips
+    /// with it on.
     pub flag_on_since: BTreeMap<String, Release>,
 }
 
@@ -63,7 +67,7 @@ impl Record {
         }
     }
 
-    /// The release of the first launch `flag` was on in, if any was.
+    /// The release of the first read of the tips with `flag` on, if any.
     #[must_use]
     pub fn flag_on_since(&self, flag: &str) -> Option<Release> {
         self.flag_on_since.get(flag).copied()
@@ -109,8 +113,8 @@ pub fn load(path: &Path) -> Loaded {
     }
 }
 
-/// Write `record` to `path`: to a temporary file beside it, renamed
-/// over it.
+/// Write `record` to `path`: to a temporary file beside it, synced to
+/// disk, then renamed over it.
 ///
 /// # Errors
 /// The I/O error that stopped the write.
@@ -120,7 +124,12 @@ pub fn save(path: &Path, record: &Record) -> std::io::Result<()> {
     }
     let bytes = serde_json::to_vec_pretty(record).map_err(std::io::Error::other)?;
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, bytes)?;
+    let mut file = std::fs::File::create(&tmp)?;
+    std::io::Write::write_all(&mut file, &bytes)?;
+    // On disk before the rename, so a power cut leaves either record
+    // whole, not an empty one.
+    file.sync_all()?;
+    drop(file);
     std::fs::rename(&tmp, path)
 }
 

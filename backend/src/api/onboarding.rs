@@ -6,9 +6,9 @@
 //! - `POST /api/onboarding/seen` `{id}` → 204: the tip was closed, by
 //!   any route; it is never pending again.
 //! - `GET /api/onboarding/debug` → [`DebugView`]: every declared tip
-//!   with this install's state, for the Debug page.
-//! - `PUT /api/onboarding/debug/seen` `{id, seen}` → 204: the Debug
-//!   page's seen toggle.
+//!   with this install's state, for a debug list.
+//! - `PUT /api/onboarding/debug/seen` `{id, seen}` → 204: the
+//!   seen toggle for that list.
 //!
 //! Each route first takes this launch into the record
 //! ([`eligibility::sync`]) under the launch's flags, once they have

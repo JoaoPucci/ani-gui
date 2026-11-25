@@ -10,14 +10,15 @@
 //!   and 0.20.x and gone from 0.21.0.
 //! - **A flagged feature counts from its flag.** Its tip is offered
 //!   only while the flag is on, and its window counts from the release
-//!   of the first launch on which this install had the flag on
-//!   ([`Record::flag_on_since`]), with the declared end as a hard limit.
+//!   of the first read of the tips with the flag on
+//!   ([`Record::flag_on_since`]; the renderer reads them at every
+//!   launch), with the declared end as a hard limit.
 //!   Counted from the release that shipped the code, a flag turned on
 //!   late would leave the tip no window at all.
 //! - **Seen is forever.** A tip seen is never pending again.
 //! - **A first-ever install has nothing new to be shown.** The first
-//!   launch the record knows of ([`Record::baseline_pending`]) marks
-//!   seen every tip offered then, so later releases still introduce
+//!   read of the tips after a first-ever launch
+//!   ([`Record::baseline_pending`]) marks seen every tip offered then, so later releases still introduce
 //!   their own features. A flagged tip whose flag is off then is left
 //!   alone: when the flag comes on, the feature is new to that install
 //!   too.
@@ -29,7 +30,8 @@ use super::state::Record;
 
 /// The release a tip's window opens at for this install, and the first
 /// release past it; `None` when the tip is not offered to this install
-/// at all (on demand, or its flag off).
+/// at all (on demand, its flag off, or its flag first on at or after
+/// its declared end).
 #[must_use]
 pub fn window(
     tip: &TipDecl,
@@ -53,7 +55,8 @@ pub fn window(
     let opens = tip.since.max(on_since);
     let counted = opens.plus_minors(OFFERED_MINORS);
     let end = tip.until.map_or(counted, |hard| hard.min(counted));
-    Some((opens, end))
+    // A flag first on at or after the hard end leaves no window.
+    (opens < end).then_some((opens, end))
 }
 
 /// Whether `current` is inside the tip's window for this install.

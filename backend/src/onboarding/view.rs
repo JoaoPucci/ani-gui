@@ -1,5 +1,5 @@
 //! What the routes send: the tips offered to this install, and the
-//! Debug page's list of every declared tip with its state. Ids, kinds,
+//! list of every declared tip with its state. Ids, kinds,
 //! pages, places and release numbers only: the words are the
 //! renderer's (AGENTS.md §4).
 
@@ -39,13 +39,13 @@ pub struct TipView {
     pub places: Vec<String>,
     /// An entry tip's walkthrough.
     pub how_to: Option<HowToView>,
-    /// Not yet seen: the renderer shows it when its moment comes.
+    /// Offered and not yet seen.
     pub pending: bool,
 }
 
 /// `GET /api/onboarding`: the release the windows were counted at, and
-/// every tip offered at it, seen or not, in declared order. The About
-/// page lists them all; the renderer shows those still pending.
+/// every tip offered at it, seen or not, in declared order, each saying
+/// whether it is still pending.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OnboardingView {
     /// The release the windows were counted at.
@@ -54,7 +54,7 @@ pub struct OnboardingView {
     pub tips: Vec<TipView>,
 }
 
-/// A declared tip as the Debug page lists it.
+/// A declared tip, as the debug route lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DebugTip {
     /// The tip's id.
@@ -71,7 +71,7 @@ pub struct DebugTip {
     pub until: Option<Release>,
     /// This install's window: where it opens and the first release past
     /// it. `None` for an on-demand tip, and for a flagged one with its
-    /// flag off.
+    /// flag off or first on at or after its declared end.
     pub opens: Option<Release>,
     /// See [`Self::opens`].
     pub ends: Option<Release>,
@@ -79,7 +79,7 @@ pub struct DebugTip {
     pub flag: Option<String>,
     /// Whether that flag is on for this launch.
     pub flag_on: bool,
-    /// The release of the first launch it was on in, if any.
+    /// The release of the first read of the tips with it on, if any.
     pub flag_on_since: Option<Release>,
     /// Run only on demand.
     pub on_demand: bool,

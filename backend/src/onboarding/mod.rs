@@ -12,10 +12,10 @@
 //!   detection;
 //! - [`view`] — what the routes send.
 //!
-//! The backend decides which tips are pending and records them seen;
-//! the renderer decides when a pending tip's place is on screen,
-//! draws it, and holds its words (`GET /api/onboarding`, in
-//! `crate::api`). Only ids, kinds, pages and places cross: never words.
+//! The backend decides which tips are pending and records them seen
+//! (`GET /api/onboarding`, in `crate::api`). When a pending tip shows,
+//! and its words, are the renderer's: only ids, kinds, pages and places
+//! cross.
 
 pub mod decl;
 pub mod eligibility;
