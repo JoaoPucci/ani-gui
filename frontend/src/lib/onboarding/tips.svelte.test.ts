@@ -55,4 +55,15 @@ describe('OnboardingTips', () => {
 		await Promise.resolve();
 		expect(store.tips.find((t) => t.id === 'a')?.pending).toBe(false);
 	});
+
+	it('arms a tip asked for on demand until it shows', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.showNow(tip('a', false));
+		expect(store.armed?.id).toBe('a');
+		store.disarm();
+		expect(store.armed).toBeNull();
+	});
 });

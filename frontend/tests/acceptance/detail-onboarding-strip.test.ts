@@ -33,7 +33,7 @@ vi.mock('$app/navigation', () => ({
 
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import OnboardHost from '../../src/lib/onboarding/OnboardHost.svelte';
-import { __resetOnboardingForTests } from '../../src/lib/onboarding/tips.svelte';
+import { onboarding, __resetOnboardingForTests } from '../../src/lib/onboarding/tips.svelte';
 import { isModalOpen } from '../../src/lib/components/modal-layer';
 import {
 	__resetApiBaseForTests,
@@ -296,5 +296,17 @@ describe('detail route — the strip’s feature tip', () => {
 		await new Promise((r) => setTimeout(r, 900));
 		expect(balloon()).toBeNull();
 		expect(isModalOpen()).toBe(false);
+	});
+
+	it('a tip asked for from the Debug page shows though seen, and marks nothing seen', async () => {
+		useShow(false);
+		onboarding.showNow({ ...tips(false).tips[0], pending: true });
+		mountPage();
+		await shown();
+		expect(onboarding.armed).toBeNull();
+		gotIt()!.click();
+		await until(() => balloon() === null, 'closed');
+		await new Promise((r) => setTimeout(r, 100));
+		expect(seen).toEqual([]);
 	});
 });
