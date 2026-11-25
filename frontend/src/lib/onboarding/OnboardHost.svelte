@@ -106,7 +106,7 @@
 		untrack(() => {
 			session?.close('yield');
 			closedThisVisit = false;
-			onboarding.pageChanged(surface);
+			onboarding.pageChanged(surface, page.url.pathname);
 		});
 	});
 
@@ -121,7 +121,8 @@
 		const found = foundSteps(tip.places, (p) => placeElement(document, p));
 		if (found[0]?.n !== 1) return;
 		untrack(() => {
-			shownAs = asked ? onboarding.armedAs : 'tip';
+			const askedAs = onboarding.armedAs;
+			shownAs = asked ? askedAs : 'tip';
 			if (asked) onboarding.disarm();
 			size = null;
 			session = new SpotlightSession(
@@ -138,6 +139,9 @@
 					},
 					onClosed: (seen) => {
 						if (seen) closedThisVisit = true;
+						// A tip asked for that gave way is asked for again, as
+						// it was, so it never comes back as the real tip.
+						else if (asked) onboarding.rearm(tip, askedAs);
 						session = null;
 					}
 				},
