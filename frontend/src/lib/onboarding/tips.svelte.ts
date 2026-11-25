@@ -45,6 +45,16 @@ export class OnboardingTips {
 		return this.#asked;
 	}
 
+	/** A seen state set elsewhere (the Debug page's toggle): the session
+	 *  takes it, sending nothing. */
+	seenHere(id: string, seen: boolean): void {
+		if (!this.view) return;
+		this.view = {
+			...this.view,
+			tips: this.view.tips.map((t) => (t.id === id ? { ...t, pending: !seen } : t))
+		};
+	}
+
 	/** Show `tip` the next time its first place settles on screen. */
 	showNow(tip: OnboardingTip): void {
 		this.armed = tip;
