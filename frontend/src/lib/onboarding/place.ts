@@ -25,6 +25,8 @@ export interface Placement {
 
 const GUTTER = 16;
 const GAP = 12;
+/** The lit area stands this far around its place (spotlight.ts PAD). */
+const LIT_PAD = 8;
 /** Narrower than this, the balloon is a sheet along the bottom. */
 export const SHEET_BELOW = 560;
 
@@ -81,4 +83,12 @@ export function placeBalloon(
 	// No side has room: over the place, inside the window. The caller
 	// scrolls the place into room and asks again.
 	return across(clamp(below, minY, maxY), 'below', false);
+}
+
+/** Where a place with no room beside it for its balloon is scrolled
+ *  to, as its distance from the window's top: under the top bar
+ *  (`top`), with the gutter, the balloon, the gap and the lit area's
+ *  margin above it, so the balloon fits above. */
+export function roomAbove(top: number, size: { h: number }): number {
+	return top + GUTTER + size.h + GAP + LIT_PAD;
 }
