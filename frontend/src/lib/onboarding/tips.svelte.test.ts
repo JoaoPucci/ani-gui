@@ -129,4 +129,14 @@ describe('OnboardingTips', () => {
 		store.pageChanged('other');
 		expect(store.armed?.id).toBe('a');
 	});
+
+	it('puts back a tip asked for that gave way, as it was asked for', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.rearm(tip('a'), 'preview');
+		expect(store.armed?.id).toBe('a');
+		expect(store.armedAs).toBe('preview');
+	});
 });

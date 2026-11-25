@@ -94,6 +94,13 @@ export class OnboardingTips {
 		if (this.armedAs === 'guide' && this.armed && this.armed.surface !== surface) this.armed = null;
 	}
 
+	/** A tip asked for gave way before it was closed: it is asked for
+	 *  again, as it was. */
+	rearm(tip: OnboardingTip, as: 'preview' | 'guide'): void {
+		this.armed = tip;
+		this.armedAs = as;
+	}
+
 	/** The tip asked for has shown. */
 	disarm(): void {
 		this.armed = null;

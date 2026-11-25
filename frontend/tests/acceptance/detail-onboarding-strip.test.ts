@@ -375,4 +375,24 @@ describe('detail route — the strip’s feature tip', () => {
 		expect(onboarding.armedAs).toBe('guide');
 		expect(seen).toEqual([]);
 	});
+
+	it('a preview that gives way to a dialog comes back as a preview, and marks nothing seen', async () => {
+		useShow(true);
+		onboarding.showNow(tips(true).tips[0]);
+		mountPage();
+		await shown();
+		const dialog = document.createElement('div');
+		dialog.innerHTML = '<button>ok</button>';
+		document.body.appendChild(dialog);
+		const held = openModal(dialog);
+		await until(() => balloon() === null, 'the preview yields');
+		held.close();
+		dialog.remove();
+		await shown();
+		gotIt()!.click();
+		await until(() => balloon() === null, 'closed');
+		await new Promise((r) => setTimeout(r, 900));
+		expect(balloon()).toBeNull();
+		expect(seen).toEqual([]);
+	});
 });
