@@ -879,20 +879,24 @@ which the Debug page's "Show it" starts. No tip offered to users uses
 them.
 
 **In the player.** A tip whose moment is `stream-load` shows in the
-player while a stream loads, before playback starts, once the start has
-lasted a second; a faster start never flashes it, and the tip waits,
-pending, for a later slower one. It never starts in a stall, in
+player while an episode's stream first loads, before playback starts,
+once the start has lasted a second (a start after a pause, a replay or a
+recovery is not a load); a faster start never flashes it, and the tip
+waits, pending, for a later slower one. It never starts in a stall, in
 fullscreen, over the error panel or over a dialog, and any of those
 takes it away, still pending. It sits in the frame's top corner, clear
 of the title card, the subtitles and the controls (which are hidden
 until the first frame), and after the controls in the frame, so Tab
 reaches it there. It never takes focus, so the player's keys keep
-working, and it is announced once in a polite live region. When the
-first frame comes it stays, folded to a small plate that fades with the
-player's chrome and comes back on activity, until "Got it" or Escape
-close it, seen. An open menu, popover or dialog takes Escape first. If
-it leaves with focus in it, focus goes to the player's controls. 0.19.0
-declares it only as an on-demand demonstration (`player-up-next`).
+working while focus is elsewhere, and it is announced once in a polite
+live region outside the frame, which is busy while the stream loads.
+When the first frame comes it stays, folded to a small plate that fades
+with the player's chrome and comes back while the pointer is over the
+player or focus is in it, until "Got it" or Escape close it, seen. An
+open menu, popover or dialog, or a text field, takes Escape first. If it
+leaves with focus in it, focus goes to the player's controls, or in
+fullscreen to the frame, so the chrome can still hide. 0.19.0 declares
+it only as an on-demand demonstration (`player-up-next`).
 
 **Routes.** `GET /api/onboarding` answers the release counted at and the
 tips offered, each with its tool, page, moment, places and whether it is
