@@ -50,6 +50,10 @@ import {
 	kitsuTrendingAnilist,
 	heroPick,
 	heroWalk,
+	onboardingDebug,
+	onboardingDebugSeen,
+	onboardingSeen,
+	onboardingTips,
 	markWatched,
 	metaCacheClear,
 	play,
@@ -68,6 +72,8 @@ import {
 	type AvailabilityBatchResponse,
 	type AvailabilityResponse,
 	type HistoryEntry,
+	type OnboardingDebugView,
+	type OnboardingView,
 	type HistoryNumber,
 	type HistoryRowByKitsu,
 	type KitsuEpisode,
@@ -2012,6 +2018,69 @@ describe('heroWalk', () => {
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		expect(await heroWalk()).toEqual(view);
 		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/home/hero/walk`);
+	});
+});
+
+describe('onboarding', () => {
+	it('GETs the tips offered from /api/onboarding', async () => {
+		const view: OnboardingView = {
+			version: '0.19.0',
+			tips: [
+				{
+					id: 'watch-order',
+					kind: 'single',
+					surface: 'show',
+					moment: 'arrive',
+					since: '0.19.0',
+					places: ['watch-order-strip'],
+					how_to: null,
+					pending: true
+				}
+			]
+		};
+		const fetchMock = mockFetchOnce<OnboardingView>(view);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const signal = new AbortController().signal;
+		expect(await onboardingTips({ signal })).toEqual(view);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/onboarding`);
+		expect(init?.signal).toBe(signal);
+	});
+
+	it('POSTs a closed tip to /api/onboarding/seen', async () => {
+		const fetchMock = mockFetchEmpty(204);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await expect(onboardingSeen('watch-order')).resolves.toBeUndefined();
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/onboarding/seen`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(String(init?.body))).toEqual({ id: 'watch-order' });
+	});
+
+	it('GETs the Debug list from /api/onboarding/debug', async () => {
+		const view: OnboardingDebugView = { version: '0.19.0', installed_in: null, tips: [] };
+		const fetchMock = mockFetchOnce<OnboardingDebugView>(view);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		expect(await onboardingDebug()).toEqual(view);
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/onboarding/debug`);
+	});
+
+	it('PUTs the Debug toggle to /api/onboarding/debug/seen, either way', async () => {
+		for (const seen of [true, false]) {
+			const fetchMock = mockFetchEmpty(204);
+			globalThis.fetch = fetchMock as unknown as typeof fetch;
+			await onboardingDebugSeen('watch-order', seen);
+			const { url, init } = lastCall(fetchMock);
+			expect(url).toBe(`${BASE}/api/onboarding/debug/seen`);
+			expect(init?.method).toBe('PUT');
+			expect(JSON.parse(String(init?.body))).toEqual({ id: 'watch-order', seen });
+		}
+	});
+
+	it('throws the backend envelope when a close is refused', async () => {
+		const envelope = { kind: 'invalid_request_body', key: 'error.request.invalid_body' };
+		globalThis.fetch = mockFetchOnce<typeof envelope>(envelope, 400) as unknown as typeof fetch;
+		await expect(onboardingSeen('no-such-tip')).rejects.toEqual(envelope);
 	});
 });
 
