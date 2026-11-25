@@ -17,5 +17,9 @@
 	"franchise_tour_2_title": "Você escolhe a ordem",
 	"franchise_tour_2_body": "Siga os vínculos das bases de dados de anime ou as datas de lançamento. Mude isso nos Ajustes.",
 	"franchise_tour_3_title": "História principal",
-	"franchise_tour_3_body": "Na ordem para assistir. Os títulos que você começou mostram até onde chegou."
+	"franchise_tour_3_body": "Na ordem para assistir. Os títulos que você começou mostram até onde chegou.",
+	"player_up_next_1_title": "O que vem depois",
+	"player_up_next_1_body": "Depois do último episódio, o player oferece o próximo título na ordem para assistir.",
+	"announce": "Novo na versão {version}: {title}",
+	"close_tip": "Fechar a dica"
 }

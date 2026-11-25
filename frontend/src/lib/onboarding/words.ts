@@ -41,6 +41,11 @@ export function stepWords(id: string, step: number): StepWords | null {
 				title: m.onboarding_franchise_tour_3_title,
 				body: m.onboarding_franchise_tour_3_body
 			};
+		case 'player-up-next#1':
+			return {
+				title: m.onboarding_player_up_next_1_title,
+				body: m.onboarding_player_up_next_1_body
+			};
 		default:
 			return null;
 	}

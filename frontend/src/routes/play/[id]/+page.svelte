@@ -219,6 +219,7 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import { chromeReadsPlaying, type StartPhase } from '$lib/play/start-state';
 	import { watchStart, type StartWatch } from '$lib/play/start-watch';
+	import LoadTipHost from '$lib/onboarding/LoadTipHost.svelte';
 	import StartVeil from '$lib/play/StartVeil.svelte';
 	import StartAnnounce from '$lib/play/StartAnnounce.svelte';
 	import { episodeInPages, veilMode } from '$lib/play/start-veil';
@@ -4310,6 +4311,14 @@
 				</div>
 			{/if}
 		{/if}
+		<!-- A feature tip while the stream loads ($lib/onboarding): after
+		     the controls, so Tab reaches it there. It never takes focus. -->
+		<LoadTipHost
+			veil={startVeil}
+			blocked={isFullscreen || playerError !== null}
+			playerMenuOpen={ccMenuOpen || pcMenuOpen}
+			{accent}
+		/>
 	</section>
 	<StartAnnounce mode={startVeil} />
 
