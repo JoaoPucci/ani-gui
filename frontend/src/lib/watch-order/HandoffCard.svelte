@@ -69,6 +69,11 @@
 			0 12px 28px -8px color-mix(in oklab, var(--accent) 38%, transparent),
 			0 0 0 1px color-mix(in oklab, var(--accent) 60%, transparent);
 	}
+	/* A card the keyboard focused carries the app's ring: under the mouse
+	   its frame keeps the halo and drops the keyline, a second ring. */
+	.handoff-card:focus-visible:hover .frame {
+		box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--accent) 38%, transparent);
+	}
 	.frame::after {
 		content: '';
 		position: absolute;

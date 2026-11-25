@@ -6596,6 +6596,14 @@
 			0 0 0 2px var(--accent),
 			0 14px 36px -6px color-mix(in oklab, var(--accent) 55%, transparent);
 	}
+	/* A card the keyboard focused carries the app's ring: the current or
+	   jumped-to card's thumb keeps its glow and drops its own accent
+	   ring, a second one around the same tile. (With motion on, the
+	   jump's two pulses still ring the thumb while they run.) */
+	.ep-card-current:focus-visible .ep-card-thumb,
+	.ep-row > li.ep-highlight .ep-card:focus-visible .ep-card-thumb {
+		box-shadow: 0 14px 36px -6px color-mix(in oklab, var(--accent) 55%, transparent);
+	}
 	.ep-card-thumb img {
 		position: absolute;
 		inset: 0;
