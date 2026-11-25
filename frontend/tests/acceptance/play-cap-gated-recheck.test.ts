@@ -414,6 +414,14 @@ describe('play route — clicking a dimmed aired episode', () => {
 			() => card(AIRED)?.getAttribute('title') === m.detail_ep_recheck_idle(),
 			`episode ${AIRED} to be gated by the sub count`
 		);
+		// Said in words on its card, not only by its dimming; a listed
+		// episode is not.
+		expect(card(AIRED)?.querySelector('.ep-card-foot-len')?.textContent?.trim()).toBe(
+			m.detail_ep_not_listed()
+		);
+		expect(card(1)?.querySelector('.ep-card-foot-len')?.textContent?.trim() ?? '').not.toBe(
+			m.detail_ep_not_listed()
+		);
 
 		// Mode flips; its lookup goes out and stays out. The sub count
 		// says nothing about the dub catalogue, so until the dub answer

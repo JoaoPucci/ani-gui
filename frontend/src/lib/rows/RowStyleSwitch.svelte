@@ -71,4 +71,14 @@
 		background: var(--bone-100);
 		color: var(--ink-000);
 	}
+	/* A forced-colours theme (a Windows contrast theme) turns every
+	   background into its canvas colour, so a pressed choice would look
+	   like the others: there it fills with the theme's highlight. */
+	@media (forced-colors: active) {
+		button[aria-pressed='true'] {
+			forced-color-adjust: none;
+			background: Highlight;
+			color: HighlightText;
+		}
+	}
 </style>
