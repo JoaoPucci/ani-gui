@@ -1,7 +1,14 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { isModalOpen, modal, openModal, type ModalHandle } from './modal-layer';
+import {
+	isModalOpen,
+	isTopModal,
+	modal,
+	openModal,
+	watchModals,
+	type ModalHandle
+} from './modal-layer';
 
 // A page shaped like the app's: a header beside the content, the
 // content holding a section and the modal's mount point.
@@ -369,5 +376,64 @@ describe('a modal opening over a native modal dialog', () => {
 		above.close();
 		expect(native.open).toBe(true);
 		expect(native.contains(document.activeElement)).toBe(true);
+	});
+});
+
+describe('a modal that leaves places within reach', () => {
+	it('keeps its live elements out of the inert page, for presses', () => {
+		const badge = document.getElementById('badge')!;
+		mountIn(page, dialog(), { live: [badge] });
+		expect(inert(badge)).toBe(false);
+		expect(inert(opener)).toBe(true);
+	});
+
+	it('still keeps Tab inside itself', () => {
+		const badge = document.getElementById('badge')!;
+		mountIn(page, dialog(), { live: [badge] });
+		press('Tab');
+		press('Tab');
+		expect(['first', 'last']).toContain(document.activeElement?.id);
+	});
+
+	it('reads the live elements it is given last', () => {
+		const badge = document.getElementById('badge')!;
+		const h = mountIn(page, dialog());
+		expect(inert(badge)).toBe(true);
+		h.update({ live: [badge] });
+		expect(inert(badge)).toBe(false);
+	});
+
+	it('hands its live elements back to the hold of the one beneath', () => {
+		const badge = document.getElementById('badge')!;
+		mountIn(page, dialog(), { live: [badge] });
+		const top = mountIn(document.body, dialog('<button>u</button>'));
+		expect(inert(badge)).toBe(true);
+		top.close();
+		expect(inert(badge)).toBe(false);
+	});
+});
+
+describe('watching the modals', () => {
+	it('tells a watcher when one opens or closes, until it stops watching', () => {
+		const seen: boolean[] = [];
+		const stop = watchModals(() => seen.push(isModalOpen()));
+		const h = mountIn(page, dialog());
+		h.close();
+		stop();
+		mountIn(page, dialog());
+		expect(seen).toEqual([true, false]);
+	});
+
+	it('says which one is on top', () => {
+		const lower = dialog();
+		mountIn(page, lower);
+		expect(isTopModal(lower)).toBe(true);
+		const upper = dialog('<button>u</button>');
+		const top = mountIn(document.body, upper);
+		expect(isTopModal(lower)).toBe(false);
+		expect(isTopModal(upper)).toBe(true);
+		top.close();
+		expect(isTopModal(lower)).toBe(true);
+		expect(isTopModal(upper)).toBe(false);
 	});
 });
