@@ -201,6 +201,8 @@ test("a secret service that never answers keeps neither the window nor the first
     });
     await routeContext(context, "**/api/availability/warm", (r) => answer(r, { status: 202 }));
     await routeContext(context, "**/api/watched-at", (r) => answer(r, json({})));
+    // The feature tips are the backend's own; a fresh profile has none pending.
+    await routeContext(context, "**/api/onboarding", (r) => r.continue());
     await routeContext(context, "**/api/update-check*", (r) => answer(r, { status: 204 }));
     await routeContext(context, "**/api/settings", (r) => answer(r, json(defaultSettings)));
     await routeContext(context, "**/api/image*", (r) => answer(r, { status: 503 }));
