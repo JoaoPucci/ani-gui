@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 5a817bd112881ee636e533a16d8765580a548ca8b11425b3bd97ccd7c7b11402 # shrinks to tips = [TipDecl { id: "tip-0", kind: Single, since: Release { major: 0, minor: 15, patch: 0 }, until: Some(Release { major: 0, minor: 19, patch: 0 }), surface: Show, moment: Arrive, flag: Some("flag_0"), places: ["place-0"], how_to: None, on_demand: false }], rec = Record { installed_in: None, baseline_pending: false, seen: {}, flag_on_since: {} }, current = Release { major: 1, minor: 15, patch: 0 }, on = {"flag_0"}

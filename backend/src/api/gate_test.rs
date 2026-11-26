@@ -59,9 +59,9 @@ fn request(method: &Method, uri: &str, body: &'static str) -> axum::http::reques
 /// A representative route of every module the API router mounts:
 /// the routes in `api/mod.rs` itself across its kinds (reads, writes,
 /// deletes, the progress streams, the image), and one or more of each
-/// merged router (account, airing, franchise, hero, refill, watch-order) and of the
-/// modules with handlers of their own (flags, update, syncplay,
-/// link_rules).
+/// merged router (account, airing, franchise, hero, onboarding, refill,
+/// watch-order) and of the modules with handlers of their own (flags,
+/// update, syncplay, link_rules).
 const ROUTES: &[(&str, &str, &str)] = &[
     ("GET", "/api/app-info", ""),
     ("GET", "/api/proxy-base-url", ""),
@@ -87,6 +87,14 @@ const ROUTES: &[(&str, &str, &str)] = &[
     ("GET", "/api/flags", ""),
     ("POST", "/api/home/hero", r#"{"shows":[]}"#),
     ("GET", "/api/home/hero/walk", ""),
+    ("GET", "/api/onboarding", ""),
+    ("POST", "/api/onboarding/seen", r#"{"id":"watch-order"}"#),
+    ("GET", "/api/onboarding/debug", ""),
+    (
+        "PUT",
+        "/api/onboarding/debug/seen",
+        r#"{"id":"watch-order","seen":false}"#,
+    ),
     ("GET", "/api/update-check", ""),
     ("GET", "/api/watched-at", ""),
     ("GET", "/api/download/default-dir", ""),

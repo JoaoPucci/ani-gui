@@ -32,6 +32,7 @@ mod franchise;
 pub mod gate;
 pub(crate) mod hero;
 mod link_rules;
+mod onboarding;
 mod refill;
 mod sse_abort;
 mod syncplay;
@@ -183,6 +184,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .merge(airing::router())
         .merge(franchise::router())
         .merge(hero::router())
+        .merge(onboarding::router())
         .merge(refill::router())
         .merge(watch_order::router())
         .with_state(state.clone())
