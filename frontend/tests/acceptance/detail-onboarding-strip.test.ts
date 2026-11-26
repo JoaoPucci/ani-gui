@@ -33,7 +33,7 @@ vi.mock('$app/navigation', () => ({
 
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import OnboardHost from '../../src/lib/onboarding/OnboardHost.svelte';
-import { __resetOnboardingForTests } from '../../src/lib/onboarding/tips.svelte';
+import { onboarding, __resetOnboardingForTests } from '../../src/lib/onboarding/tips.svelte';
 import { isModalOpen, openModal } from '../../src/lib/components/modal-layer';
 import {
 	__resetApiBaseForTests,
@@ -300,6 +300,18 @@ describe('detail route — the strip’s feature tip', () => {
 		expect(isModalOpen()).toBe(false);
 	});
 
+	it('a tip asked for from the Debug page shows though seen, and marks nothing seen', async () => {
+		useShow(false);
+		onboarding.showNow({ ...tips(false).tips[0], pending: true });
+		mountPage();
+		await shown();
+		expect(onboarding.armed).toBeNull();
+		gotIt()!.click();
+		await until(() => balloon() === null, 'closed');
+		await new Promise((r) => setTimeout(r, 100));
+		expect(seen).toEqual([]);
+	});
+
 	it('waits for a dialog already open when the page mounts, and shows once it closes', async () => {
 		useShow(true);
 		const dialog = document.createElement('div');
@@ -316,5 +328,37 @@ describe('detail route — the strip’s feature tip', () => {
 			dialog.remove();
 		}
 		await until(() => balloon()?.style.visibility === 'visible', 'the balloon after the dialog');
+	});
+
+	it('a preview of a pending tip shows once on the visit, and marks nothing seen', async () => {
+		useShow(true);
+		onboarding.showNow(tips(true).tips[0]);
+		mountPage();
+		await shown();
+		gotIt()!.click();
+		await until(() => balloon() === null, 'closed');
+		await new Promise((r) => setTimeout(r, 900));
+		expect(balloon()).toBeNull();
+		expect(seen).toEqual([]);
+	});
+
+	it('a preview that gives way to a dialog comes back as a preview, and marks nothing seen', async () => {
+		useShow(true);
+		onboarding.showNow(tips(true).tips[0]);
+		mountPage();
+		await shown();
+		const dialog = document.createElement('div');
+		dialog.innerHTML = '<button>ok</button>';
+		document.body.appendChild(dialog);
+		const held = openModal(dialog);
+		await until(() => balloon() === null, 'the preview yields');
+		held.close();
+		dialog.remove();
+		await shown();
+		gotIt()!.click();
+		await until(() => balloon() === null, 'closed');
+		await new Promise((r) => setTimeout(r, 900));
+		expect(balloon()).toBeNull();
+		expect(seen).toEqual([]);
 	});
 });

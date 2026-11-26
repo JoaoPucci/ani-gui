@@ -11,6 +11,13 @@ import { onboardingSeen, onboardingTips, type OnboardingTip, type OnboardingView
 export class OnboardingTips {
 	/** The answer, or null until it arrives (or when it never did). */
 	view = $state<OnboardingView | null>(null);
+	/** A tip asked for on demand (the Debug page's Show it): it shows
+	 *  the next time its first place settles on its page, whether or not
+	 *  it is pending, and closing it marks nothing seen. */
+	armed = $state<OnboardingTip | null>(null);
+	/** How the armed tip shows: a Debug preview, which looks as it would
+	 *  when offered. */
+	armedAs = $state<'preview'>('preview');
 	#asked: Promise<void> | null = null;
 
 	readonly #fetchTips: () => Promise<OnboardingView>;
@@ -41,6 +48,33 @@ export class OnboardingTips {
 		return this.#asked;
 	}
 
+	/** A seen state set elsewhere (the Debug page's toggle): the session
+	 *  takes it, sending nothing. */
+	seenHere(id: string, seen: boolean): void {
+		if (!this.view) return;
+		this.view = {
+			...this.view,
+			tips: this.view.tips.map((t) => (t.id === id ? { ...t, pending: !seen } : t))
+		};
+	}
+
+	/** Show `tip` the next time its first place settles on screen. */
+	showNow(tip: OnboardingTip): void {
+		this.armed = tip;
+	}
+
+	/** A tip asked for gave way before it was closed: it is asked for
+	 *  again, as it was. */
+	rearm(tip: OnboardingTip, as: 'preview'): void {
+		this.armed = tip;
+		this.armedAs = as;
+	}
+
+	/** The tip asked for has shown. */
+	disarm(): void {
+		this.armed = null;
+	}
+
 	/** Ask again on the next load (tests). */
 	forget(): void {
 		this.#asked = null;
@@ -65,5 +99,6 @@ export const onboarding = new OnboardingTips();
 /** Tests only: the session's tips as before the first read. */
 export function __resetOnboardingForTests(): void {
 	onboarding.view = null;
+	onboarding.armed = null;
 	onboarding.forget();
 }

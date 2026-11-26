@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { OnboardingTip } from '$lib/api';
 import { arrivesOn, arrivingNow, onScreen, surfaceOf, watchedHere, type ScreenNow } from './gate';
+import { armedNow, previewable } from './on-demand';
 
 const tip = (over: Partial<OnboardingTip> = {}): OnboardingTip => ({
 	id: 'watch-order',
@@ -97,5 +98,32 @@ describe('arrivingNow', () => {
 	it('never shows a seen tip, or one for another page', () => {
 		expect(arrivingNow([tip({ pending: false })], now())).toBeNull();
 		expect(arrivingNow([tip()], now({ surface: 'home' }))).toBeNull();
+	});
+});
+
+describe('armedNow', () => {
+	it('shows a tip asked for once its place settles on its page, seen or not, past the visit’s one', () => {
+		const t = tip({ pending: false });
+		expect(armedNow(t, now())?.id).toBe('watch-order');
+		expect(armedNow(t, now({ settled: () => false }))).toBeNull();
+		expect(armedNow(t, now({ surface: 'home' }))).toBeNull();
+	});
+	it('still waits out fullscreen and dialogs, and needs a tip', () => {
+		expect(armedNow(tip(), now({ fullscreen: true }))).toBeNull();
+		expect(armedNow(tip(), now({ modalOpen: true }))).toBeNull();
+		expect(armedNow(null, now())).toBeNull();
+		expect(armedNow(tip({ places: [] }), now())).toBeNull();
+	});
+});
+
+describe('previewable', () => {
+	it('is a tip that arrives on a page of its own, with places', () => {
+		expect(previewable(tip())).toBe(true);
+		expect(previewable(tip({ surface: 'any' }))).toBe(true);
+	});
+	it('is never one that shows in the player, or has no places', () => {
+		expect(previewable(tip({ surface: 'play', moment: 'stream-load' }))).toBe(false);
+		expect(previewable(tip({ surface: 'play' }))).toBe(false);
+		expect(previewable(tip({ places: [] }))).toBe(false);
 	});
 });

@@ -865,7 +865,14 @@ tips offered, each with its tool, page, moment, places and whether it is
 pending; `POST /api/onboarding/seen {id}` records a tip closed.
 `GET /api/onboarding/debug` answers every declared tip with its window
 and state, and `PUT /api/onboarding/debug/seen {id, seen}` sets seen
-either way. No route sends words: each
+either way. The Debug page lists every declared tip by key from the
+first, with its tool, its window for this install and a Seen toggle that
+uses the second. Its "Show it" asks for a tip the next time its first
+place settles on its page, seen or not: shown that way, a tip marks
+nothing seen, and it is the visit's one tip. A tip that loads in the
+player cannot be shown that way, and a wait for a tip's place can be
+called off. No route sends
+words: each
 step's title and body are the renderer's messages, named after the tip
 and the step (`onboarding_<id>_<step>_title` and `_body`).
 

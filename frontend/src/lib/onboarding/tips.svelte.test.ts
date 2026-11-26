@@ -59,6 +59,17 @@ describe('OnboardingTips', () => {
 		expect(store.tips.find((t) => t.id === 'a')?.pending).toBe(false);
 	});
 
+	it('arms a tip asked for on demand until it shows', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.showNow(tip('a', false));
+		expect(store.armed?.id).toBe('a');
+		store.disarm();
+		expect(store.armed).toBeNull();
+	});
+
 	it('the session’s store reads the backend’s routes, and a reset asks again', async () => {
 		const read = vi.mocked(onboardingTips).mockResolvedValue(VIEW);
 		const send = vi.mocked(onboardingSeen).mockResolvedValue(undefined);
@@ -71,5 +82,27 @@ describe('OnboardingTips', () => {
 		expect(onboarding.tips).toEqual([]);
 		await onboarding.load();
 		expect(read).toHaveBeenCalledTimes(2);
+	});
+
+	it('takes a seen state set elsewhere (the Debug page) for this session, sending nothing', async () => {
+		const sendSeen = vi.fn(async () => {});
+		const store = new OnboardingTips(async () => VIEW, sendSeen);
+		await store.load();
+		store.seenHere('a', true);
+		expect(store.tips.find((t) => t.id === 'a')?.pending).toBe(false);
+		store.seenHere('a', false);
+		expect(store.tips.find((t) => t.id === 'a')?.pending).toBe(true);
+		store.seenHere('no-such-tip', true);
+		expect(sendSeen).not.toHaveBeenCalled();
+	});
+
+	it('puts back a tip asked for that gave way, as it was asked for', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.rearm(tip('a'), 'preview');
+		expect(store.armed?.id).toBe('a');
+		expect(store.armedAs).toBe('preview');
 	});
 });
