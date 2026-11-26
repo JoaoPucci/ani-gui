@@ -12,13 +12,25 @@
  * - A press on the lit place works, and closes it, seen; focus is the
  *   press's to move. In the first PRESS_GRACE_MS the press still works
  *   but leaves the tip up.
+ * - A sequence's Done (Next on its last step) closes it, seen, focus to
+ *   the last place; Skip closes it, seen, focus back.
+ * - An entry tip's "Show me how" closes it, seen; the press then opens
+ *   the feature, where its walkthrough runs, so focus is that page's.
  * - A tip yields, unseen and still pending, when the page changes
  *   under it, its place goes, one of the app's dialogs opens over it,
  *   or the window goes fullscreen.
  */
 import { PRESS_GRACE_MS } from './gate';
 
-export type CloseRoute = 'got-it' | 'escape' | 'outside' | 'place' | 'yield';
+export type CloseRoute =
+	| 'got-it'
+	| 'done'
+	| 'skip'
+	| 'show-how'
+	| 'escape'
+	| 'outside'
+	| 'place'
+	| 'yield';
 
 export interface Closing {
 	seen: boolean;
@@ -33,7 +45,12 @@ export interface Closing {
 export function closing(route: CloseRoute, shownAt: number, now: number): Closing | null {
 	switch (route) {
 		case 'got-it':
+		case 'done':
 			return { seen: true, focus: 'place' };
+		case 'skip':
+			return { seen: true, focus: 'back' };
+		case 'show-how':
+			return { seen: true, focus: 'none' };
 		case 'escape':
 			return { seen: true, focus: 'back' };
 		case 'outside':

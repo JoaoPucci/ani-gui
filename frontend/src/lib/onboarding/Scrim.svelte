@@ -13,6 +13,12 @@
   - `.frame`, four corner ticks in the show's colour just outside the
     lit area; in a contrast theme, a whole Highlight outline as well.
 
+  Between a sequence's steps the cut-out and the ticks glide to the next
+  place, one structural move (`travelling`); at rest they follow the
+  place at once, so a scroll never leaves them trailing. With reduced
+  motion they jump. The catcher never glides: its cut-out is where the
+  place is now.
+
   The layer holds no text and is set `direction: ltr`, so its logical
   properties map to the viewport axes the rects use.
 -->
@@ -27,6 +33,9 @@
 		passHoles,
 		view,
 		accent,
+		travelling = false,
+		step = 0,
+		onArrived = () => {},
 		onOutside
 	}: {
 		/** The layer's element, which the host keeps out of the inert page. */
@@ -39,8 +48,23 @@
 		passHoles: Rect[];
 		view: { w: number; h: number };
 		accent: string;
+		/** Moving between a sequence's steps. */
+		travelling?: boolean;
+		/** Which step is up: a step change restarts the glide's clock. */
+		step?: number;
+		/** The glide is over. */
+		onArrived?: () => void;
 		onOutside: () => void;
 	} = $props();
+
+	/** As long as the glide (`--dur-slow`), and past it. */
+	const GLIDE_MS = 700;
+	$effect(() => {
+		void step;
+		if (!travelling) return;
+		const t = setTimeout(onArrived, GLIDE_MS);
+		return () => clearTimeout(t);
+	});
 
 	/** How far outside the lit area the ticks stand. */
 	const OUTSET = 8;
@@ -56,6 +80,7 @@
 <div
 	bind:this={root}
 	class="scrim"
+	class:travelling
 	style:--ob-accent={accent}
 	aria-hidden="true"
 	data-testid="onboarding-scrim"
@@ -98,6 +123,15 @@
 		background: var(--ink-000);
 		opacity: 0.74;
 		animation: dim-in var(--dur-slow) var(--ease-out-soft) both;
+	}
+	.travelling .dim {
+		transition: clip-path var(--dur-slow) var(--ease-in-out);
+	}
+	.travelling .frame {
+		transition:
+			translate var(--dur-slow) var(--ease-in-out),
+			inline-size var(--dur-slow) var(--ease-in-out),
+			block-size var(--dur-slow) var(--ease-in-out);
 	}
 	@keyframes dim-in {
 		from {

@@ -11,19 +11,21 @@
   - It stays hidden until it is measured and placed, so it never takes
     focus while it cannot be seen.
   - Focus rings are the app's own (`--ring`), never the show's colour;
-    the accent marks only the eyebrow's rule.
+    the accent marks only the eyebrow's rule and the current step.
+  - A sequence shows where it is twice: the localized readout ("Step 2
+    of 3") and a still film strip, the steps passed filled, the current
+    one drawn twice as wide. Width carries the state, so a contrast
+    theme keeps it and it needs no motion. On each step the primary
+    action takes focus again and carries the step's words, so Enter
+    walks the sequence. The button that keeps focus says nothing new by
+    itself, so each step after the first is announced through a polite
+    live region in the balloon.
 -->
-<script lang="ts" module>
-	export interface BalloonAction {
-		id: string;
-		label: string;
-		kind: 'primary' | 'secondary';
-	}
-</script>
-
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import type { BalloonAction } from './balloon-actions';
 	import type { Placement } from './place';
+	import { StepWatch } from './step-watch';
 
 	let {
 		root = $bindable(),
@@ -35,6 +37,8 @@
 		accent,
 		compact,
 		actions,
+		step,
+		stepLabel,
 		onAction,
 		measure
 	}: {
@@ -42,7 +46,8 @@
 		root?: HTMLDivElement;
 		title: string;
 		body: string;
-		/** The release that brought the feature, e.g. "0.19.0". */
+		/** The release that brought the feature, e.g. "0.19.0"; empty for
+		 *  a walkthrough asked for, which names none. */
 		version: string;
 		/** The eyebrow's key, e.g. "New". */
 		newLabel: string;
@@ -51,11 +56,31 @@
 		/** A short window: a tighter balloon. */
 		compact: boolean;
 		actions: BalloonAction[];
-		onAction: (id: string) => void;
+		/** Where a sequence is (from 1); null for one step. */
+		step: { index: number; total: number } | null;
+		/** The localized readout of `step`. */
+		stepLabel: string;
+		onAction: (id: BalloonAction['id']) => void;
 		measure: (size: { w: number; h: number }) => void;
 	} = $props();
 
 	const uid = Math.random().toString(36).slice(2, 8);
+	const quiet = $derived(actions.filter((a) => a.kind === 'quiet'));
+	const rest = $derived(actions.filter((a) => a.kind !== 'quiet'));
+
+	// As the sequence moves ($./step-watch): the primary takes focus
+	// again, and the step is announced.
+	let announced = $state('');
+	const watch = new StepWatch();
+	$effect(() => {
+		const r = watch.seen(step?.index ?? 1, `${stepLabel}. ${title}. ${body}`);
+		if (r.announce !== null) announced = r.announce;
+		if (r.refocus) {
+			root
+				?.querySelector<HTMLElement>('button[data-kind="primary"]')
+				?.focus({ preventScroll: true });
+		}
+	});
 
 	onMount(() => {
 		if (!root) return;
@@ -86,20 +111,45 @@
 	style:visibility={placement ? 'visible' : 'hidden'}
 >
 	<span class="pointer" aria-hidden="true"></span>
-	<p class="tag">
-		<span>{newLabel}</span>
-		<span class="tag-rule" aria-hidden="true"></span>
-		<span class="tag-version">{version}</span>
-	</p>
+	<div class="head">
+		<p class="tag">
+			<span>{newLabel}</span>
+			{#if version}
+				<span class="tag-rule" aria-hidden="true"></span>
+				<span class="tag-version">{version}</span>
+			{/if}
+		</p>
+		{#if step}
+			<p class="step">
+				<span class="frames" aria-hidden="true">
+					{#each Array.from({ length: step.total }, (_, i) => i) as i (i)}
+						<span class="frame" class:seen={i < step.index - 1} class:current={i === step.index - 1}
+						></span>
+					{/each}
+				</span>
+				<span class="step-label">{stepLabel}</span>
+			</p>
+		{/if}
+	</div>
 	<h2 class="title" id="ob-title-{uid}">{title}</h2>
+	<p class="sr-only" aria-live="polite">{announced}</p>
 	<p class="body" id="ob-body-{uid}">{body}</p>
 	<div class="foot">
-		{#each actions as a (a.id)}
+		{#each quiet as a (a.id)}
+			<button type="button" class="act quiet" data-kind="quiet" onclick={() => onAction(a.id)}>
+				{a.label}
+			</button>
+		{/each}
+		<span class="spacer"></span>
+		{#each rest as a (a.id)}
 			<button
 				type="button"
 				class="act {a.kind}"
 				data-kind={a.kind}
 				data-autofocus={a.kind === 'primary' ? '' : undefined}
+				aria-describedby={a.kind === 'primary' && step
+					? `ob-title-${uid} ob-body-${uid}`
+					: undefined}
 				onclick={() => onAction(a.id)}
 			>
 				{a.label}
@@ -122,6 +172,14 @@
 		color: var(--bone-100);
 		font-family: var(--font-body);
 		animation: rise var(--dur-med) var(--ease-out-soft) both;
+	}
+	.sr-only {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.balloon.sheet {
 		max-inline-size: none;
@@ -179,12 +237,20 @@
 		margin: 0;
 	}
 
+	/* The eyebrow at the start, the step readout at the end. */
+	.head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-2) var(--space-3);
+		margin-block-end: var(--space-2);
+	}
 	/* The app's eyebrow voice: key, rule, value. */
 	.tag {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-		margin-block-end: var(--space-2);
 		font: 600 var(--type-micro) / 1 var(--font-body);
 		letter-spacing: var(--tracking-micro);
 		text-transform: uppercase;
@@ -201,6 +267,43 @@
 		font-weight: 400;
 		letter-spacing: var(--tracking-meta);
 		color: var(--bone-300);
+	}
+
+	/* The start veil's film strip, standing still: one 16:9 frame per
+	   step, the passed ones filled, the current one twice as wide. */
+	.step {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		flex: none;
+	}
+	.frames {
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		--h: 8px;
+	}
+	.frame {
+		block-size: var(--h);
+		inline-size: calc(var(--h) * 16 / 9);
+		border-radius: 1.5px;
+		border: 1px solid color-mix(in oklab, var(--bone-100) 45%, transparent);
+	}
+	.frame.seen {
+		background: var(--bone-300);
+		border-color: var(--bone-300);
+	}
+	.frame.current {
+		inline-size: calc(var(--h) * 32 / 9);
+		background: var(--ob-accent);
+		border-color: color-mix(in oklab, var(--ob-accent) 60%, var(--bone-100));
+	}
+	.step-label {
+		font: 400 var(--type-micro) / 1 var(--font-mono);
+		letter-spacing: var(--tracking-meta);
+		font-variant-numeric: tabular-nums;
+		color: var(--bone-300);
+		white-space: nowrap;
 	}
 
 	.title {
@@ -235,10 +338,12 @@
 		margin-block-start: var(--space-2);
 	}
 
+	.spacer {
+		flex: 1 1 0;
+	}
 	.foot {
 		display: flex;
 		align-items: center;
-		justify-content: flex-end;
 		flex-wrap: wrap;
 		gap: var(--space-2);
 		margin-block-start: var(--space-4);
@@ -270,6 +375,17 @@
 	.secondary:hover {
 		border-color: var(--bone-300);
 	}
+	/* A text action: no box at rest, so it never competes with the
+	   primary, trimmed at the start to line up with the body text. */
+	.quiet {
+		padding-inline: var(--space-1);
+		margin-inline-start: calc(var(--space-1) * -1);
+		background: transparent;
+		color: var(--bone-300);
+	}
+	.quiet:hover {
+		color: var(--bone-100);
+	}
 
 	/* Contrast themes: system colours only. The edge and pointer are the
 	   text colour, the rule too; nothing rests on a shadow or a fill. */
@@ -285,6 +401,29 @@
 		.tag-rule {
 			forced-color-adjust: none;
 			background: CanvasText;
+		}
+		.frames {
+			forced-color-adjust: none;
+		}
+		/* Ahead is a dashed gate, so seen and ahead differ by more than fill. */
+		.frame {
+			border-color: CanvasText;
+			border-style: dashed;
+			background: Canvas;
+		}
+		.frame.seen {
+			border-style: solid;
+			background: CanvasText;
+			border-color: CanvasText;
+		}
+		.frame.current {
+			border-style: solid;
+			background: Highlight;
+			border-color: Highlight;
+		}
+		/* A text action is underlined, so it still reads as a control. */
+		.quiet {
+			text-decoration: underline;
 		}
 	}
 </style>

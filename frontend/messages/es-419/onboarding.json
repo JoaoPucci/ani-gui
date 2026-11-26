@@ -2,5 +2,20 @@
 	"new": "Nuevo",
 	"got_it": "Entendido",
 	"watch_order_1_title": "Orden para ver",
-	"watch_order_1_body": "Mira dónde está este anime en su franquicia, qué vino antes y qué ver después."
+	"watch_order_1_body": "Mira dónde está este anime en su franquicia, qué vino antes y qué ver después.",
+	"next": "Siguiente",
+	"back": "Atrás",
+	"skip": "Omitir",
+	"done": "Listo",
+	"show_how": "Muéstrame cómo",
+	"guide": "Cómo funciona",
+	"step_aria": "Paso {n} de {total}",
+	"franchise_entry_1_title": "Mira la franquicia completa",
+	"franchise_entry_1_body": "Ábrela para ver cada título en orden y dónde estás.",
+	"franchise_tour_1_title": "La franquicia completa",
+	"franchise_tour_1_body": "Todas las temporadas, películas y especiales en una sola página, en el orden para verlos.",
+	"franchise_tour_2_title": "Tú eliges el orden",
+	"franchise_tour_2_body": "Sigue los enlaces de las bases de datos de anime o las fechas de estreno. Cámbialo en Ajustes.",
+	"franchise_tour_3_title": "Historia principal",
+	"franchise_tour_3_body": "En el orden para ver. Los títulos que empezaste muestran hasta dónde llegaste."
 }

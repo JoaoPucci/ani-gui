@@ -56,3 +56,12 @@ export function observePlace(doc: Document, place: HTMLElement, changed: () => v
 		mounts.disconnect();
 	};
 }
+
+/** Read the screen around `place` into `into`, writing each part only
+ *  when it changed, so a reactive holder updates no more than it must. */
+export function rereadInto(into: ScreenRead, doc: Document, place: HTMLElement): void {
+	const now = readScreen(doc, place);
+	if (!sameView(now.view, into.view)) into.view = now.view;
+	if (!sameRect(now.rect, into.rect)) into.rect = now.rect;
+	if (!sameRects(now.buttons, into.buttons)) into.buttons = now.buttons;
+}

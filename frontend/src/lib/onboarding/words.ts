@@ -21,6 +21,26 @@ export function stepWords(id: string, step: number): StepWords | null {
 	switch (`${id}#${step}`) {
 		case 'watch-order#1':
 			return { title: m.onboarding_watch_order_1_title, body: m.onboarding_watch_order_1_body };
+		case 'franchise-entry#1':
+			return {
+				title: m.onboarding_franchise_entry_1_title,
+				body: m.onboarding_franchise_entry_1_body
+			};
+		case 'franchise-tour#1':
+			return {
+				title: m.onboarding_franchise_tour_1_title,
+				body: m.onboarding_franchise_tour_1_body
+			};
+		case 'franchise-tour#2':
+			return {
+				title: m.onboarding_franchise_tour_2_title,
+				body: m.onboarding_franchise_tour_2_body
+			};
+		case 'franchise-tour#3':
+			return {
+				title: m.onboarding_franchise_tour_3_title,
+				body: m.onboarding_franchise_tour_3_body
+			};
 		default:
 			return null;
 	}

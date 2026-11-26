@@ -6,7 +6,13 @@
  * close, so a tip closed is not shown again before the next launch
  * reads the record.
  */
-import { onboardingSeen, onboardingTips, type OnboardingTip, type OnboardingView } from '$lib/api';
+import {
+	onboardingSeen,
+	onboardingTips,
+	type OnboardingHowTo,
+	type OnboardingTip,
+	type OnboardingView
+} from '$lib/api';
 
 export class OnboardingTips {
 	/** The answer, or null until it arrives (or when it never did). */
@@ -16,9 +22,12 @@ export class OnboardingTips {
 	 *  it is pending, and closing it marks nothing seen. */
 	armed = $state<OnboardingTip | null>(null);
 	/** How the armed tip shows: a Debug preview, which looks as it would
-	 *  when offered. */
-	armedAs = $state<'preview'>('preview');
+	 *  when offered, or a walkthrough a feature's "Show me how" asked for,
+	 *  which says "How it works" and names no version. */
+	armedAs = $state<'preview' | 'guide'>('preview');
 	#asked: Promise<void> | null = null;
+	/** The page an armed walkthrough's own page came up at. */
+	#guidePage: string | null = null;
 
 	readonly #fetchTips: () => Promise<OnboardingView>;
 	readonly #sendSeen: (id: string) => Promise<void>;
@@ -61,11 +70,45 @@ export class OnboardingTips {
 	/** Show `tip` the next time its first place settles on screen. */
 	showNow(tip: OnboardingTip): void {
 		this.armed = tip;
+		this.armedAs = 'preview';
+	}
+
+	/** Run a feature's walkthrough the next time its first place settles
+	 *  on its page. */
+	showGuide(howTo: OnboardingHowTo, here: string | null = null): void {
+		this.armed = {
+			id: howTo.id,
+			kind: 'sequence',
+			surface: howTo.surface,
+			moment: 'arrive',
+			since: '',
+			places: howTo.places,
+			how_to: null,
+			pending: true
+		};
+		this.armedAs = 'guide';
+		// Asked for on its own page (a feature's Show me how), it keeps to
+		// it; asked for from an entry point, its page is the next one.
+		this.#guidePage = here;
+	}
+
+	/** A page came up on `surface`, at `path`: a walkthrough asked for
+	 *  that runs elsewhere is dropped, and so is one whose own page came
+	 *  and went without it, so it never shows unasked on a later visit.
+	 *  A Debug preview waits until its page comes. */
+	pageChanged(surface: string, path: string): void {
+		if (this.armedAs !== 'guide' || !this.armed) return;
+		if (this.armed.surface !== surface || (this.#guidePage && this.#guidePage !== path)) {
+			this.armed = null;
+			this.#guidePage = null;
+			return;
+		}
+		this.#guidePage = path;
 	}
 
 	/** A tip asked for gave way before it was closed: it is asked for
 	 *  again, as it was. */
-	rearm(tip: OnboardingTip, as: 'preview'): void {
+	rearm(tip: OnboardingTip, as: 'preview' | 'guide'): void {
 		this.armed = tip;
 		this.armedAs = as;
 	}

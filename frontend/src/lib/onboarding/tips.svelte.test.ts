@@ -84,6 +84,24 @@ describe('OnboardingTips', () => {
 		expect(read).toHaveBeenCalledTimes(2);
 	});
 
+	it('arms a feature’s walkthrough as a guide, on its own page', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.showGuide({ id: 'a-guide', surface: 'franchise', places: ['one', 'two'] });
+		expect(store.armedAs).toBe('guide');
+		expect(store.armed).toMatchObject({
+			id: 'a-guide',
+			kind: 'sequence',
+			surface: 'franchise',
+			moment: 'arrive',
+			places: ['one', 'two']
+		});
+		store.showNow(tip('a', false));
+		expect(store.armedAs).toBe('preview');
+	});
+
 	it('takes a seen state set elsewhere (the Debug page) for this session, sending nothing', async () => {
 		const sendSeen = vi.fn(async () => {});
 		const store = new OnboardingTips(async () => VIEW, sendSeen);
@@ -96,6 +114,28 @@ describe('OnboardingTips', () => {
 		expect(sendSeen).not.toHaveBeenCalled();
 	});
 
+	it('drops a walkthrough asked for once a page that is not its own comes up', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.showGuide({ id: 'g', surface: 'franchise', places: ['x'] });
+		store.pageChanged('franchise', '/anime/1/franchise');
+		expect(store.armed?.id).toBe('g');
+		store.pageChanged('show', '/anime/1');
+		expect(store.armed).toBeNull();
+		// Its own page came and went with no walkthrough: another page of
+		// the same kind does not get it.
+		store.showGuide({ id: 'g', surface: 'franchise', places: ['x'] });
+		store.pageChanged('franchise', '/anime/1/franchise');
+		store.pageChanged('franchise', '/anime/2/franchise');
+		expect(store.armed).toBeNull();
+		// A preview from the Debug page waits through other pages.
+		store.showNow(tip('a', false));
+		store.pageChanged('other', '/diagnostics');
+		expect(store.armed?.id).toBe('a');
+	});
+
 	it('puts back a tip asked for that gave way, as it was asked for', () => {
 		const store = new OnboardingTips(
 			async () => VIEW,
@@ -104,5 +144,15 @@ describe('OnboardingTips', () => {
 		store.rearm(tip('a'), 'preview');
 		expect(store.armed?.id).toBe('a');
 		expect(store.armedAs).toBe('preview');
+	});
+
+	it('a walkthrough asked for on its own page keeps to that page', () => {
+		const store = new OnboardingTips(
+			async () => VIEW,
+			vi.fn(async () => {})
+		);
+		store.showGuide({ id: 'g', surface: 'franchise', places: ['x'] }, '/anime/1/franchise');
+		store.pageChanged('franchise', '/anime/2/franchise');
+		expect(store.armed).toBeNull();
 	});
 });

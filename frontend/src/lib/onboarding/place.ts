@@ -92,3 +92,8 @@ export function placeBalloon(
 export function roomAbove(top: number, size: { h: number }): number {
 	return top + GUTTER + size.h + GAP + LIT_PAD;
 }
+
+/** Whether `r` lies wholly in the window under the top bar. */
+export function wholly(r: Rect, view: { h: number; top: number }): boolean {
+	return r.y >= view.top && r.y + r.h <= view.h;
+}
