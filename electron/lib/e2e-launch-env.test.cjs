@@ -56,3 +56,16 @@ test("whatever the shell holds, only the launch's option names a flags file", ()
     )
   );
 });
+
+test("an onboarding release inherited from the shell does not reach the app", () => {
+  const env = appEnv({ ANI_GUI_TEST_ONBOARDING_VERSION: "0.19.0" }, { proxyOrigin: ORIGIN });
+  assert.equal("ANI_GUI_TEST_ONBOARDING_VERSION" in env, false);
+});
+
+test("the launch's own onboarding release is the one the app counts tips at", () => {
+  const env = appEnv(
+    { ANI_GUI_TEST_ONBOARDING_VERSION: "0.30.0" },
+    { proxyOrigin: ORIGIN, onboardingVersion: "0.19.0" }
+  );
+  assert.equal(env.ANI_GUI_TEST_ONBOARDING_VERSION, "0.19.0");
+});

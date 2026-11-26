@@ -46,6 +46,7 @@
 	import DownloadDock from '$lib/components/DownloadDock.svelte';
 	import DownloadBar from '$lib/components/DownloadBar.svelte';
 	import ToastHost from '$lib/components/ToastHost.svelte';
+	import OnboardHost from '$lib/onboarding/OnboardHost.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import { isModalOpen } from '$lib/components/modal-layer';
 	import UpdateBadge from '$lib/components/UpdateBadge.svelte';
@@ -711,6 +712,9 @@
   underneath in DOM order; z-index gives the toast top stacking too
   (50 vs 40).
 -->
+<!-- Feature tips after an update: one spotlight at a time, over the
+     page and under the app's own dialogs. -->
+<OnboardHost />
 <ToastHost downloadBarEnabled={config?.download_bottom_bar_enabled !== false} />
 
 <!-- UpdateDialog — opens when the user clicks the UpdateBadge in
