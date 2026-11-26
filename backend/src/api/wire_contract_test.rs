@@ -147,6 +147,9 @@ mod watch_order;
 #[path = "wire_contract_hero_test.rs"]
 mod hero;
 
+#[path = "wire_contract_onboarding_test.rs"]
+mod onboarding;
+
 const PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wire-contract.json");
 
 #[test]
@@ -298,6 +301,7 @@ fn responses() -> Value {
     );
     watch_order::responses(&mut out);
     hero::responses(&mut out);
+    onboarding::responses(&mut out);
     Value::Object(out)
 }
 
@@ -833,6 +837,7 @@ fn requests() -> Value {
     });
     watch_order::requests(all.as_object_mut().expect("an object"));
     hero::requests(all.as_object_mut().expect("an object"));
+    onboarding::requests(all.as_object_mut().expect("an object"));
     all
 }
 
@@ -864,6 +869,7 @@ fn enums() -> Value {
     });
     watch_order::enums(all.as_object_mut().expect("an object"));
     hero::enums(all.as_object_mut().expect("an object"));
+    onboarding::enums(all.as_object_mut().expect("an object"));
     all
 }
 

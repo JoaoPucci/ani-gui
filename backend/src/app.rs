@@ -151,9 +151,19 @@ impl AppState {
             );
         }
         let history_path = paths::gui_history().ok_or(AniError::Io)?;
+        let metadata_db = paths::metadata_db().ok_or(AniError::Io)?;
+        let config_path = paths::config_file().ok_or(AniError::Io)?;
+        // Whether the app ran in this profile before is asked here,
+        // before this launch creates the cache: the onboarding record
+        // starts as a first-ever install's or an update's
+        // (`crate::onboarding::state`).
+        crate::onboarding::state::boot(
+            &state_root,
+            crate::onboarding::state::profile_existed(&[&history_path, &metadata_db, &config_path]),
+            crate::onboarding::running_version(),
+        );
         let image_cache_dir = paths::image_cache_dir().ok_or(AniError::Io)?;
         std::fs::create_dir_all(&image_cache_dir).map_err(|_| AniError::Io)?;
-        let metadata_db = paths::metadata_db().ok_or(AniError::Io)?;
         if let Some(parent) = metadata_db.parent() {
             std::fs::create_dir_all(parent).map_err(|_| AniError::Io)?;
         }
@@ -164,7 +174,6 @@ impl AppState {
         let (cache_pool, cache_reclaim) = crate::cache::open_pool_reclaiming(&metadata_db)?;
         let meta_http = crate::proxy::upstream::build_meta_client();
         let kitsu = KitsuClient::new(meta_http.clone());
-        let config_path = paths::config_file().ok_or(AniError::Io)?;
         let state_dir = state_root;
         let mut state = Self {
             secret: AppSecret::random(),

@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-11-10_
+_Last updated: 2026-11-25_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -189,6 +189,12 @@ ani-gui keeps the following on your computer only:
   the app opened it maximized, per display (the display's identifier, resolution and
   scale identify it), in `window-geometry.json` in the app's folder under
   your OS user-data directory, so the next launch opens at that size.
+- **Feature tips** — which of the app's tips about new features you
+  closed, the version a new install started on, and the version in
+  which a feature behind a remote flag first appeared for you, in
+  `onboarding.json` in the app's state directory, beside the watch
+  history. It records only that a tip was closed, not whether you read
+  it.
 - **Remote flags cache** — the last copy of the project's remote flags
   file the app fetched (see below), when it was fetched, and whether
   it holds a switch only a verified signature could have turned on,

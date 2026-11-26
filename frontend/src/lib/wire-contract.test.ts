@@ -80,6 +80,16 @@ import {
 	HERO_ARTS,
 	HERO_SKIPPED_BECAUSE,
 	HERO_TAKEN_BECAUSE,
+	type OnboardingDebugSeenBody,
+	type OnboardingDebugTip,
+	type OnboardingDebugView,
+	type OnboardingHowTo,
+	type OnboardingSeenBody,
+	type OnboardingTip,
+	type OnboardingView,
+	ONBOARDING_KINDS,
+	ONBOARDING_MOMENTS,
+	ONBOARDING_SURFACES,
 	type AskRow,
 	type ChainEndCard,
 	type Eyebrow,
@@ -815,7 +825,47 @@ const RESPONSES: Record<string, Record<string, string>> = {
 		because: 'string'
 	} satisfies Spec<Tagged<HeroVerdict, 'skipped'>>,
 	HeroFlagView: { name: 'string', on: 'boolean', origin: 'string' } satisfies Spec<HeroFlagView>,
-	HeroWalkView: { flag: 'object', walk: 'object|null' } satisfies Spec<HeroWalkView>
+	HeroWalkView: { flag: 'object', walk: 'object|null' } satisfies Spec<HeroWalkView>,
+	OnboardingHowTo: {
+		id: 'string',
+		surface: 'string',
+		places: 'string[]'
+	} satisfies Spec<OnboardingHowTo>,
+	OnboardingTip: {
+		id: 'string',
+		kind: 'string',
+		surface: 'string',
+		moment: 'string',
+		since: 'string',
+		places: 'string[]',
+		how_to: 'object|null',
+		pending: 'boolean'
+	} satisfies Spec<OnboardingTip>,
+	OnboardingView: { version: 'string', tips: 'object[]' } satisfies Spec<OnboardingView>,
+	OnboardingDebugTip: {
+		id: 'string',
+		kind: 'string',
+		surface: 'string',
+		moment: 'string',
+		since: 'string',
+		until: 'string|null',
+		opens: 'string|null',
+		ends: 'string|null',
+		flag: 'string|null',
+		flag_on: 'boolean',
+		flag_on_since: 'string|null',
+		on_demand: 'boolean',
+		offered: 'boolean',
+		seen: 'boolean',
+		pending: 'boolean',
+		places: 'string[]',
+		how_to: 'object|null'
+	} satisfies Spec<OnboardingDebugTip>,
+	OnboardingDebugView: {
+		version: 'string',
+		installed_in: 'string|null',
+		tips: 'object[]'
+	} satisfies Spec<OnboardingDebugView>
 };
 
 /** Each body the backend reads, by its backend name: the spec of the
@@ -926,6 +976,10 @@ const REQUESTS: Record<string, { spec: Record<string, string>; unsent?: string[]
 		spec: { today: 'required' } satisfies BodySpec<WatchOrderDayBody>
 	},
 	HeroPickBody: { spec: { shows: 'required' } satisfies BodySpec<HeroPickBody> },
+	OnboardingSeenBody: { spec: { id: 'required' } satisfies BodySpec<OnboardingSeenBody> },
+	OnboardingDebugSeenBody: {
+		spec: { id: 'required', seen: 'required' } satisfies BodySpec<OnboardingDebugSeenBody>
+	},
 	HeroShow: {
 		spec: {
 			id: 'required',
@@ -1131,7 +1185,10 @@ const ENUMS: Record<string, readonly string[]> = {
 	Seam: SEAMS,
 	HeroArt: HERO_ARTS,
 	HeroTakenBecause: HERO_TAKEN_BECAUSE,
-	HeroSkippedBecause: HERO_SKIPPED_BECAUSE
+	HeroSkippedBecause: HERO_SKIPPED_BECAUSE,
+	OnboardingKind: ONBOARDING_KINDS,
+	OnboardingSurface: ONBOARDING_SURFACES,
+	OnboardingMoment: ONBOARDING_MOMENTS
 };
 
 // — The error envelope ——————————————————————————————————————————————
