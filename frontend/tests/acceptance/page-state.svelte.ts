@@ -18,6 +18,9 @@ const params = $state<Record<string, string>>({});
  *  onto `page.state` when the viewer steps back or forward onto it. */
 let entryState = $state<App.PageState>({});
 
+/** The route id, as `page.route.id`: null until a scenario names one. */
+const route = $state<{ id: string | null }>({ id: null });
+
 export const page = {
 	get url() {
 		return url;
@@ -27,8 +30,16 @@ export const page = {
 	},
 	get state() {
 		return entryState;
+	},
+	get route() {
+		return route;
 	}
 };
+
+/** Point the stub at a route id, as SvelteKit does on navigation. */
+export function setRouteId(id: string | null): void {
+	route.id = id;
+}
 
 /** Point the stub at an entry's state, as SvelteKit does when it lands
  *  on that entry, or as its `replaceState` does when the page writes one. */

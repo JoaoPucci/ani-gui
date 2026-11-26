@@ -4,6 +4,10 @@
 //! `tips.json`. The file is data the backend owns: it is compiled in,
 //! read once, and held to the rules [`validate`] states (in
 //! `rules.rs` and `rules_shape.rs`) by the tests.
+//! `tests/arch/onboarding_places.sh` reads the same file with a JSON
+//! parser to hold the renderer to it: every place a tip names is marked
+//! once in the renderer's source, and every step has its words in every
+//! locale.
 //!
 //! The backend never sends a tip's words (AGENTS.md §4). Each step's
 //! title and body are Paraglide messages named after the tip and the

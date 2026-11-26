@@ -12,6 +12,11 @@
 
 const FLAGS_FILE = "ANI_GUI_TEST_FLAGS_FILE";
 
+// The release a test-run backend counts the feature tips' windows at
+// (backend/src/onboarding/mod.rs), named by the launch's
+// `onboardingVersion` alone, for the same reason as the flags file.
+const ONBOARDING_VERSION = "ANI_GUI_TEST_ONBOARDING_VERSION";
+
 /** What every test launch sets, whatever the spec passes: a test run
  *  (`ANI_GUI_UNATTENDED=1`). A boot that fails then exits instead of
  *  waiting on a dialog nobody reads (lib/boot-failure.cjs), and the
@@ -38,14 +43,15 @@ function proxyEnv(origin) {
   return env;
 }
 
-/** The app's environment: `env` without a flags file, the proxy at
- *  `proxyOrigin`, a test run's variables, and `flagsFile` as the flags
- *  file when one is given. */
-function appEnv(env, { proxyOrigin, flagsFile } = {}) {
-  const { [FLAGS_FILE]: _dropped, ...rest } = env ?? {};
+/** The app's environment: `env` without a flags file or an onboarding
+ *  release, the proxy at `proxyOrigin`, a test run's variables, and
+ *  `flagsFile` and `onboardingVersion` when they are given. */
+function appEnv(env, { proxyOrigin, flagsFile, onboardingVersion } = {}) {
+  const { [FLAGS_FILE]: _dropped, [ONBOARDING_VERSION]: _droppedToo, ...rest } = env ?? {};
   return {
     ...rest,
     ...(flagsFile === undefined ? {} : { [FLAGS_FILE]: flagsFile }),
+    ...(onboardingVersion === undefined ? {} : { [ONBOARDING_VERSION]: onboardingVersion }),
     ...proxyEnv(proxyOrigin),
     ...TEST_RUN_ENV,
   };

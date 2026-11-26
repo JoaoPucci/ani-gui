@@ -831,6 +831,35 @@ then is not marked seen, so it is new to that install when the flag comes
 on. A profile whose cache was deleted, with no history and no settings
 ever saved, reads as new.
 
+**On screen.** The renderer (`frontend/src/lib/onboarding/`) asks for
+the tips once per launch and shows a pending one only on its own page,
+never in the player, in fullscreen or over one of the app's dialogs, and
+at most one per page visit. It waits until the tip's first place has
+been on screen, half of it or 160 px of a tall one below the top bar,
+and still for 600 ms: an IntersectionObserver sees it cross into view,
+and a scroll of the page, or of a scroller holding the place, starts the
+wait again. The place is read only while the page scrolls. Then the page
+dims around the place and a balloon beside it explains it, with the
+release that brought it. The dim is a layer cut out with `clip-path`, so
+a Windows contrast theme keeps it, and the lit place gets a Highlight
+outline there. The balloon is the topmost modal
+(`$lib/components/modal-layer`): focus moves to "Got it", Tab stays in
+the balloon, the app's shortcuts stand down, and the rest of the page is
+inert except the place itself and the window's own buttons, which a
+press still reaches. "Got it", Escape, a press on the place (which also
+does what the place does) or a press outside (which goes no further)
+close it, and the renderer tells `POST /api/onboarding/seen`. A press in
+its first 400 ms after the balloon takes the page was aimed at the page:
+outside it does nothing, and on the place it does what the place does
+and leaves the tip up. A dialog opening over it, fullscreen, leaving the
+page or the place leaving it closes it without marking it seen, and
+focus stays where the page put it. A place that changes size is
+followed. The About page lists the tips offered in the running version,
+seen or not. Each step's words are the renderer's
+(`$lib/onboarding/words.ts`), and `tests/arch/onboarding_places.sh`
+holds every declared place to exactly one `data-onboard` mark in the
+renderer's source and every step to its words in every locale.
+
 **Routes.** `GET /api/onboarding` answers the release counted at and the
 tips offered, each with its tool, page, moment, places and whether it is
 pending; `POST /api/onboarding/seen {id}` records a tip closed.

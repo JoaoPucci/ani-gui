@@ -134,6 +134,9 @@ async function launchAppWithStubsOnce(
   });
   await stub("**/api/availability/warm", (r) => answer(r, { status: 202 }));
   await stub("**/api/watched-at", (r) => answer(r, json({})));
+  // The feature tips are the backend's own: a fresh profile is a
+  // first-ever install, so none is pending.
+  await stub("**/api/onboarding", (r) => r.continue());
   // No newer release: the backend's answer when there is none.
   await stub("**/api/update-check*", (r) => answer(r, { status: 204 }));
   await stub("**/api/settings", (r) =>
