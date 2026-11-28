@@ -1,8 +1,7 @@
 # Proposal: an in-app updater
 
 **Status**: research for the 0.20.0 release, alongside the
-notification center proposal, which is reviewed separately in
-[pull request #351](https://github.com/JoaoPucci/ani-gui/pull/351).
+[notification center](notification-center.md) proposal.
 Nothing below is built.
 The library and platform facts were checked on 2026-11-02 against the
 pages and source files cited next to them, and will drift; the
@@ -647,19 +646,25 @@ hash of the file, a public key of one line, a signature file with a
 <https://jedisct1.github.io/minisign/>] The trusted comment carries the
 asset's file name and version, and the app checks them, so an old
 signed release cannot be passed off as a new one. [proposal] The
-notification-center proposal leans towards minisign for its remote
-notices as well [source: the notification center proposal in
-[#351](https://github.com/JoaoPucci/ani-gui/pull/351), section 3], so
-one verifier (the `minisign-verify` crate) would serve both. They
-should not share a *key*: notices would be signed often, and every
-signing would handle the key that can replace the app. Two keys, the release
-key used once per release, keep a slip with the frequent one from
-reaching the installer. [proposal]
+notification-center proposal recommends minisign for its remote
+notices as well [source:
+[`notification-center.md`](notification-center.md), section 3], and
+the backend already verifies the remote flags file with minisign
+through the `minisign-verify` crate [code: `backend/Cargo.toml:85`,
+`backend/src/flags/signature.rs:1`–`10`], so one verifier would serve
+all three. They should not share a *key*: notices would be signed
+often, and every signing would handle the key that can replace the
+app. Two keys, the release key used once per release, keep a slip with
+the frequent one from reaching the installer; the flags file keeps a
+key of its own as well. [proposal]
 The private key lives on the maintainer's machine, never on GitHub;
 signing can be a repository script on Node's own Ed25519 and BLAKE2b,
 so nothing is installed system-wide. [tried: Node 24's `crypto` signs
 and verifies an Ed25519 signature over a `blake2b512` digest;
 producing minisign's exact file format from it is untried]
+The remote flags file is signed with the minisign tool itself instead
+(`docs/development.md`, "Signing the flags file"), which the
+maintainer installs; the script would spare releases that install.
 
 Losing the key is the cost: a release signed with a new key cannot
 update installs that carry the old one, and those installs fall back
@@ -771,9 +776,8 @@ The badge and its dialog stay the entry point until the notification
 center lands; then "Update available" becomes a notice there whose
 detail is this dialog, and the badge folds into the bell or stays,
 which is the notification center's open question, not this one's.
-[proposal; see the notification center proposal in
-[#351](https://github.com/JoaoPucci/ani-gui/pull/351), section 2,
-"Surface design options"]
+[proposal; see [`notification-center.md`](notification-center.md),
+section 2, "Surface design options"]
 
 Progress does not join the download dock. The dock lists episodes,
 with per-episode rows, speed and "Show in folder", and its close guard
@@ -1116,8 +1120,7 @@ proposal's findings, and "What the in-app updater leaves out").
 
 ## Related work
 
-- A notification center
-  ([#351](https://github.com/JoaoPucci/ani-gui/pull/351)), proposed
+- [A notification center](notification-center.md), proposed
   for the same release: "Update available" is one of its notices, and
   its signed remote notices would share this proposal's verifier, under a
   key of their own.
