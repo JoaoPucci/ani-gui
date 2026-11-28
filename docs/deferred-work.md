@@ -960,6 +960,17 @@ starting it, and delete it when you find it done.
   today), and nothing on disk — show keys, availability rows,
   history — names the host, so a new address invalidates no cache.
 
+## Reporting DNS failures during playback
+
+- **Name the hostname when a streaming DNS lookup fails.** The provider
+  transport turns a failed lookup into the play screen's generic network
+  error. Preserve the DNS failure so the screen can name the host and
+  point users to their DNS or VPN settings. On 2026-11-29, Proton NetShield
+  returned `NXDOMAIN` for `hianime.fm` even in **Block malware only** after
+  reconnecting. Name a particular filter only when there is evidence for
+  it. Direct DNS queries identified the block during the incident, and
+  the maintainer deferred the in-app guidance.
+
 ## Decoding hianime's other embed hosts
 
 - **Read the embed pages of hianime's remaining servers**, so an
